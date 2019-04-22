@@ -1,0 +1,31 @@
+README.singlenode
+
+Prerequisite:
+ Nvme device with KV firmware 
+ Kernel drivers are already loaded
+
+To run KVCeph in a single node you will need to modify:
+
+1) setup_kvsstore.conf
+   Modify the configuration file with the proper source path,NodeIP,hostname and physical nvme devices
+
+2) kvs_template.conf
+   Modify any ceph runtime parameters for kvsstore, if needed 
+
+3) Run: setup_singlenode.sh
+   ./setup_singlenode.sh 1 kvsstore 1
+   arg1 = number of nodes (only 1)
+   arg2 = objectstore (kvsstore)
+   arg3 = number of osds  (default 1)
+
+
+Script workflow:
+ -Load configuration file
+ -Deploy ceph-runtime binaries from build directory to local path
+ -Deploy directories for ceph daemons
+ -Format nvme device(s)
+ -Deploy ceph.conf file to ceph daemon directory
+ -start monitor daemon
+ -start manager daemon
+ -Create osd pools
+ -start osd(s) 
