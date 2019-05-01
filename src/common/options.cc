@@ -2956,7 +2956,7 @@ std::vector<Option> get_global_options() {
     .set_description(""),
 
     Option("osd_max_object_size", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
-    .set_default(128*1024L*1024L)
+    .set_default(2*1024L*1024L)
     .set_description(""),
 
     Option("osd_max_object_name_len", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
