@@ -829,8 +829,11 @@ public:
         }
 
         auto& data = contents[new_obj].data;
-        if (data.length() < offset + len) {
-            data.append_zero(offset+len-data.length());
+        derr << " data.length() = " << data.length() << ", offset = " << offset << ", len = " << len << dendl;
+       if (data.length() < offset + len) {
+	    data.append_zero(offset+len-data.length());
+
+        derr << "[DONE] data.length1() = " << data.length() << ", offset = " << offset << ", len = " << len << dendl;
         }
         bufferlist n;
         n.substr_of(data, 0, offset);
@@ -1492,8 +1495,8 @@ void doSyntheticTest(boost::scoped_ptr<ObjectStore>& store,
             derr << "----clone_range " << dendl;
             test_obj.clone_range();
         } else if (val > 300) {
-            derr << "----stash " << dendl;
-            test_obj.stash();
+            derr << "DONOT support ----stash - same as bluestore" << dendl;
+            //test_obj.stash();
         } else if (val > 100) {
             derr << "----read " << dendl;
             test_obj.read();

@@ -709,7 +709,7 @@ void ReplicatedBackend::be_deep_scrub(
   ScrubMap::object &o,
   ThreadPool::TPHandle &handle)
 {
-  derr << __func__ << " " << poid << " seed " 
+  dout(30) << __func__ << " " << poid << " seed " 
 	   << std::hex << seed << std::dec << dendl;
   bufferhash h(seed), oh(seed);
   bufferlist bl, hdrbl;
@@ -717,10 +717,8 @@ void ReplicatedBackend::be_deep_scrub(
   __u64 pos = 0;
 
   uint32_t fadvise_flags = CEPH_OSD_OP_FLAG_FADVISE_SEQUENTIAL | CEPH_OSD_OP_FLAG_FADVISE_DONTNEED;
-  derr << __func__ << " " << "start deep scrubbing" << dendl;
   while (true) {
     handle.reset_tp_timeout();
-    derr << __func__ << " " << "read" << dendl;
     r = store->read(
 	  ch,
 	  ghobject_t(
@@ -729,7 +727,6 @@ void ReplicatedBackend::be_deep_scrub(
 	  cct->_conf->osd_deep_scrub_stride, bl,
 	  fadvise_flags);
 
-    derr << __func__ << " " << "read done r = " << r  << dendl;
     if (r <= 0)
       break;
 
@@ -737,19 +734,16 @@ void ReplicatedBackend::be_deep_scrub(
     pos += bl.length();
     bl.clear();
   }
-  derr << __func__ << " " << "be_deep_scrub 1" << dendl;
   if (r == -EIO) {
     derr << __func__ << "  " << poid << " got "
 	     << r << " on read, read_error" << dendl;
     o.read_error = true;
     return;
   }
-  derr << __func__ << " " << "be_deep_scrub 2" << dendl;
   o.digest = h.digest();
   o.digest_present = true;
 
   bl.clear();
-  derr << __func__ << " " << "be_deep_scrub 3" << dendl;
   r = store->omap_get_header(
     coll,
     ghobject_t(
@@ -774,13 +768,11 @@ void ReplicatedBackend::be_deep_scrub(
     o.read_error = true;
     return;
   }
-  derr << __func__ << " " << "be_deep_scrub 4 - omap iterator" << dendl;
   ObjectMap::ObjectMapIterator iter = store->get_omap_iterator(
     coll,
     ghobject_t(
       poid, ghobject_t::NO_GEN, get_parent()->whoami_shard().shard));
 
-      derr << __func__ << " " << "be_deep_scrub 5" << dendl;
   assert(iter);
   for (iter->seek_to_first(); iter->status() == 0 && iter->valid();
     iter->next(false)) {
@@ -795,21 +787,19 @@ void ReplicatedBackend::be_deep_scrub(
     oh << bl;
     bl.clear();
   }
-  derr << __func__ << " " << "be_deep_scrub 6" << dendl;
 
   if (iter->status() < 0) {
     dout(25) << __func__ << "  " << poid
              << " on omap scan, db status error" << dendl;
     o.read_error = true;
     return;
-  }derr << __func__ << " " << "be_deep_scrub 7" << dendl;
+  }
 
   //Store final calculated CRC32 of omap header & key/values
   o.omap_digest = oh.digest();
   o.omap_digest_present = true;
   dout(20) << __func__ << "  " << poid << " omap_digest "
 	   << std::hex << o.omap_digest << std::dec << dendl;
-  derr << __func__ << " " << "be_deep_scrub 8" << dendl;
 }
 
 void ReplicatedBackend::_do_push(OpRequestRef op)

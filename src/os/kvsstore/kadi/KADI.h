@@ -159,7 +159,7 @@ public:
         kv_value *value = 0;
         void *buf = 0;
         int buflen = 0;
-
+        std::mutex lk;
         void (*post_fn)(kv_io_context &result, void *data);
         void *post_data;
 
@@ -184,6 +184,7 @@ private:
     struct timeval timeout;
     CephContext *cct;
     std::mutex cmdctx_lock;
+    std::mutex aioevent_lock;
     std::condition_variable cmdctx_cond;
 
     std::vector<aio_cmd_ctx *>   free_cmdctxs;
@@ -198,10 +199,16 @@ private:
         std::unique_lock<std::mutex> lock (cmdctx_lock);
         auto p = pending_cmdctxs.find(reqid);
         if (p == pending_cmdctxs.end()) {
-            ceph_abort();
+            
+            
             return 0;
         }
-        return p->second;
+        else {
+            aio_cmd_ctx *ctx = p->second;
+            pending_cmdctxs.erase(p);
+            return ctx;
+        }
+        
     }
 
     void release_cmd_ctx(aio_cmd_ctx *p);

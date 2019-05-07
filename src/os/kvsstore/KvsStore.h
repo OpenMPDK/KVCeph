@@ -19,6 +19,8 @@
 #include <boost/intrusive/set.hpp>
 #include <boost/functional/hash.hpp>
 #include <boost/dynamic_bitset.hpp>
+#include <boost/range.hpp>
+#include <boost/range/join.hpp>
 
 #include "include/assert.h"
 #include "include/unordered_map.h"
@@ -32,6 +34,7 @@
 
 #include "kadi/KADI.h"
 #include "kvsstore_types.h"
+
 
 // TODO: do not read onode
 
@@ -121,10 +124,12 @@ private:
     int fsid_fd = -1;  ///< open handle (locked) to $path/fsid
     int csum_type = 0;
     bool mounted = false;
-
+    
+    LsCache<ghobject_t, KvsStore> lscache;
+    
     RWLock coll_lock = {"KvsStore::coll_lock"};  ///< rwlock to protect coll_map
     mempool::kvsstore_cache_other::unordered_map<coll_t, CollectionRef> coll_map;
-
+    vector<KvsCollection *> cached_collections;
     vector<KvsCache*> cache_shards;
 
     int m_finisher_num = 1;
@@ -403,7 +408,11 @@ private:
 
     int _collection_list(
             KvsCollection *c, const ghobject_t& start, const ghobject_t& end, int max,
-            vector<ghobject_t> *ls, ghobject_t *pnext);
+            vector<ghobject_t> *ls, ghobject_t *pnext, bool destructive = false);
+
+    int _prep_collection_list(KvsCollection *c, const ghobject_t& start, struct iter_param &temp, struct iter_param &other);
+    int _load_and_search_collection_list(const ghobject_t& start, const ghobject_t& end, struct iter_param &temp, struct iter_param &other, int max,
+            vector<ghobject_t> *ls, ghobject_t *pnext, bool destructive = false);
 
     void _txc_write_nodes(KvsTransContext *txc);
     int _remove_collection(KvsTransContext *txc, const coll_t &cid,
@@ -452,8 +461,7 @@ public:
 
     void txc_aio_finish(kv_io_context *op, KvsTransContext *txc);   // called per each I/O completion
 
-    int iterate_objects_in_device(CephContext *cct,
-                                  int8_t shardid, uint64_t poolid, uint32_t starthash, uint32_t endhash, bool inclusive, const ghobject_t &start, const ghobject_t &end, set<ghobject_t> *lsset,const coll_t& cid, int bits);
+    int iterate_objects_in_device(uint64_t poolid, int8_t shardid, std::set<ghobject_t> &data);
     ///
     /// OSR SET
 
@@ -465,6 +473,8 @@ public:
         std::lock_guard<std::mutex> l(osr_lock);
         osr_set.erase(osr);
     }
+
+
 };
 
 inline ostream& operator<<(ostream& out, const KvsOpSequencer& s) {
@@ -478,4 +488,6 @@ static inline void intrusive_ptr_add_ref(KvsOpSequencer *o) {
 static inline void intrusive_ptr_release(KvsOpSequencer *o) {
     o->put();
 }
+
+
 #endif //CEPH_KVSSTORE_H

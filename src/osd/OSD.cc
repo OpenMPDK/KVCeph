@@ -163,7 +163,7 @@
 #undef dout_prefix
 #define dout_prefix _prefix(_dout, whoami, get_osdmap_epoch())
 
-#define DERR dout(30)
+#define DERR dout(50)
 
 #include "common/kvsdbg.h"
 #include "common/KvsKeyType.h"

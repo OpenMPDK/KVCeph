@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <bitset>
+#include <memory.h>
 #include "KvsStore.h"
 
 #include "osd/osd_types.h"
@@ -21,7 +22,7 @@
 #include "common/EventTrace.h"
 #include "common/stack_trace.h"
 #include "kvs_debug.h"
-#include <memory.h>
+
 #define dout_context cct
 #define dout_subsys ceph_subsys_kvs
 
@@ -209,7 +210,7 @@ OnodeRef KvsCollection::get_onode(
             on = new KvsOnode(this, oid);
             o.reset(on);
             onode_map.add(oid, o);
-
+            
             return OnodeRef();
         }
         // new object, new onode
@@ -232,7 +233,7 @@ OnodeRef KvsCollection::get_onode(
         for (auto &i : on->onode.attrs) {
             i.second.reassign_to_mempool(mempool::mempool_kvsstore_cache_other);
         }
-
+        //lderr(store->cct) << "loaded a new onode " << oid << ", under " << cid << ", bits " << cnode.bits << dendl;
     } else {
         lderr(store->cct) << __func__ << "I/O Error: ret = " << ret << dendl;
         ceph_abort_msg(store->cct, "Failed to read an onode due to an I/O error");
@@ -250,6 +251,8 @@ void *KvsStore::MempoolThread::entry() {
             i->trim();
         }
 
+        store->lscache.trim(1);
+
         utime_t wait;
         wait += 0.2;
         cond.WaitInterval(lock, wait);
@@ -260,7 +263,7 @@ void *KvsStore::MempoolThread::entry() {
 
 
 KvsStore::KvsStore(CephContext *cct, const std::string &path)
-        : ObjectStore(cct, path), db(cct), kv_callback_thread(this), kv_callback_thread2(this),kv_finalize_thread(this), mempool_thread(this) {
+        : ObjectStore(cct, path), db(cct),lscache(cct), kv_callback_thread(this), kv_callback_thread2(this),kv_finalize_thread(this), mempool_thread(this) {
     FTRACE
     m_finisher_num = 1;
 
@@ -510,8 +513,10 @@ int KvsStore::umount() {
         derr << __func__ << "err: could not store a superblock, closing anyway .. retcode = " << r << dendl;
 
     mempool_thread.shutdown();
+    lscache.clear();
 
     dout(20) << __func__ << " stopping kv thread" << dendl;
+    
     _close_db();
     _reap_collections();
     _flush_cache();
@@ -712,11 +717,13 @@ int KvsStore::mkfs() {
 
     out_close_db:
     _close_db();
+
     out_close_fsid:
     _close_fsid();
+
     out_path_fd:
     _close_path();
-    
+
     return r;
 }
 
@@ -1127,77 +1134,122 @@ int KvsStore::collection_list(
         vector<ghobject_t> *ls, ghobject_t *pnext) {
     FTRACE
     KvsCollection *c = static_cast<KvsCollection *>(c_.get());
-    dout(20) << __func__ << " " << c->cid
-             << " start " << start << " end " << end << " max " << max << dendl;
+    dout (20)  << __func__ << "-MAIN: " << c->cid << " bits " << c->cnode.bits
+             << " start_oid " << start << " end_oid " << end << " max " << max << dendl;
+    
     int r;
+    struct iter_param temp;
+    struct iter_param other;
+    
     {
         RWLock::RLocker l(c->lock);
-        r = _collection_list(c, start, end, max, ls, pnext);
+        r = _prep_collection_list(c, start, temp, other);
     }
 
-    dout(20) << __func__ << " " << c->cid
+    if (r == 1) {
+        r = _load_and_search_collection_list(start, end, temp, other, max, ls, pnext);
+    }
+
+    /*{
+        RWLock::RLocker l(c->lock);
+        r = _collection_list(c, start, end, max, ls, pnext);
+    }*/
+
+    dout (20) << __func__ << "-DONE: " << c->cid
              << " start " << start << " end " << end << " max " << max
              << " = " << r << ", ls.size() = " << ls->size()
              << ", next = " << (pnext ? *pnext : ghobject_t()) << dendl;
     return r;
 }
 
-
-
-static void get_coll_key_range(CephContext *cct, const coll_t& cid, int bits, int8_t &shardid, uint64_t &temppoolid, uint64_t &objpoolid,
-                               uint32_t &starthash, uint32_t &endhash, uint32_t &tempstarthash, uint32_t &tempendhash)
+static int get_coll_key_range(CephContext *cct, KvsCollection *c, struct iter_param &temp, struct iter_param &other)
 {
+  
     spg_t pgid;
-    if (cid.is_pg(&pgid)) {
-        shardid = int8_t(pgid.shard);
+    if (c->cid.is_pg(&pgid))
+    {
+        uint32_t reverse_hash = hobject_t::_reverse_bits(pgid.ps());
+        uint64_t end_hash = reverse_hash + (1ull << (32 - c->cnode.bits));
+        if (end_hash > 0xffffffffull)
+            end_hash = 0xffffffffull;
 
-        objpoolid  = pgid.pool() + 0x8000000000000000ull;
-        starthash  = hobject_t::_reverse_bits(pgid.ps());
+        other.shardid = int8_t(pgid.shard);
+        other.poolid = pgid.pool() + 0x8000000000000000ull;
+        other.starthash = reverse_hash;
+        other.endhash = end_hash;
+        
+        other.valid = true;
 
-        const uint64_t end_hash = hobject_t::_reverse_bits(pgid.ps()) + (1ull << (32-bits));
-        if (end_hash <= 0xffffffffull) {
-            endhash = end_hash;
-        } else {
-            endhash = 0xffffffff;
-        }
-
-        temppoolid = (-2ll - pgid.pool()) + 0x8000000000000000ull;
-        tempstarthash = starthash;
-        tempendhash = endhash;
-
-    } else {
-        shardid = int8_t(shard_id_t::NO_SHARD);
-        objpoolid  = -1ull + 0x8000000000000000ull;
-        starthash = 0;
-        endhash    = 0xffffffff;
-
-        temppoolid    = objpoolid;
-        tempstarthash = endhash;
-        tempendhash   = endhash;
+        temp.shardid = other.shardid;
+        temp.poolid = (-2ll - pgid.pool()) + 0x8000000000000000ull;
+        temp.starthash = reverse_hash;
+        temp.endhash = end_hash;
+        
+        temp.valid = true;
     }
-}
-
-static bool compare_bitwise_key(uint32_t key, uint32_t starthash, uint32_t endhash, bool inclusive)
-{
-    if (inclusive)
-        return key >= starthash && key <= endhash;
     else
-        return key >= starthash && key < endhash;
+    {
+        other.shardid = int8_t(shard_id_t::NO_SHARD);
+        other.poolid = -1ull + 0x8000000000000000ull;
+        other.starthash = 0;
+        other.endhash = 0xffffffff;
+        
+        other.valid = true;
+
+        temp.valid = false;
+    }
+
+    return 1;
+}
+
+// needs a collection lock
+int KvsStore::_prep_collection_list(KvsCollection *c, const ghobject_t& start, struct iter_param &temp, struct iter_param &other) {
+    if (!c->exists) return -ENOENT;
+
+    if (start == ghobject_t::get_max() || start.hobj.is_max()) {
+        return 0;
+    }
+
+    return get_coll_key_range(cct, c, temp, other);
+}
+
+int KvsStore::_load_and_search_collection_list(const ghobject_t& start, const ghobject_t& end, struct iter_param &temp, struct iter_param &other, int max,
+        vector<ghobject_t> *ls, ghobject_t *pnext, bool destructive) {
+   
+    lscache.load_and_search(start, end, max, temp, other, this, ls, pnext, destructive);
+
+    return 0;
 }
 
 
-int KvsStore::iterate_objects_in_device(CephContext *cct,
-        int8_t shardid, uint64_t poolid, uint32_t starthash, uint32_t endhash, bool inclusive, const ghobject_t &start, const ghobject_t &end, set<ghobject_t> *ls,const coll_t& cid, int bits)
+int KvsStore::_collection_list(
+        KvsCollection *c, const ghobject_t& start, const ghobject_t& end, int max,
+        vector<ghobject_t> *ls, ghobject_t *pnext, bool destructive)
 {
-    int ret = 0;
+    struct iter_param temp;
+    struct iter_param other;
+
+    int r = _prep_collection_list(c, start, temp, other);
+
+    if (r == 1) {
+        _load_and_search_collection_list(start, end, temp, other, max, ls, pnext);
+    }  
+
+    return r;
+}
+
+
+
+int KvsStore::iterate_objects_in_device(uint64_t poolid, int8_t shardid, std::set<ghobject_t> &data)
+{
+    int ret ;
     void *key;
     int length;
-    spg_t pgid;
-    bool ispg = cid.is_pg(&pgid);
     kv_iter_context iter_ctx;
     std::list<std::pair<void *, int> > buflist;
     
-    iter_ctx.prefix  = get_object_group_id(GROUP_PREFIX_DATA, shardid, poolid);
+    const uint32_t prefix = get_object_group_id(GROUP_PREFIX_ONODE, shardid, poolid);
+    iter_ctx.prefix  = prefix;
     iter_ctx.bitmask = 0xFFFFFFFF;
     iter_ctx.buflen  = ITER_BUFSIZE;
     
@@ -1214,25 +1266,12 @@ int KvsStore::iterate_objects_in_device(CephContext *cct,
 
             kvs_var_object_key *collkey = (kvs_var_object_key *) key;
 
-            if (collkey->group == GROUP_PREFIX_DATA && collkey->shardid == shardid && collkey->poolid == poolid
-                && compare_bitwise_key(collkey->bitwisekey,starthash,endhash, inclusive)) {
-
+            // check for hash collisions
+            if (collkey->group == GROUP_PREFIX_ONODE && collkey->shardid == shardid && collkey->poolid == poolid) {
                 ghobject_t oid;
                 construct_ghobject_t(cct, (const char *) key, length, &oid);
-
-                bool pgchecked = true;
-                if (ispg) {
-                    const uint64_t seed = pgid.pgid.ps();
-                    //uint64_t pool = pgid.pgid.pool();
-                    const uint32_t hash = oid.hobj.get_hash() & (~((~0) << bits ));
-                    const uint32_t match = seed & (~((~0) << bits ));
-                    pgchecked = (hash == match);
-                }
-                if (oid >= start && oid < end && pgchecked) {
-                    ls->insert(oid);
-                }
+                data.insert(oid);
             }
-            
         }
     }
 
@@ -1242,134 +1281,6 @@ out:
     }
 
     return ret;
-}
-
-void verify_results(CephContext * cct,int bits, std::set<ghobject_t> &lsset) {
-
-    for (const ghobject_t &ghobj: lsset) {
-        derr << __func__ << " verify: " << ghobj.hobj.get_hash()  << ", (hobj.hash & ~((~0)<<bits))  = "  << (ghobj.hobj.get_hash() & ~((~0)<<bits)) << dendl;
-    }
-}
-int KvsStore::_collection_list(
-        KvsCollection *c, const ghobject_t &start, const ghobject_t &end, int max,
-        vector<ghobject_t> *ls, ghobject_t *pnext) {
-    FTRACE
-    if (!c->exists)
-        return -ENOENT;
-
-    kv_result ret = 0;
-    bool need_extra_search = false;
-    ghobject_t static_next;
-
-    if (!pnext) {
-        pnext = &static_next;
-    }
-    if (!pnext->is_min() && !pnext->is_max()) {
-        // use the cached entries
-        auto it = c->lsset.upper_bound(*pnext);
-
-        while (it != c->lsset.end()) {
-            ls->push_back(*it);
-            if ((long)ls->size() >= max) {
-                *pnext = *it;
-                return 0;
-            }
-            it++;
-        }
-
-        *pnext = ghobject_t::get_max();
-        c->lsset.clear();
-
-        return 0;
-    }
-
-    int8_t shardid;
-    uint64_t poolid;
-    uint32_t starthash, endhash = 0;
-    uint64_t objectpoolid;
-    uint32_t objstarthash, objendhash, tempstarthash, tempendhash;
-    bool inclusive;
-
-    if (start == ghobject_t::get_max() || start.hobj.is_max()) {
-
-
-        goto release;
-    }
-
-    { // set search boundary
-        bool temp = false;
-        uint64_t temppoolid;
-
-        get_coll_key_range(cct, c->cid, c->cnode.bits, shardid, temppoolid, objectpoolid, objstarthash, objendhash, tempstarthash, tempendhash);
-        if (start == ghobject_t() || start.hobj == hobject_t() || start == c->cid.get_min_hobj()) {
-            poolid    = temppoolid;
-            starthash = tempstarthash;
-            inclusive = false; // search the keys that are greater than this
-            temp = true;
-        } else {
-            poolid = start.hobj.pool + 0x8000000000000000ull;
-            starthash = start.hobj.get_bitwise_key_u32();
-
-            inclusive = true;
-            if (start.hobj.is_temp()) {
-                temp = true;
-            } else {
-                temp = false;
-            }
-        }
-        if (!end.hobj.is_max()) {
-            endhash = (temp)? tempendhash:endhash;
-        } else {
-            if (end.hobj.is_temp()) {
-                if (temp)
-                    endhash = objendhash;
-                else
-                    goto release;
-            }
-            else {
-                endhash = (temp)? tempendhash:objendhash;
-            }
-        }
-
-        need_extra_search = (temp && !end.hobj.is_temp());
-    }
-
-    c->lsset.clear();
-    
-    ret = iterate_objects_in_device(cct, shardid, poolid, starthash, endhash, inclusive, start, end, &c->lsset,c->cid, c->cnode.bits);
-    
-    if (ret == 0 && need_extra_search) {
-        poolid = objectpoolid;
-        starthash = start.hobj.get_bitwise_key_u32();
-        endhash   = objendhash;
-        inclusive = false;
-        
-        ret = iterate_objects_in_device(cct, shardid, poolid, starthash, endhash, inclusive, start, end, &c->lsset,c->cid, c->cnode.bits);
-        
-    }
-
-
-release:
-    if (ret == 0) {
-        
-        if (max >= (long)c->lsset.size()) {
-            ls->assign(c->lsset.begin(), c->lsset.end());
-            c->lsset.clear();
-            *pnext = ghobject_t::get_max();
-        } else {
-            int i = 0;
-            for (const auto &it : c->lsset) {
-                ls->push_back(it);
-                i++;
-                if (i == max) {
-                    *pnext = it;
-                    break;
-                }
-            }
-        }
-    }
-
-    return (ret < 0)? ret:0;
 }
 
 
@@ -1416,7 +1327,7 @@ int KvsStore::omap_get(
 
     if (!o->onode.has_omap())
         goto release;
-
+ 
     o->flush();
 
     {
@@ -1724,7 +1635,6 @@ ObjectMap::ObjectMapIterator KvsStore::get_omap_iterator(
     
     CollectionHandle c = _get_collection(cid);
     if (!c) {
-        derr << __func__ << " " << cid << "doesn't exist" << dendl;
         dout(10) << __func__ << " " << cid << "doesn't exist" << dendl;
         return ObjectMap::ObjectMapIterator();
     }
@@ -1820,7 +1730,25 @@ void KvsStore::txc_aio_finish(kv_io_context *op, KvsTransContext *txc) {
         ceph_abort_msg(cct, "write failed: disk full?");
     }
 
+    if (op->retcode == KV_SUCCESS) {
 
+        if (op->opcode == nvme_cmd_kv_store) {
+            kvs_var_object_key *collkey = (kvs_var_object_key *)op->key->key;
+            if (collkey->group == GROUP_PREFIX_ONODE) {            
+                ghobject_t oid;
+                construct_ghobject_t(cct, (const char *) op->key->key, op->key->length, &oid);
+                lscache.add(oid);
+            }
+        }
+        else if (op->opcode == nvme_cmd_kv_delete) {
+            kvs_var_object_key *collkey = (kvs_var_object_key *)op->key->key;
+            if (collkey->group == GROUP_PREFIX_ONODE) {            
+                ghobject_t oid;
+                construct_ghobject_t(cct, (const char *) op->key->key, op->key->length, &oid);
+                lscache.remove(oid);
+            }
+        }
+    }
 
     if (logger)
         logger->dec(l_kvsstore_pending_trx_ios, 1);
@@ -2031,6 +1959,7 @@ void KvsStore::_txc_write_nodes(KvsTransContext *txc) {
     // finalize onodes
     for (auto o : txc->onodes) {
         if (!o->exists) continue;
+
         // bound encode
         size_t bound = 0;
         denc(o->onode, bound);
@@ -2041,8 +1970,6 @@ void KvsStore::_txc_write_nodes(KvsTransContext *txc) {
             auto p = bl.get_contiguous_appender(bound, true);
             denc(o->onode, p);
         }
-
-        dout(20) << "  onode " << o->oid << " is " << bl.length() << dendl;
 
         txc->ioc.add_onode(o->oid, bl);
     }
@@ -2091,17 +2018,24 @@ void KvsStore::_kv_finalize_thread() {
 void KvsStore::_kv_callback_thread() {
     FTRACE
     //assert(!kv_callback_started);
-    kv_callback_started = true;
+    //kv_callback_started = true;
 
+    
     uint32_t toread = 64;
 
-    while (!kv_stop) {
+    while (true) {
+        if (kv_stop) {
+            derr << "kv_callback_thread: stop requested" << dendl;
+            break;
+        }
+        
         if (this->db.is_opened()) {
-            this->db.poll_completion(toread, 1000000);
+            this->db.poll_completion(toread, 10000);
         }
     }
 
-    kv_callback_started = false;
+    
+    //kv_callback_started = false;
 }
 
 void KvsStore::_queue_reap_collection(CollectionRef &c) {
@@ -2355,6 +2289,8 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
                 bufferlist bl;
                 i.decode_bl(bl);
                 r = _write(txc, c, o, off, len, &bl, fadvise_flags);
+                if (r < 0) 
+                    goto endop;
             }
                 break;
 
@@ -2519,7 +2455,7 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
             if (r == -ENODATA)
                 ok = true;
 
-            if (r == -E2BIG && (op->op == Transaction::OP_WRITE || Transaction::OP_TRUNCATE))
+            if (r == -E2BIG && (op->op == Transaction::OP_WRITE || op->op == Transaction::OP_TRUNCATE || op->op == Transaction::OP_ZERO)) 
                 ok = true;
 
             if (!ok) {
@@ -2572,16 +2508,12 @@ int KvsStore::_touch(KvsTransContext *txc,
 void _update_buffer(CephContext *cct, bufferlist &data, uint64_t offset, uint64_t length, bufferlist *towrite, bool truncate) {
    
     if (length == 0) {
-       
-        data.clear();
         return;
     }
 
     if (data.length() == 0) {
-        
         if (offset > 0) {
             data.append_zero(offset);
-            
         }
         if (towrite) {
             data.append(towrite->c_str(), length);
@@ -2837,6 +2769,8 @@ int KvsStore::_do_remove(
         CollectionRef &c,
         OnodeRef o) {
     FTRACE
+    if (!o->exists) return 0;
+
     {
         KvsCollection *kc = static_cast<KvsCollection *>(c->get());
         kc->onode_map.invalidate_data(o->oid);
@@ -2855,7 +2789,11 @@ int KvsStore::_do_remove(
     txc->ioc.rm_data(o->oid);
     txc->removed(o);
     o->onode = kvsstore_onode_t();
-
+    
+    /*{
+        auto test_onode = (*c).onode_map.lookup(o->oid);
+        derr << "oid = " << o->oid << "(" << &o->oid << ") is removed " << o->exists << ", " << test_onode->exists<< dendl;
+    }*/
     return 0;
 }
 
@@ -3293,7 +3231,7 @@ int KvsStore::_remove_collection(KvsTransContext *txc, const coll_t &cid,
         assert((*c)->exists);
         if ((*c)->onode_map.map_any([&](OnodeRef o) {
             if (o->exists) {
-                derr << __func__ << " " << o->oid << " " << o
+                derr << __func__ << " " << o->oid << "(" << &o->oid << ") " << o
                          << " exists in onode_map" << dendl;
                 KvsCollection *c2 = static_cast<KvsCollection *>(c->get());
                 derr << __func__ << " hash(given) = " << o->oid.hobj.get_hash()  << ", (hobj.hash & ~((~0)<<bits))  = "  << (o->oid.hobj.get_hash() & ~((~0)<<c2->cnode.bits)) << dendl;
@@ -3316,7 +3254,7 @@ int KvsStore::_remove_collection(KvsTransContext *txc, const coll_t &cid,
         // then check if all of them are marked as non-existent.
         // Bypass the check if returned number is greater than nonexistent_count
         r = _collection_list(c->get(), ghobject_t(), ghobject_t::get_max(),
-                             nonexistent_count + 1, &ls, &next);
+                             nonexistent_count + 1, &ls, &next, true);
 
         if (r >= 0) {
             bool exists = false; //ls.size() > nonexistent_count;
@@ -3369,6 +3307,7 @@ void KvsStore::_flush_cache() {
         assert(p.second->onode_map.empty());
     }
     coll_map.clear();
+    lscache.trim(-1);
 }
 
 // For external caller.
@@ -3381,6 +3320,7 @@ void KvsStore::flush_cache() {
     for (auto i : cache_shards) {
         i->trim_all();
     }
+    lscache.trim(-1);
 }
 
 
@@ -3591,8 +3531,8 @@ void KvsStore::_close_db() {
         f->wait_for_empty();
         f->stop();
     }
-
     this->db.close();
+
 }
 
 
@@ -3653,44 +3593,49 @@ int KvsStore::_split_collection(KvsTransContext *txc,
 void KvsCollection::split_cache(KvsCollection *dest)
 {
     ldout(store->cct, 10) << __func__ << " to " << dest << dendl;
+    
 
-    // lock (one or both) cache shards
-    std::lock(cache->lock, dest->cache->lock);
-    std::lock_guard<std::recursive_mutex> l(cache->lock, std::adopt_lock);
-    std::lock_guard<std::recursive_mutex> l2(dest->cache->lock, std::adopt_lock);
+    {
+        // lock (one or both) cache shards
+        std::lock(cache->lock, dest->cache->lock);
+        std::lock_guard<std::recursive_mutex> l(cache->lock, std::adopt_lock);
+        std::lock_guard<std::recursive_mutex> l2(dest->cache->lock, std::adopt_lock);
 
-    int destbits = dest->cnode.bits;
-    spg_t destpg;
-    bool is_pg = dest->cid.is_pg(&destpg);
-    assert(is_pg);
+        int destbits = dest->cnode.bits;
+        spg_t destpg;
+        bool is_pg = dest->cid.is_pg(&destpg);
+        assert(is_pg);
 
-    auto p = onode_map.onode_map.begin();
-    while (p != onode_map.onode_map.end()) {
-        if (!p->second->oid.match(destbits, destpg.pgid.ps())) {
-            // onode does not belong to this child
-            ++p;
-        } else {
-            OnodeRef o = p->second;
-            ldout(store->cct, 20) << __func__ << " moving " << o << " " << o->oid
-                                  << dendl;
+        auto p = onode_map.onode_map.begin();
+        while (p != onode_map.onode_map.end()) {
+            if (!p->second->oid.match(destbits, destpg.pgid.ps())) {
+                // onode does not belong to this child
+                ++p;
+            } else {
+                OnodeRef o = p->second;
+                ldout(store->cct, 20) << __func__ << " moving " << o << " " << o->oid
+                                    << dendl;
 
-            cache->_rm_onode(p->second);
-            p = onode_map.onode_map.erase(p);
+                cache->_rm_onode(p->second);
+                p = onode_map.onode_map.erase(p);
 
-            o->c = dest;
-            dest->cache->_add_onode(o, 1);
-            dest->onode_map.onode_map[o->oid] = o;
-            dest->onode_map.cache = dest->cache;
+                o->c = dest;
+                dest->cache->_add_onode(o, 1);
+                dest->onode_map.onode_map[o->oid] = o;
+                dest->onode_map.cache = dest->cache;
 
-            auto dp = onode_map.data_map.find(o->oid);
-            if (dp != onode_map.data_map.end()) {
-                dest->onode_map.data_map[o->oid] = dp->second;
-                cache->_rm_data(dp->second);
-                onode_map.data_map.erase(dp);
+                auto dp = onode_map.data_map.find(o->oid);
+                if (dp != onode_map.data_map.end()) {
+                    dest->onode_map.data_map[o->oid] = dp->second;
+                    cache->_rm_data(dp->second);
+                    onode_map.data_map.erase(dp);
+                }
+
             }
 
         }
 
     }
+    
 }
 

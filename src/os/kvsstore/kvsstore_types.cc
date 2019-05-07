@@ -268,20 +268,27 @@ OnodeRef KvsOnodeSpace::add(const ghobject_t& oid, OnodeRef o)
     std::lock_guard<std::recursive_mutex> l(cache->lock);
     auto p = onode_map.find(oid);
     if (p != onode_map.end()) {
-        ldout(cache->cct, 30) << __func__ << " " << oid << " " << o
+        ldout(cache->cct, 20) << __func__ << " " << oid << "(" << &oid << ") " << o
                               << " raced, returning existing " << p->second
                               << dendl;
         return p->second;
     }
-    ldout(cache->cct, 30) << __func__ << " " << oid << " " << o << dendl;
+    ldout(cache->cct, 20) << __func__ << " " << oid << "(" << &oid << ") " << o << dendl;
     onode_map[oid] = o;
     cache->_add_onode(o, 1);
+
+
     return o;
+}
+
+void KvsOnodeSpace::remove(const ghobject_t& oid) { 
+    onode_map.erase(oid); 
+    //ldout(cache->cct, 20) << __func__ << " " << oid << "(" << &oid << ") " << dendl;
 }
 
 void KvsOnodeSpace::add_data(const ghobject_t &oid, ReadCacheBufferRef b)
 {
-    std::lock_guard<std::recursive_mutex> l(cache->datalock);
+    std::lock_guard<std::recursive_mutex> l(cache->lock);
     auto p = data_map.find(oid);
     if (p != data_map.end()) {
         ldout(cache->cct, 30) << __func__ << " " << oid  << " raced" << dendl;
@@ -296,7 +303,7 @@ void KvsOnodeSpace::add_data(const ghobject_t &oid, ReadCacheBufferRef b)
 
 bool KvsOnodeSpace::invalidate_data(const ghobject_t &oid)
 {
-    std::lock_guard<std::recursive_mutex> l(cache->datalock);
+    std::lock_guard<std::recursive_mutex> l(cache->lock);
     auto p = data_map.find(oid);
     if (p != data_map.end()) {
         cache->_rm_data(p->second);
@@ -322,7 +329,7 @@ ReadCacheBufferRef KvsOnodeSpace::lookup_data(const ghobject_t &oid)
     ldout(cache->cct, 20) << __func__ << dendl;
     ReadCacheBufferRef o;
     {
-        std::lock_guard<std::recursive_mutex> l(cache->datalock);
+        std::lock_guard<std::recursive_mutex> l(cache->lock);
         ceph::unordered_map<ghobject_t,ReadCacheBufferRef>::iterator p = data_map.find(oid);
         if (p == data_map.end()) {
             ldout(cache->cct, 20) << __func__ << " " << oid << " miss" << dendl;
@@ -345,7 +352,7 @@ OnodeRef KvsOnodeSpace::lookup(const ghobject_t& oid)
         std::lock_guard<std::recursive_mutex> l(cache->lock);
         ceph::unordered_map<ghobject_t,OnodeRef>::iterator p = onode_map.find(oid);
         if (p == onode_map.end()) {
-            ldout(cache->cct, 20) << __func__ << " " << oid << " miss" << dendl;
+            ldout(cache->cct, 20) << __func__ << " " << oid << " miss, mapsize = " << onode_map.size() << dendl;
         } else {
             ldout(cache->cct, 20) << __func__ << " " << oid << " hit " << p->second
                                   << dendl;
@@ -368,7 +375,7 @@ void KvsOnodeSpace::clear() {
     }
 
     {
-        std::lock_guard<std::recursive_mutex> l(cache->datalock);
+        std::lock_guard<std::recursive_mutex> l(cache->lock);
         ldout(cache->cct, 10) << __func__ << dendl;
         for (auto &p : data_map) {
             cache->_rm_data(p.second);
@@ -396,7 +403,7 @@ bool KvsOnodeSpace::empty()
     }
     if (b)
     {
-        std::lock_guard<std::recursive_mutex> l(cache->datalock);
+        std::lock_guard<std::recursive_mutex> l(cache->lock);
         b = b & data_map.empty();
     }
 
@@ -1040,15 +1047,9 @@ inline kv_value *to_kv_value(char *data, int length, bool avoidcopy, CephContext
     if (avoidcopy) {
         value->value = data;
         value->length = length;
-        if(cct) {
-                derr << "copy avoided " << data << ", " << length << dendl;
-        }
     }
     else {
         memcpy((void*)value->value, data, length);
-        if(cct) {
-                derr << "copied " << value->value << ", " << length << dendl;
-        }
 
     }
     return value;
@@ -1101,8 +1102,8 @@ void KvsIoContext::rm_coll(const coll_t &cid)
     derr << "IO: rm_coll: key = " << print_key((const char*)key->key, (int)key->length ) << dendl;
 #endif
 
-    if (key == 0) { derr << __func__ << "key = " << key  << dendl; exit(1); }
-    this->del(key);
+    if (key != 0) 
+        this->del(key);
 }
 
 
@@ -1141,8 +1142,8 @@ void KvsIoContext::rm_onode(const ghobject_t& oid)
     derr << "IO: rm_onode: key = " << print_key((const char*)key->key, (int)key->length ) << dendl;
 #endif
 
-    if (key == 0) { derr << __func__ << "key = " << key  << dendl; exit(1); }
-    this->del(key, true);
+    if (key != 0) 
+        this->del(key, true);
 }
 
 
@@ -1527,7 +1528,7 @@ kv_result KvsSyncWriteContext::write_wait() {
     }
 
     return retcode;
-}
+} 
 
 void KvsSyncWriteContext::try_write_wake() {
     FTRACE
@@ -1555,3 +1556,6 @@ KvsSyncWriteContext::~KvsSyncWriteContext() {
         KvsMemPool::Release_value(value); value = 0;
     }
 }
+
+
+

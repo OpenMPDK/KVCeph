@@ -386,7 +386,7 @@ int PGBackend::objects_list_range(
 {
   assert(ls);
   vector<ghobject_t> objects;
-  derr << "collection list "<< dendl;
+  
   int r = store->collection_list(
     ch,
     ghobject_t(start, ghobject_t::NO_GEN, get_parent()->whoami_shard().shard),
@@ -394,7 +394,7 @@ int PGBackend::objects_list_range(
     INT_MAX,
     &objects,
     NULL);
-    derr << "collection list done"<< dendl;
+    
   ls->reserve(objects.size());
   for (vector<ghobject_t>::iterator i = objects.begin();
        i != objects.end();
@@ -408,7 +408,7 @@ int PGBackend::objects_list_range(
       gen_obs->push_back(*i);
     }
   }
-  derr << "object list range done"<< dendl;
+  
   return r;
 }
 
@@ -580,7 +580,7 @@ void PGBackend::be_scan_list(
   ScrubMap &map, const vector<hobject_t> &ls, bool deep, uint32_t seed,
   ThreadPool::TPHandle &handle)
 {
-  derr << __func__ << " scanning " << ls.size() << " objects"
+  dout(30) << __func__ << " scanning " << ls.size() << " objects"
        << (deep ? " deeply" : "") << dendl;
   int i = 0;
   for (vector<hobject_t>::const_iterator p = ls.begin();
@@ -591,7 +591,7 @@ void PGBackend::be_scan_list(
     hobject_t poid = *p;
 
     struct stat st;
-    derr << __func__ << "stat " << dendl;
+    
     int r = store->stat(
         ch,
         ghobject_t(
@@ -603,7 +603,7 @@ void PGBackend::be_scan_list(
       ScrubMap::object &o = map.objects[poid];
       o.size = st.st_size;
       assert(!o.negative);
-      derr << __func__ << "getattrs " << dendl;
+      
       store->getattrs(
           ch,
           ghobject_t(
@@ -613,9 +613,9 @@ void PGBackend::be_scan_list(
       // calculate the CRC32 on deep scrubs
       if (deep)
       {
-        derr << __func__ << "deep scrub " << dendl;
+        
         be_deep_scrub(*p, seed, o, handle);
-        derr << __func__ << "deep scrub done" << dendl;
+        
       }
 
       dout(25) << __func__ << "  " << poid << dendl;

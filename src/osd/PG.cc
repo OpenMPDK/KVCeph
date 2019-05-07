@@ -4159,8 +4159,7 @@ int PG::build_scrub_map_chunk(
 	   << " seed " << seed << dendl;
 
   map.valid_through = info.last_update;
-  derr << "build scrub map 1 " << dendl;
-  // objects
+    // objects
   vector<hobject_t> ls;
   vector<ghobject_t> rollback_obs;
   int ret = get_pgbackend()->objects_list_range(
@@ -4169,22 +4168,20 @@ int PG::build_scrub_map_chunk(
     0,
     &ls,
     &rollback_obs);
-  derr << "build scrub map 2 " << dendl;
-  if (ret < 0) {
+    if (ret < 0) {
     derr << "objects_list_range error: " << ret << dendl;
     return ret;
   }
 
-  derr << "build scrub map 3 " << dendl;
-
+  
   get_pgbackend()->be_scan_list(map, ls, deep, seed, handle);
-  derr << "build scrub map 4 " << dendl;
+  
   _scan_rollback_obs(rollback_obs, handle);
-  derr << "build scrub map 5 " << dendl;
+  
   _scan_snaps(map);
-  derr << "build scrub map 6 " << dendl;
+  
   _repair_oinfo_oid(map);
-  derr << "build scrub map done " << dendl;
+  
   dout(20) << __func__ << " done" << dendl;
   return 0;
 }
@@ -4396,7 +4393,6 @@ void PG::scrub(epoch_t queued, ThreadPool::TPHandle &handle)
 
     scrubber.deep = state_test(PG_STATE_DEEP_SCRUB);
 
-    derr << "starting a new chunky scrub" << dendl;
   }
 
   chunky_scrub(handle);
@@ -4483,7 +4479,6 @@ void PG::scrub(epoch_t queued, ThreadPool::TPHandle &handle)
  */
 void PG::chunky_scrub(ThreadPool::TPHandle &handle)
 {
-  derr << __func__ << " started " << dendl;
   // check for map changes
   if (scrubber.is_chunky_scrub_active())
   {
@@ -4501,7 +4496,7 @@ void PG::chunky_scrub(ThreadPool::TPHandle &handle)
 
   while (!done)
   {
-    derr << "scrub state " << Scrubber::state_string(scrubber.state)
+    dout(50) << "scrub state " << Scrubber::state_string(scrubber.state)
              << " [" << scrubber.start << "," << scrubber.end << ")" << dendl;
 
     switch (scrubber.state)
@@ -4695,15 +4690,12 @@ void PG::chunky_scrub(ThreadPool::TPHandle &handle)
       break;
 
     case PG::Scrubber::BUILD_MAP:
-      derr << "build map 1 " << dendl;
       assert(last_update_applied >= scrubber.subset_last_update);
-      derr << "build map 2 " << dendl;
       // build my own scrub map
       ret = build_scrub_map_chunk(scrubber.primary_scrubmap,
                                   scrubber.start, scrubber.end,
                                   scrubber.deep, scrubber.seed,
                                   handle);
-      derr << "build map 3 " << dendl;
       if (ret < 0)
       {
         derr << "error building scrub map: " << ret << ", aborting" << dendl;
@@ -4711,10 +4703,8 @@ void PG::chunky_scrub(ThreadPool::TPHandle &handle)
         scrub_unreserve_replicas();
         return;
       }
-      derr << "build map 4 " << dendl;
       --scrubber.waiting_on;
       scrubber.waiting_on_whom.erase(pg_whoami);
-      derr << "build map 5 " << dendl;
       scrubber.state = PG::Scrubber::WAIT_REPLICAS;
       break;
 
@@ -4749,7 +4739,7 @@ void PG::chunky_scrub(ThreadPool::TPHandle &handle)
     case PG::Scrubber::WAIT_DIGEST_UPDATES:
       if (scrubber.num_digest_updates_pending)
       {
-        derr << __func__ << " waiting on "
+        dout(50) << __func__ << " waiting on "
                  << scrubber.num_digest_updates_pending
                  << " digest updates" << dendl;
         done = true;
@@ -4787,7 +4777,7 @@ void PG::chunky_scrub(ThreadPool::TPHandle &handle)
       ceph_abort();
     }
   }
-  derr << "scrub final state " << Scrubber::state_string(scrubber.state)
+  dout(50) << "scrub final state " << Scrubber::state_string(scrubber.state)
            << " [" << scrubber.start << "," << scrubber.end << ")" << dendl;
 }
 

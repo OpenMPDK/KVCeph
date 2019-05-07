@@ -4,6 +4,7 @@
 /// Unittest starts
 /// --------------------------------------------------------------------
 
+
 TEST_P(KvsStoreTest, SimpleRemount2) {
     ObjectStore::Sequencer osr("test");
     coll_t cid;
@@ -2614,7 +2615,7 @@ TEST_P(KvsStoreTest, AttrSynthetic) {
         } else if (val > 45) {
             test_obj.clone();
         } else if (val > 37) {
-            test_obj.stash();
+            //test_obj.stash();
         } else if (val > 30) {
             test_obj.getattrs();
         } else {
@@ -3324,6 +3325,144 @@ TEST_P(KvsStoreTest, TryMoveRename) {
     ASSERT_EQ(store->stat(cid, hoid2, &st), 0);
 }
 
+void doReadAfterIterateTest(boost::scoped_ptr<ObjectStore>& store,
+                     int num_ops,
+                     uint64_t max_obj, uint64_t max_wr, uint64_t align) {
+    ObjectStore::Sequencer osr("test");
+    MixedGenerator gen(555);
+    gen_type rng(time(NULL));
+    coll_t cid(spg_t(pg_t(0, 555), shard_id_t::NO_SHARD));
+
+    g_ceph_context->_conf->set_val("bluestore_fsck_on_mount", "false");
+    g_ceph_context->_conf->set_val("bluestore_fsck_on_umount", "false");
+    g_ceph_context->_conf->apply_changes(NULL);
+
+    SyntheticWorkloadState test_obj(store.get(), &gen, &rng, &osr, cid,
+                                    max_obj, max_wr, align);
+    test_obj.init();
+    for (int i = 0; i < num_ops / 10; ++i) {
+        if (!(i % 500)) cerr << "seeding object " << i << std::endl;
+        test_obj.touch();
+
+    }
+
+    test_obj.wait_for_done();
+
+    derr << test_obj.available_objects.size() << " keys are touched - written" << dendl;
+
+    // check if it happens with non zero keys
+     
+    test_obj.wait_for_done();
+    
+    bufferlist value;
+    value.append_zero(4096);
+    for (const auto obj : test_obj.available_objects) {
+        ObjectStore::Transaction t;
+        t.write(cid, obj, 0, 4096, value);
+        store->apply_transaction(&osr, std::move(t));
+    }
+   
+    derr << test_obj.available_objects.size() << " keys are written" << dendl;
+  
+    
+    for (int i = 0; i < 1; i++) {
+        derr << "SCAN #" << i << dendl;
+        test_obj.scan2();
+    }
+
+    test_obj.wait_for_done();
+    derr << "scan done" << dendl;
+    
+    // check if all keys are available.
+    for (int i =0; i< 1; i++) {
+        bufferlist result;
+        for (const auto obj : test_obj.available_objects) {
+            bufferlist bl, result;
+            int r = 0;
+            r = store->read(test_obj.cid, obj, 0, 4096, result);
+
+            if (r < 0) {
+                derr << "error = " << r << ", oid = " << obj << dendl;
+            }
+        }
+    }
+    
+    test_obj.wait_for_done();
+    derr << " ALL done "<< dendl;
+    
+    test_obj.shutdown();
+
+}
+
+
+
+void zerosizedObjects(boost::scoped_ptr<ObjectStore>& store,
+                     int num_ops,
+                     uint64_t max_obj, uint64_t max_wr, uint64_t align){
+    ObjectStore::Sequencer osr("test");
+    MixedGenerator gen(555);
+    gen_type rng(time(NULL));
+    coll_t cid(spg_t(pg_t(0, 555), shard_id_t::NO_SHARD));
+
+    g_ceph_context->_conf->set_val("bluestore_fsck_on_mount", "false");
+    g_ceph_context->_conf->set_val("bluestore_fsck_on_umount", "false");
+    g_ceph_context->_conf->apply_changes(NULL);
+
+    SyntheticWorkloadState test_obj(store.get(), &gen, &rng, &osr, cid,
+                                    max_obj, max_wr, align);
+    test_obj.init();
+
+    derr << " EMPTY collection_list test " << dendl;
+
+    test_obj.scan2();
+   
+    derr << "[DONE] EMPTY collection_list test " << dendl;
+
+    for (int i = 0; i < num_ops / 10; ++i) {
+        if (!(i % 500)) cerr << "seeding object " << i << std::endl;
+        test_obj.touch();
+
+    }
+
+
+    test_obj.wait_for_done();
+
+    derr << test_obj.available_objects.size() << " keys are touched - written" << dendl;
+
+    // check if it happens with non zero keys
+     
+    test_obj.wait_for_done();
+
+    for (int i = 0; i < 1; i++) {
+        derr << "SCAN #" << i << dendl;
+        test_obj.scan2();
+    }
+
+    test_obj.wait_for_done();
+    derr << "scan done" << dendl;
+    
+    // check if all keys are available.
+    for (int i =0; i< 1; i++) {
+        bufferlist result;
+        for (const auto obj : test_obj.available_objects) {
+            bufferlist bl, result;
+            int r = 0;
+
+            r = store->read(test_obj.cid, obj, 0, 1, result);
+
+            if (r < 0) {
+                derr << "error = " << r << ", oid = " << obj << dendl;
+            }
+        }
+    }
+    
+    test_obj.wait_for_done();
+    derr << " ALL done "<< dendl;
+    
+    test_obj.shutdown();
+}
+
+
 void doMany4KWritesTest(boost::scoped_ptr<ObjectStore>& store,
                         unsigned max_objects,
                         unsigned max_ops,
@@ -3363,6 +3502,16 @@ void doMany4KWritesTest(boost::scoped_ptr<ObjectStore>& store,
     }
     test_obj.shutdown();
 }
+
+TEST_P(KvsStoreTest, CollectionListTest1){
+    derr << "zero sized objects: "<< dendl;
+    zerosizedObjects(store, 10000, 400*1024, 40*1024, 0);
+    derr << "[DONE] zero sized objects"<< dendl;
+    derr << "Rigour Test collection_list "<< dendl;
+    doReadAfterIterateTest(store, 10000, 400*1024, 40*1024, 0);
+    derr << " [DONE] Rigour test collection_list "<< dendl;
+}
+
 
 TEST_P(KvsStoreTest, ColSplitTest1) {
     colsplittest(store.get(), 100, 7, false);
@@ -3419,6 +3568,7 @@ TEST_P(KvsStoreTest, DataConsistencyTest) {
         ASSERT_EQ(r, 0);
     }
 }
+
 
 TEST_P(KvsStoreTest, Synthetic) {
     doSyntheticTest(store, 10000, 400*1024, 40*1024, 0);
@@ -3692,16 +3842,10 @@ INSTANTIATE_TEST_CASE_P(
   ::testing::Values(
     "kvsstore"));
 
-/**INSTANTIATE_TEST_CASE_P(
-  ObjectStore,
-  KvsStoreTestSpecificAUSize,
-  ::testing::Values(
-    "kvsstore"));**/
 int main(int argc, char **argv){
-	vector<const char*> args;
+  vector<const char*> args;
   argv_to_vec(argc, (const char **)argv, args);
   env_to_vec(args);
-
   auto cct = global_init(NULL, args, CEPH_ENTITY_TYPE_CLIENT,
 			 CODE_ENVIRONMENT_UTILITY, 0);
   common_init_finish(g_ceph_context);	

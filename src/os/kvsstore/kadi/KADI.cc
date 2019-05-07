@@ -40,6 +40,9 @@ struct epoll_event watch_events;
 struct epoll_event list_of_events[1];
 #endif
 
+//std::mutex debuglk;
+//std::vector<std::string> debug;
+
 atomic_int_fast64_t queuedepth = { 0 };
 
 void write_callback(kv_io_context &op, void* private_data) {
@@ -203,7 +206,7 @@ int KADI::open(std::string &devpath, int csum_type_) {
     
 
 #ifdef EPOLL_DEV
-    watch_events.events = EPOLLIN;
+    watch_events.events = EPOLLIN | EPOLLET;
     watch_events.data.fd = efd;
     int register_event;
     register_event = epoll_ctl(EpollFD_dev, EPOLL_CTL_ADD, efd, &watch_events);
@@ -231,6 +234,16 @@ int KADI::close() {
         ioctl(fd, NVME_IOCTL_DEL_AIOCTX, &aioctx);
         ::close((int)aioctx.eventfd);
         ::close(fd);
+
+        for (aio_cmd_ctx *ctx: free_cmdctxs) {
+            free((void*)ctx);
+        }
+        free_cmdctxs.clear();
+        for (const auto &ctx: pending_cmdctxs) {
+            free((void*)ctx.second);
+        }
+        pending_cmdctxs.clear();
+
         derr << "KV device is closed: fd " << fd << dendl;
         fd = -1;
 
@@ -241,6 +254,7 @@ int KADI::close() {
     return 0;
 }
 
+//std::atomic<uint64_t> pindex(0);
 KADI::aio_cmd_ctx* KADI::get_cmd_ctx(kv_cb& cb) {
     std::unique_lock<std::mutex> lock (cmdctx_lock);
 
@@ -252,17 +266,33 @@ KADI::aio_cmd_ctx* KADI::get_cmd_ctx(kv_cb& cb) {
 
     aio_cmd_ctx *p = free_cmdctxs.back();
     free_cmdctxs.pop_back();
+    //p->index = ++pindex;
 
     p->post_fn   = cb.post_fn;
     p->post_data = cb.private_data;
+
+    /*
+    auto it = pending_cmdctxs.find(p->index);
+    if (it != pending_cmdctxs.end()) {
+        BackTrace t(0);
+        
+        derr << "duplicated entry " << p->index << ", requested " << std::hex << p << std::dec << ", there was "  << std::hex << it->second << std::dec  << dendl;
+        derr << t << dendl;
+        {
+            std::unique_lock<std::mutex> l(debuglk);
+            for (std::string s: debug) {
+                derr << s << dendl;
+            }
+        }
+        ceph_abort_msg(cct, "duplicated entry");
+    }*/
     pending_cmdctxs.insert(std::make_pair(p->index, p));
     return p;
 }
 
 void KADI::release_cmd_ctx(aio_cmd_ctx *p) {
     std::lock_guard<std::mutex> lock (cmdctx_lock);
-
-    pending_cmdctxs.erase(p->index);
+    
     free_cmdctxs.push_back(p);
     cmdctx_cond.notify_one();
 }
@@ -419,7 +449,7 @@ kv_result KADI::kv_store(kv_key *key, kv_value *value, kv_cb& cb) {
     ioctx->cmd.cdw10 = (value->length >>  2);
     ioctx->cmd.ctxid = aioctx.ctxid;
     ioctx->cmd.reqid = ioctx->index;
-
+     //derr << "write " << ioctx->cmd.reqid << ", " << std::hex << ioctx << std::dec << dendl;
 #ifdef DUMP_ISSUE_CMD
     //dump_cmd(&ioctx->cmd);
 derr << "Send write IO(kv_store): key = " << print_key((const char *)key->key, key->length) << ", len = " << (int)key->length << dendl;
@@ -460,7 +490,6 @@ kv_result KADI::kv_retrieve(kv_key *key, kv_value *value, kv_cb& cb){
     ioctx->cmd.key_length = key->length;
     ioctx->cmd.reqid = ioctx->index;
     ioctx->cmd.ctxid = aioctx.ctxid;
-
 
 #ifdef DUMP_ISSUE_CMD
     dump_retrieve_cmd(&ioctx->cmd);
@@ -636,14 +665,17 @@ kv_result KADI::kv_delete(kv_key *key, kv_cb& cb, int check_exist) {
     ioctx->cmd.key_length = key->length;
     ioctx->cmd.reqid = ioctx->index;
     ioctx->cmd.ctxid = aioctx.ctxid;
-
+    
+    
 #ifdef DUMP_ISSUE_CMD
     dump_delete_cmd(&ioctx->cmd);
     derr << "IO:kv_delete: key = " << print_key((const char *)key->key, key->length) << ", len = " << (int)key->length << dendl;
 #endif
 
     if (ioctl(fd, NVME_IOCTL_AIO_CMD, &ioctx->cmd) < 0) {
+        
         release_cmd_ctx(ioctx);
+        
         return -1;
     }
 
@@ -663,9 +695,11 @@ kv_result KADI::poll_completion(uint32_t &num_events, uint32_t timeout_us) {
 
     memset(&timeout, 0, sizeof(timeout));
     timeout.tv_usec = timeout_us;
+    
     int nr_changed_fds = select(aioctx.eventfd+1, &rfds, NULL, NULL, &timeout);
-
+    
     if ( nr_changed_fds == 0 || nr_changed_fds < 0) { num_events = 0; return 0; }
+    
 #endif
 
     unsigned long long eftd_ctx = 0;
@@ -694,15 +728,15 @@ kv_result KADI::poll_completion(uint32_t &num_events, uint32_t timeout_us) {
 
         aioevents.nr = check_nr;
         aioevents.ctxid = aioctx.ctxid;
-
+        
+        
         if (ioctl(fd, NVME_IOCTL_GET_AIOEVENT, &aioevents) < 0) {
             fprintf(stderr, "fail to read IOEVETS \n");
             return -1;
         }
-
+        
         eftd_ctx -= check_nr;
 
-        
         for (int i = 0; i < aioevents.nr; i++) {
             kv_io_context ioresult;
             const struct nvme_aioevent &event  = aioevents.events[i];
@@ -710,15 +744,23 @@ kv_result KADI::poll_completion(uint32_t &num_events, uint32_t timeout_us) {
 #ifdef DUMP_ISSUE_CMD
             derr << "reqid  = " << event.reqid << ", ret " << (int)event.status << "," << (int) aioevents.events[i].status << dendl;
 #endif
+            
             aio_cmd_ctx *ioctx = get_cmdctx(event.reqid);
 
-            if (ioctx == 0) {
-                ceph_abort_msg(this->cct, "ioctx is null");
+            //derr  << "-0 i = " << i << ", nr = " << aioevents.nr << ", reqid = " << event.reqid << ", ioctx = " << std::hex << ioctx << std::dec << dendl;
+            
+            if (ioctx != 0) {
+                fill_ioresult(*ioctx, event, ioresult);
+                ioctx->call_post_fn(ioresult);
+                release_cmd_ctx(ioctx);
+            } else {
+                derr << "not found " << event.reqid << dendl; 
+                sleep(1);
+                ceph_abort();
             }
-            fill_ioresult(*ioctx, event, ioresult);
-            ioctx->call_post_fn(ioresult);
-            release_cmd_ctx(ioctx);
         }
+
+        
     }
 
     return 0;
