@@ -1457,7 +1457,8 @@ char *KvsSyncWriteContext::write_journal_entry(char *entry, uint64_t &lid) {
     memcpy((void*)key->key, curpos, header->keylength); curpos += header->keylength;
     memcpy((void*)value->value, curpos, header->vallength);
 
-    if (header->isonode) {
+    kvs_var_object_key *okey = (kvs_var_object_key *)key->key;                         
+    if (okey->group == GROUP_PREFIX_ONODE) {  
         kvsstore_onode_t onode;
         bufferlist v;
         v.append(curpos, header->vallength);
