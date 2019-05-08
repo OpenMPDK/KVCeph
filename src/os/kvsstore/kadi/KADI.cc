@@ -414,7 +414,7 @@ redo:
     afterKeygap = (((*length + 3) >> 2) << 2);
     bufoffset += afterKeygap;
 
-    if (db && !db->exist(*key, *length)) {
+    if (0 && db && !db->exist(*key, *length)) {
         goto redo;
     }
 
