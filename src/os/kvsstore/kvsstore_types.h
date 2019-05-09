@@ -581,8 +581,8 @@ public:
         int max = (i == -1)? INT_MAX:i;
         std::unique_lock<std::mutex> lock(pool_lock);
 
-        auto it = dirtylist.cbegin();
-        while (it != dirtylist.cend()) {
+        auto it = dirtylist.begin();
+        while (it != dirtylist.end()) {
             LsData *t = (*it);
             if (t->trim()) {
                 dirtylist.erase(it);

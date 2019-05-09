@@ -912,11 +912,11 @@ std::vector<Option> get_global_options() {
     .set_description(""),
 
     Option("mon_osd_adjust_heartbeat_grace", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
-    .set_default(true)
+    .set_default(false)
     .set_description(""),
 
     Option("mon_osd_adjust_down_out_interval", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
-    .set_default(true)
+    .set_default(false)
     .set_description(""),
 
     Option("mon_osd_auto_mark_in", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
@@ -2581,7 +2581,7 @@ std::vector<Option> get_global_options() {
     .add_see_also("mon_max_pg_per_osd"),
 
     Option("osd_op_complaint_time", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
-    .set_default(30)
+    .set_default(300)
     .set_description(""),
 
     Option("osd_command_max_records", Option::TYPE_INT, Option::LEVEL_ADVANCED)
