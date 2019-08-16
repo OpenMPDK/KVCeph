@@ -577,6 +577,39 @@ retry:
     return ret;
 }
 
+int KADI::get_freespace(uint64_t &bytesused, uint64_t &capacity, double &utilization)
+{
+    void *data = 0;
+    struct nvme_passthru_cmd cmd;
+    memset(&cmd, 0, sizeof(struct nvme_passthru_cmd));
+
+    data = calloc(1, 4096);
+    if (data == 0) throw new runtime_error("getfreespace: memory allocation failed ");
+
+    cmd.opcode = 0x06;
+    cmd.nsid = nsid;
+    cmd.addr = (__u64)data;
+    cmd.data_len = 4096;
+    cmd.cdw10 = 0;
+
+    if (ioctl(fd, NVME_IOCTL_ADMIN_CMD, &cmd) < 0)
+    {
+        return -1;
+    }
+
+    const __u64 namespace_size = *((__u64 *)data);
+    const __u64 namespace_utilization = *((__u64 *)&((char*)data)[16]);
+    capacity = namespace_size * 512;
+    bytesused = namespace_utilization * 512;
+    utilization = (1.0 * namespace_utilization) / namespace_size;
+
+    if (data)
+                free(data);
+    return 0;
+}
+
+
+#if 0
 kv_result KADI::get_freespace(uint64_t &bytesused, uint64_t &capacity, double &utilization) {
     char *data = (char*)calloc(1, 4096);
     struct nvme_passthru_cmd cmd;
@@ -602,7 +635,7 @@ kv_result KADI::get_freespace(uint64_t &bytesused, uint64_t &capacity, double &u
     if (data) free(data);
     return 0;
 }
-
+#endif
 
 bool KADI::exist(void *key, int length)
 {
