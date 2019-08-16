@@ -608,35 +608,6 @@ int KADI::get_freespace(uint64_t &bytesused, uint64_t &capacity, double &utiliza
     return 0;
 }
 
-
-#if 0
-kv_result KADI::get_freespace(uint64_t &bytesused, uint64_t &capacity, double &utilization) {
-    char *data = (char*)calloc(1, 4096);
-    struct nvme_passthru_cmd cmd;
-    memset(&cmd, 0, sizeof(struct nvme_passthru_cmd));
-    cmd.opcode = 0x6;
-    cmd.nsid = nsid;
-    cmd.addr = (__u64)data;
-    cmd.data_len = 4096;
-    cmd.cdw10 = 0;
-
-    if (ioctl(fd, NVME_IOCTL_ADMIN_CMD, &cmd) < 0) {
-        if (data) free( data);
-        return -1;
-    }
-
-    const __u64 sectorsused   = *((__u64*)data);
-    const __u64 namespace_utilization =  *((__u64*)&data[16]);
-
-    utilization = (1.0*namespace_utilization/10000.0);
-    capacity   = sectorsused * 512;
-    bytesused  = utilization * capacity;
-
-    if (data) free(data);
-    return 0;
-}
-#endif
-
 bool KADI::exist(void *key, int length)
 {
 #if 1
