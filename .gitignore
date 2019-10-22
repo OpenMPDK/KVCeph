@@ -63,6 +63,9 @@ GTAGS
 /build
 /build.*
 
+# KVCEPH
+src/python-common/build
+
 # editor backup files etc.
 \#*\#
 
