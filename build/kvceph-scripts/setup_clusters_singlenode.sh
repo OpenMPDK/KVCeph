@@ -5,17 +5,14 @@
 # Script arguments:
 #  arg1= backendtype (bluestore || kvsstore)
 
-if [ $# != 1 ]; then
-   echo "Distribute and launch KVceph"
-   echo "Usage: $0 [kvsstore|bluestore]"
-   exit
-fi 
-
 OS=$1
 if [[  $OS != "bluestore" ]] && [[ $OS != "kvsstore" ]]; then
         echo "$OS not supported"
         exit
 fi
+
+DEVICE=$2
+echo "DEVICE=$DEVICE"
 
 CEPH_NUM_NODES=1
 CEPH_NUM_OSDS_PER_NODE=1
@@ -66,8 +63,13 @@ function umount_osds() {
                 nodeip=${CEPH_NODE_IPS}
                 echo "[$nodeip] unmounting devices"
                 for (( devid=0; devid < $CEPH_NUM_OSDS_PER_NODE; devid++)); do
+                      if [ -z "$DEVICE" ]
+                      then
                         eval DEV=( \${CEPH_OSD${i}_DEVS[$devid]} )
-                        sudo umount -f ${DEV}p1 || echo ''
+                      else
+                        DEV=${DEVICE}
+                      fi
+                      sudo umount -f ${DEV}p1 || echo ''
                 done
         done
 }
@@ -78,7 +80,12 @@ function format_devices() {
                 nodeip=${CEPH_NODE_IPS}
                 echo "[$nodeip] formatting devices"
                 for (( devid=0; devid < $CEPH_NUM_OSDS_PER_NODE; devid++)); do
-                      eval DEV=( \${CEPH_OSD${i}_DEVS[$devid]} )
+                      if [ -z "$DEVICE" ]
+                      then
+                         eval DEV=( \${CEPH_OSD${i}_DEVS[$devid]} )
+                      else
+                        DEV=${DEVICE}
+                      fi
                       echo "$nodeip sudo nvme format $DEV -s1 -n1"
                       #sudo nvme format $DEV -s1 -n1
                       sudo nvme format $DEV -s0
@@ -106,11 +113,17 @@ function setup_remote_deploy_dir() {
 
                 echo "[$nodeip] unmounting devices"
                 for (( devid=0; devid < $CEPH_MAX_OSDS_PER_NODE; devid++)); do
-                        eval DEV=( \${CEPH_OSD${i}_DEVS[$devid]} )
-                        mountpoint -q ${dest_to}/osd.$osdid/data && sudo fuser -c -k ${dest_to}/osd.$osdid/data || echo ''
-                        mountpoint -q ${dest_to}/osd.$osdid/data && sudo umount -f ${dest_to}/osd.$osdid/data || echo ''
-                        sudo rm -f /dev/disk/by-partlabel/osd-${osdid}-*
-                        osdid=$(($osdid + 1))
+
+                       if [ -z "$DEVICE" ]
+                       then
+                         eval DEV=( \${CEPH_OSD${i}_DEVS[$devid]} )
+                       else
+                         DEV=${DEVICE}
+                       fi
+                       mountpoint -q ${dest_to}/osd.$osdid/data && sudo fuser -c -k ${dest_to}/osd.$osdid/data || echo ''
+                       mountpoint -q ${dest_to}/osd.$osdid/data && sudo umount -f ${dest_to}/osd.$osdid/data || echo ''
+                       sudo rm -f /dev/disk/by-partlabel/osd-${osdid}-*
+                       osdid=$(($osdid + 1))
                 done
 
                 # delete the DST directory
@@ -124,6 +137,7 @@ function setup_remote_deploy_dir() {
                
                 for (( devid=0; devid < $CEPH_NUM_OSDS_PER_NODE; devid++)); do
                         eval devpath=( \${CEPH_OSD${i}_DEVS[$devid]} )
+                        echo "used at all?? $devpath"
                         mkdir -p $dest_to/osd.$osdid_n/data
                         osdid_n=$(($osdid_n + 1))
                 done
@@ -144,8 +158,12 @@ function setup_kvs_osds() {
                 echo "[$nodeip] Dest runtime dir = $dest_runtime_dir"
 
                 for (( devid=0; devid < $CEPH_NUM_OSDS_PER_NODE; devid++)); do
-                        eval DEV=( \${CEPH_OSD${i}_DEVS[$devid]} )
-
+                        if [ -z "$DEVICE" ]
+                        then
+                          eval DEV=( \${CEPH_OSD${i}_DEVS[$devid]} )
+                        else
+                          DEV=${DEVICE}
+                        fi
                         OSD_SECRET=$(export LD_LIBRARY_PATH=${dest_runtime_dir}${CEPH_DST_RUNTIME_DIR_LIB}:/usr/local/lib/ceph && sudo ldconfig && cd $dest_dir && $dest_runtime_dir/bin/ceph-authtool --gen-print-key)
                         echo "[$nodeip] $OSD_SECRET"
                         eval "CEPH_OSD${i}_SECRETS[$devid]=$OSD_SECRET" 
@@ -158,7 +176,7 @@ function setup_kvs_osds() {
         log file = $dest_dir/osd.$osdid/osd.log
         osd data = $dest_dir/osd.$osdid/data
         keyring = $dest_dir/ceph.mon.keyring
-        kvsstore_dev_path = $DEV 
+        kvsstore_dev_path = $DEV
         run dir = $dest_dir/run" >> $output
                         osdid=$(($osdid + 1))
               done
@@ -183,9 +201,13 @@ function setup_bs_osds() {
 
                 #create partitions 
                 for (( devid=0; devid < $CEPH_NUM_OSDS_PER_NODE; devid++)); do
-                        eval DEV=( \${CEPH_OSD${i}_DEVS[$devid]} )
 
-
+                        if [ -z "$DEVICE" ]
+                        then
+                          eval DEV=( \${CEPH_OSD${i}_DEVS[$devid]} )
+                        else
+                          DEV=${DEVICE}
+                        fi
                         echo "[$nodeip] partitioning $DEV"
 
                         sudo parted -s -a optimal $DEV mklabel gpt || failed 'mklabel $DEV'
@@ -298,8 +320,12 @@ function start_osd2() {
                 echo " - REMOTE_DEPLOY: $CEPH_DST_DEPLOY_DIR"
 
                 for (( devid=0; devid < $CEPH_NUM_OSDS_PER_NODE; devid++)); do
-
-                        eval DEV=( \${CEPH_OSD${i}_DEVS[$devid]} )
+                        if [ -z "$DEVICE" ] 
+                        then
+                            eval DEV=( \${CEPH_OSD${i}_DEVS[$devid]} )
+                        else
+                            DEV=${DEVICE}
+                        fi
                         eval OSD_SECRET=( \${CEPH_OSD${i}_SECRETS[$devid]} )
                         local uuid=`uuidgen`
                         cephx_secret="{\"cephx_secret\": \"$OSD_SECRET\"}"
