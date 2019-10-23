@@ -17,11 +17,6 @@ CEPH_DST_DEPLOY_DIR_SHORT=/ceph-deploy
 CEPH_COMMON_LIB=libceph-common.so.0
 CEPH_ADMIN_DIR=${CURDIR}
 
-CEPH_RUNTIME_LIB_PATH_DIR=/ceph-runtime/lib/ceph/erasure-code/
-CEPH_RUNTIME_LIB_NAME1=libec_jerasure.so
-CEPH_RUNTIME_LIB_NAME2=libec_lrc.so
-CEPH_RUNTIME_LIB_NAME3=libec_isa.so
-
 CEPH_MON_NODES=1
 CEPH_MAX_OSDS_PER_NODE=1 
 
