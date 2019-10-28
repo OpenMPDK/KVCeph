@@ -6,7 +6,7 @@ device=$1
 if [ -z "$device" ]
 then
    echo "No device specified. Selecting default from configuration file"
-   grep nvme setup_bluestore.conf.singlenode
+   grep nvme kvceph-conf/bluestore_env.conf
    ./setup_clusters_singlenode.sh bluestore
 else
    echo "Selected device: $device"
