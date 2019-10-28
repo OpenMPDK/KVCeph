@@ -1,4 +1,4 @@
 #!/bin/bash
 
-./_cmake -DCMAKE_BUILD_TYPE=Debug -DWITH_TESTS=ON -DCMAKE_INSTALL_PREFIX=./ceph-runtime
+./kvceph-conf/_cmake -DCMAKE_BUILD_TYPE=Debug -DWITH_TESTS=ON -DCMAKE_INSTALL_PREFIX=./ceph-runtime ..
 
