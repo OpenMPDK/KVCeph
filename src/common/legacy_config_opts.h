@@ -882,6 +882,7 @@ OPTION(osd_max_omap_bytes_per_request, OPT_U64)
 OPTION(osd_max_write_op_reply_len, OPT_U64)
 
 OPTION(osd_objectstore, OPT_STR)  // ObjectStore backend type
+OPTION(is_kvsstore, OPT_BOOL)  // kvsstore confs
 OPTION(osd_objectstore_tracing, OPT_BOOL) // true if LTTng-UST tracepoints should be enabled
 OPTION(osd_objectstore_fuse, OPT_BOOL)
 
@@ -1078,6 +1079,17 @@ OPTION(bluestore_log_op_age, OPT_DOUBLE)
 OPTION(bluestore_log_omap_iterator_age, OPT_DOUBLE)
 OPTION(bluestore_log_collection_list_age, OPT_DOUBLE)
 OPTION(bluestore_debug_enforce_settings, OPT_STR)
+
+// kvsstore
+OPTION(kvsdbg_server, OPT_STR)
+OPTION(kvsdbg_port, OPT_INT)
+OPTION(op_scheduler, OPT_STR)
+OPTION(mon_max_pool_per_osd, OPT_U64)
+OPTION(kvsstore_dev_path, OPT_STR)
+OPTION(kvsstore_readcache_bytes, OPT_U64)
+OPTION(kvsstore_max_cached_onodes, OPT_U64)
+OPTION(enable_onode_prefetch, OPT_STR)
+OPTION(kvsstore_csum_type, OPT_STR)
 
 OPTION(kstore_max_ops, OPT_U64)
 OPTION(kstore_max_bytes, OPT_U64)

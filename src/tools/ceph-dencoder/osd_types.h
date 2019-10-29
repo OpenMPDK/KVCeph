@@ -144,6 +144,10 @@ TYPE(DBObjectMap::State)
 #include "os/filestore/FileStore.h"
 TYPE(FSSuperblock)
 
+#include "os/kvsstore/kvsstore_types.h"
+TYPE(kvsstore_onode_t)
+TYPE(kvsstore_cnode_t)
+
 #include "os/kstore/kstore_types.h"
 TYPE(kstore_cnode_t)
 TYPE(kstore_onode_t)

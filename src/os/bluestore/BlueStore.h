@@ -1284,7 +1284,7 @@ public:
     BufferCacheShard *cache;       ///< our cache shard
     bluestore_cnode_t cnode;
     ceph::shared_mutex lock =
-      ceph::make_shared_mutex("BlueStore::Collection::lock", true, false);
+    ceph::make_shared_mutex("BlueStore::Collection::lock", true, false);
 
     bool exists;
 

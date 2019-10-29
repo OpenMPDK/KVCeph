@@ -306,6 +306,12 @@ int main(int argc, const char **argv)
 	}
       }
     }
+// kvsstore
+      if (store_type == "kvsstore")
+    {
+      g_conf().set_val("is_kvsstore", "true");
+    }
+
   }
 
   std::string journal_path = g_conf().get_val<std::string>("osd_journal");

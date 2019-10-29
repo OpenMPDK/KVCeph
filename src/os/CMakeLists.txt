@@ -14,9 +14,26 @@ set(libos_srcs
   filestore/LFNIndex.cc
   filestore/WBThrottle.cc
   memstore/MemStore.cc
+
+  kvsstore/KvsStore.h
+  kvsstore/KvsStore.cc
+  kvsstore/kadi/kadi_cmds.cc
+  kvsstore/kadi/kadi_cmds.h
+  kvsstore/kadi/kadi_helpers.cc
+  kvsstore/kadi/kadi_helpers.h
+  kvsstore/kadi/kadi_types.h
+  kvsstore/kadi/linux_nvme_ioctl.h
+  kvsstore/kvsstore_cmds.cc
+  kvsstore/kvsstore_cmds.h
+  kvsstore/kvsstore_types.h
+  kvsstore/kvsstore_types.cc
+  kvsstore/kvsstore_kadi.h
+  kvsstore/kvsstore_kadi.cc
+
   kstore/KStore.cc
   kstore/kstore_types.cc
   fs/FS.cc)
+
 
 if(WITH_BLUESTORE)
   list(APPEND libos_srcs

@@ -4127,9 +4127,14 @@ std::vector<Option> get_global_options() {
 
     Option("osd_objectstore", Option::TYPE_STR, Option::LEVEL_ADVANCED)
     .set_default("bluestore")
-    .set_enum_allowed({"bluestore", "filestore", "memstore", "kstore"})
+    .set_enum_allowed({"bluestore", "filestore", "kvsstore", "memstore", "kstore"})
     .set_flag(Option::FLAG_CREATE)
     .set_description("backend type for an OSD (like filestore or bluestore)"),
+
+    Option("is_kvsstore", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(false)
+    .set_description("Adding for checking for kvsstore"),
+
 
     Option("osd_objectstore_tracing", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
     .set_default(false)
@@ -4951,6 +4956,43 @@ std::vector<Option> get_global_options() {
     Option("bluestore_avl_alloc_bf_free_pct", Option::TYPE_UINT, Option::LEVEL_DEV)
     .set_default(4)
     .set_description(""),
+
+    
+        // ------------------------------------------
+        // kvsstore
+
+        Option("kvsdbg_server", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+            .set_default("127.0.0.1")
+            .set_description("IP address of the remote terminal server"),
+
+        Option("kvsdbg_port", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+            .set_default(-1)
+            .set_description("port number of the remote terminal server"),
+        Option("op_scheduler", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+            .set_default("sharded")
+            .set_description("type of scheduler: rr, epoll, sharded"),
+        Option("mon_max_pool_per_osd", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+            .set_default(1024)
+            .set_description("Max number of pools per OSD the cluster will allow"),
+        Option("kvsstore_dev_path", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+            .set_default("/dev/nvme2n1")
+            .set_description("Default KV device if nothing is mentioned"),
+        Option("kvsstore_readcache_bytes", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+            .set_default(1024 * 1024 * 1024ul)
+            .set_description("the size of read cache (default: 1GB)"),
+        Option("kvsstore_max_cached_onodes", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+            .set_default(100000ul)
+            .set_description("the size of read cache (default: 1M)"),
+            
+        Option("enable_onode_prefetch", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+            .set_default("disabled")
+            .set_enum_allowed({"enq", "deq", "disabled"})
+            .set_description("enable onode prefetching")
+            .set_long_description("enable onode prefetching. prefetch at enqueue time, dequeue time or no prefetch."),
+        Option("kvsstore_csum_type", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+            .set_default("crc32c")
+            .set_enum_allowed({"none", "crc32c"})
+            .set_description("Default checksum algorithm to use"),
 
     // -----------------------------------------
     // kstore
