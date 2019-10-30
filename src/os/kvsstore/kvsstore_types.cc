@@ -62,12 +62,14 @@ void KvsOpSequencer::drain() {
     lderr(store->cct) << __func__ << " ### draining acquiring qlock " << dendl;
     std::unique_lock<std::mutex> l(qlock);
     lderr(store->cct) << __func__ << " ### acquired qlock wait if q.empty = " << q.empty() << dendl;
+ // debug layout 
     if (!q.empty()){
         KvsTransContext *txc = &q.back();
         lderr(store->cct) << __func__ << " q.size() = " << q.size() 
             << " txc->state = " << txc->get_state_name() 
             << " oncommits.size() = " << txc->oncommits.size() << dendl;
     }
+// debug layout remove 
     while (!q.empty())
         qcond.wait(l);
     lderr(store->cct) << __func__ << " ### released qlock " << dendl;

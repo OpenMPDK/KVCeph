@@ -11,6 +11,7 @@
 #if defined(WITH_BLUESTORE)
 #include "os/bluestore/BlueStore.h"
 #endif
+#include "os/kvsstore/KvsStore.h"
 #include "store_test_fixture.h"
 
 static void rm_r(const string& path)
@@ -55,6 +56,11 @@ void StoreTestFixture::SetUp()
     s->set_cache_shards(5);
   }
 #endif
+  if (type == "kvsstore")
+  {
+    KvsStore *s = static_cast<KvsStore *>(store.get());
+    s->set_cache_shards(50);
+  }  
   ASSERT_EQ(0, store->mkfs());
   ASSERT_EQ(0, store->mount());
 

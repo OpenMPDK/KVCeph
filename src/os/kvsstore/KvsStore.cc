@@ -549,6 +549,25 @@ void KvsStore::_osr_attach(KvsCollection *c){
     }
 }
 
+
+void KvsStore::_osr_register_zombie(KvsOpSequencer *osr)
+{
+    std::lock_guard l(zombie_osr_lock);
+    dout(10) << __func__ << " " << osr << " " << osr->cid << dendl;
+    osr->zombie = true;
+    auto i = zombie_osr_set.emplace(osr->cid, osr);
+    // this is either a new insertion or the same osr is already there
+    ceph_assert(i.second || i.first->second == osr);    
+
+}
+
+void KvsStore::_osr_drain(KvsOpSequencer *osr)
+{
+  dout(10) << __func__ << " " << osr << dendl;
+  osr->drain();
+  dout(10) << __func__ << " " << osr << " done" << dendl; 
+}
+
 void KvsStore::_osr_drain_all() {
   
     dout(10) << __func__ << dendl;
@@ -2408,7 +2427,7 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
                 {
                     uint32_t bits = op->split_bits;
                     r = -EOPNOTSUPP;
-                   // r = _merge_collection(txc, &c, cvec[op->dest_cid], bits);
+                    r = _merge_collection(txc, &c, cvec[op->dest_cid], bits);
                     if (!r)
                         continue;
                 }
@@ -3439,7 +3458,7 @@ int KvsStore::_remove_collection(KvsTransContext *txc, const coll_t &cid,
                 coll_map.erase(cid);
                 txc->removed_collections.push_back(*c);
                 (*c)->exists = false;
-
+                _osr_register_zombie((*c)->osr.get());
                 c->reset();
                 kvcmds.rm_coll(&txc->ioc, cid);
                 r = 0;
@@ -3702,8 +3721,8 @@ int KvsStore::_split_collection(KvsTransContext *txc,
     FTRACE
     dout(20) << __func__ << " " << c->cid << " to " << d->cid << " "
          << " bits " << bits << dendl;
-    RWLock::WLocker l(c->lock);
-    RWLock::WLocker l2(d->lock);
+    std::unique_lock l(c->lock);
+    std::unique_lock l2(d->lock);
 
     // flush all previous deferred writes on this sequencer.  this is a bit
     // heavyweight, but we need to make sure all deferred writes complete
@@ -3747,6 +3766,68 @@ int KvsStore::_split_collection(KvsTransContext *txc,
     return 0;
 }
 
+// new feature
+int KvsStore::_merge_collection(KvsTransContext *txc, CollectionRef *c, CollectionRef& d, unsigned bits)
+{
+  dout(15) << __func__ << " " << (*c)->cid << " to " << d->cid
+       << " bits " << bits << dendl;
+
+  std::unique_lock l((*c)->lock);
+  std::unique_lock l2(d->lock);
+  int r;
+
+  coll_t cid = (*c)->cid;
+
+  // flush all previous deferred writes on the source collection to ensure
+  // that all deferred writes complete before we merge as the target collection's
+  // sequencer may need to order new ops after those writes.
+ 
+ //_osr_drain((*c)->osr.get());
+    {
+        KvsOpSequencer *osr = txc->osr.get();
+        osr->drain();
+    }
+ 
+
+  // move any cached items (onodes and referenced shared blobs) that will
+  // belong to the child collection post-split.  leave everything else behind.
+  // this may include things that don't strictly belong to the now-smaller
+  // parent split, but the OSD will always send us a split for every new
+  // child.
+
+  spg_t pgid, dest_pgid;
+  bool is_pg = cid.is_pg(&pgid);
+  ceph_assert(is_pg);
+  is_pg = d->cid.is_pg(&dest_pgid);
+  ceph_assert(is_pg);
+
+  // adjust bits.  note that this will be redundant for all but the first
+  // merge call for the parent/target.
+  d->cnode.bits = bits;
+
+  // behavior depends on target (d) bits, so this after that is updated.
+  (*c)->split_cache(d.get());
+
+   // remove source collection
+    {
+    RWLock::WLocker l3(coll_lock);
+    txc->removed_collections.push_back(*c);
+    (*c)->exists = false;
+    _osr_register_zombie((*c)->osr.get());
+    c->reset();
+    kvcmds.rm_coll(&txc->ioc, cid);
+    }
+
+    r = 0;
+  
+    bufferlist bl;
+    encode(d->cnode, bl);
+    kvcmds.add_coll(&txc->ioc, d->cid, bl);
+
+    dout(10) << __func__ << " " << cid << " to " << d->cid << " "
+       << " bits " << bits << " = " << r << dendl;
+    return r;
+}
 
 void KvsCollection::split_cache(KvsCollection *dest)
 {

@@ -159,6 +159,7 @@ private:
     LsCache<ghobject_t, KvsStore> lscache;
     
     RWLock coll_lock = {"KvsStore::coll_lock"};  ///< rwlock to protect coll_map
+    //ceph::shared_mutex coll_lock = ceph::make_shared_mutex("KvsStore::coll_lock");  ///< rwlock to protect coll_map
     mempool::kvsstore_cache_other::unordered_map<coll_t, CollectionRef> coll_map;
     map<coll_t, CollectionRef> new_coll_map;
     vector<KvsCollection *> cached_collections;
@@ -499,6 +500,7 @@ private:
                             unsigned bits, CollectionRef *c);
 
     int _split_collection(KvsTransContext *txc, CollectionRef& c, CollectionRef& d, unsigned bits, int rem);
+    int _merge_collection(KvsTransContext *txc, CollectionRef *c, CollectionRef& d, unsigned bits);
     int _kvs_replay_journal(kvs_journal_key *j);
     KvsOmapIterator* _get_kvsomapiterator(KvsCollection *c, OnodeRef &o);
     int _read_omap_keys(uint64_t lid,const ghobject_t &oid,std::list<std::pair<malloc_unique_ptr<char>, int> > &buflist, std::set<string> &keylist, bool excludeheader);
