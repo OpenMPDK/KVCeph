@@ -2267,7 +2267,7 @@ int KvsStore::queue_transactions(
         vector<Transaction> &tls,
         TrackedOpRef op,
         ThreadPool::TPHandle *handle) {
-    static ceph::mutex journal_index_lock;
+    static ceph::mutex journal_index_lock = ceph::make_mutex("KvssStore::journal_index_lock");
     static const uint32_t MAX_JOURNAL_INDEX = 5000;
     static uint32_t journal_index;
     FTRACE;
@@ -2321,7 +2321,7 @@ int KvsStore::queue_transactions(
 
     uint32_t cur_journal_index;
     {
-        std::lock_guard lock{journal_index_lock};
+        std::lock_guard lock(journal_index_lock);
         cur_journal_index = journal_index++;
         if (journal_index == MAX_JOURNAL_INDEX) journal_index = 0;
     }
