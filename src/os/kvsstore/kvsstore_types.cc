@@ -473,7 +473,7 @@ void KvsOnode::flush()
 {
     if (flushing_count.load()) {
         lderr(c->store->cct) << __func__ << " cnt:" << flushing_count << dendl;
-        std::unique_lock<std::mutex> l(flush_lock);
+        std::unique_lock l(flush_lock);
         while (flushing_count.load()) {
             flush_cond.wait(l);
         }

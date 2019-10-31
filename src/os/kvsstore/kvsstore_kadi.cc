@@ -40,7 +40,7 @@ void prefetch_callback(kv_io_context &op, void *private_data) {
 	delete txc;
 
 	{
-		std::unique_lock < std::mutex > plock(on->prefetch_lock);
+		std::unique_lock plock(on->prefetch_lock);
 		on->exists = exist;
 		on->prefetched = true;
 		on->prefetch_cond.notify_all();
@@ -204,7 +204,7 @@ kv_result KvsStoreKADIAdapter::aio_submit(KvsTransContext *txc)
    // derr << __func__ << " submit: # of kv requests " << txc->ioc.running_aios.size() << ", # of batch requests " << num_batch_cmds << dendl;
 
     {
-        std::unique_lock<std::mutex> lk(txc->ioc.running_aio_lock);
+        std::unique_lock lk(txc->ioc.running_aio_lock);
         res = submit_aio_commands(txc->ioc.running_aios.begin(), txc->ioc.running_aios.end(), static_cast<void*>(txc));
     }
 
