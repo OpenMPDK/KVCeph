@@ -119,7 +119,7 @@ private:
 #endif
     struct MempoolThread : public Thread {
         KvsStore *store;
-        std::condition_variable cond;
+        ceph::condition_variable cond;
         ceph::mutex lock = ceph::make_mutex("KvsStore::MempoolThread::lock");
         bool stop = false;
     public:
@@ -182,25 +182,25 @@ private:
     bool kv_finalize_started = false;
     bool kv_finalize_stop = false;
 
-    std::mutex osr_lock;              ///< protect osd_set
+    ceph::mutex osr_lock;              ///< protect osd_set
     std::set<OpSequencerRef> osr_set; ///< set of all OpSequencers
 
-    std::mutex kv_lock;               ///< control kv threads
-    std::condition_variable kv_cond;
+    ceph::mutex kv_lock;               ///< control kv threads
+    ceph::condition_variable kv_cond;
 
     KVCallbackThread kv_callback_thread;
     KVCallbackThread kv_callback_thread2;
 
     KVFinalizeThread kv_finalize_thread;
-    std::mutex kv_finalize_lock;
-    std::condition_variable kv_finalize_cond;
+    ceph::mutex kv_finalize_lock;
+    ceph::condition_variable kv_finalize_cond;
     deque<KvsTransContext*> kv_committing_to_finalize;   ///< pending finalization
 
     MempoolThread    mempool_thread;
 
     PerfCounters *logger = nullptr;
 
-    std::mutex reap_lock;
+    ceph::mutex reap_lock;
     list<CollectionRef> removed_collections;
     kvsstore_sb_t kvsb;
 
@@ -526,11 +526,11 @@ public:
     /// OSR SET
 
     void register_osr(KvsOpSequencer *osr) {
-        std::lock_guard<std::mutex> l(osr_lock);
+        std::lock_guard l{osr_lock};
         osr_set.insert(osr);
     }
     void unregister_osr(KvsOpSequencer *osr) {
-        std::lock_guard<std::mutex> l(osr_lock);
+        std::lock_guard l{osr_lock};
         osr_set.erase(osr);
     }
 

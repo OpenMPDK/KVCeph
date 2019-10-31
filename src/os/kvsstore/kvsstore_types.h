@@ -207,10 +207,10 @@ struct KvsOnode {
     // track txc's that have not been committed to kv store (and whose
     // effects cannot be read via the kvdb read methods)
     std::atomic<int> flushing_count = {0};
-    std::mutex flush_lock;  ///< protect flush_txns
-    std::condition_variable flush_cond;   ///< wait here for uncommitted txns
-    std::mutex prefetch_lock;  ///< protect flush_txns
-    std::condition_variable prefetch_cond;   ///< wait here for uncommitted txns
+    ceph::mutex flush_lock;  ///< protect flush_txns
+    ceph::condition_variable flush_cond;   ///< wait here for uncommitted txns
+    ceph::mutex prefetch_lock;  ///< protect flush_txns
+    ceph::condition_variable prefetch_cond;   ///< wait here for uncommitted txns
 
     KvsOnode(KvsCollection *c, const ghobject_t& o)
             : nref(0),
@@ -452,8 +452,8 @@ class LsCache
 {
     class LsData
     {
-        std::mutex d_lock;
-        std::mutex i_lock;
+        ceph::mutex d_lock;
+        ceph::mutex i_lock;
         bool loaded;
         bool buffering;
     public:    
@@ -469,7 +469,7 @@ class LsCache
         LsData(CephContext *cct_, uint64_t &pid, int8_t sid):  loaded(false),buffering(false), poolid(pid), shardid(sid),cct(cct_) {}
 
         utime_t fill(DB *db, uint8_t space_id) {
-            std::unique_lock<std::mutex> lk(d_lock);
+            std::unique_lock lk{d_lock};
             if (loaded) {
                 return utime_t();
             }
@@ -494,7 +494,7 @@ class LsCache
 
         int apply_outstanding_requests()
         {
-            std::unique_lock<std::mutex> lk(i_lock);
+            std::unique_lock lk{i_lock};
             int size = incoming_op_w.size();
             for (int i = 0 ; i < size; i++) {
                 bool write = incoming_op_w[i];
@@ -510,10 +510,10 @@ class LsCache
         }
 
         bool insert(const T &item) {
-            std::unique_lock<std::mutex> lck(d_lock,std::defer_lock);
+            std::unique_lock lck(d_lock,std::defer_lock);
             bool inserted = false;
             if (!lck.try_lock()) {
-                std::unique_lock<std::mutex> lk(i_lock);
+                std::unique_lock lk{i_lock};
                 incoming_op_w.push_back(true);
                 incoming_data.push_back(item);
                 inserted = true;
@@ -522,7 +522,7 @@ class LsCache
                     data.insert(item);
                     inserted = true;
                 } else if (buffering) {
-                    std::unique_lock<std::mutex> lk(i_lock);
+                    std::unique_lock lk{i_lock};
                     incoming_op_w.push_back(true);
                     incoming_data.push_back(item);
                     inserted = true;
@@ -533,10 +533,10 @@ class LsCache
         }
 
         bool remove(const T &item) {
-            std::unique_lock<std::mutex> lck(d_lock,std::defer_lock);
+            std::unique_lock lck(d_lock,std::defer_lock);
             bool removed = false;
             if (!lck.try_lock()) {
-                std::unique_lock<std::mutex> lk(i_lock);
+                std::unique_lock lk(i_lock);
                 incoming_op_w.push_back(false);
                 incoming_data.push_back(item);                 
                 removed = true;
@@ -545,7 +545,7 @@ class LsCache
                     data.erase(item);
                     removed = true;
                 } else if (buffering) {
-                    std::unique_lock<std::mutex> lk(i_lock);
+                    std::unique_lock lk(i_lock);
                     incoming_op_w.push_back(false);
                     incoming_data.push_back(item);                
                     removed = true;
@@ -563,7 +563,7 @@ class LsCache
         }
 
         bool trim(bool force = false) {
-            std::unique_lock<std::mutex> lck(d_lock,std::defer_lock);
+            std::unique_lock lck(d_lock,std::defer_lock);
             if (!loaded) {
                 return false;
             }
@@ -581,12 +581,12 @@ class LsCache
     }; 
  
     // poolid <-> pool data
-    std::mutex pool_lock;
+    ceph::mutex pool_lock;
     std::unordered_map<uint64_t, std::unordered_map<int8_t, LsData*> > cache;
     std::vector<LsData *> dirtylist;
 
     LsData *get_lsdata(int8_t shardid, uint64_t poolid, bool create) {
-        std::unique_lock<std::mutex> lock(pool_lock);
+        std::unique_lock lock{pool_lock};
         auto &lsdata_list = cache[poolid];
         
         LsData *d = lsdata_list[shardid];
@@ -621,7 +621,7 @@ public:
     {
         int deleted = 0;
         int max = (i == -1)? INT_MAX:i;
-        std::unique_lock<std::mutex> lock(pool_lock);
+        std::unique_lock lock{pool_lock};
 
         auto it = dirtylist.begin();
         while (it != dirtylist.end()) {
@@ -639,7 +639,7 @@ public:
 
     void clear() 
     {
-        std::unique_lock<std::mutex> lock(pool_lock);   
+        std::unique_lock lock{pool_lock};   
         for (const auto &t : cache) {
             for (const auto &p : t.second) {
                 if (p.second) delete p.second;
@@ -769,7 +769,7 @@ struct KvsCollection : public ObjectStore::CollectionImpl {
 
     kvsstore_cnode_t cnode;
     RWLock lock;
-    std::mutex l_prefetch;
+    ceph::mutex l_prefetch;
     bool exists;
 
     // cache onodes on a per-collection basis to avoid lock
@@ -781,7 +781,7 @@ struct KvsCollection : public ObjectStore::CollectionImpl {
 
     KvsOnode *lookup_prefetch_map(const ghobject_t &oid, bool erase) {
         KvsOnode *ret = 0;
-        std::unique_lock<std::mutex> lock(l_prefetch);
+        std::unique_lock lock{l_prefetch};
         auto it = onode_prefetch_map.find(oid);
         if (it != onode_prefetch_map.end()) {
                 ret = it->second;
@@ -792,7 +792,7 @@ struct KvsCollection : public ObjectStore::CollectionImpl {
     }
 
     void add_to_prefetch_map(const ghobject_t &oid, KvsOnode *on) {
-        std::unique_lock<std::mutex> lock(l_prefetch);
+        std::unique_lock lock{l_prefetch};
         onode_prefetch_map[oid] = on;
     }
 
@@ -870,11 +870,11 @@ public:
 
 struct KvsIoContext {
 private:
-    std::mutex lock;
-    std::condition_variable cond;
+    ceph::mutex lock;
+    ceph::condition_variable cond;
 
 public:
-    std::mutex running_aio_lock;
+    ceph::mutex running_aio_lock;
     atomic_bool submitted = { false };
     CephContext* cct;
     void *priv;
@@ -899,13 +899,13 @@ public:
     }
 
     inline void add(uint8_t space_id, kv_key *kvkey, kv_value *kvvalue) {
-        std::unique_lock<std::mutex> l(lock);
+        std::unique_lock l{lock};
         pending_aios.push_back(std::make_tuple(space_id, kvkey, kvvalue));
         num_pending++;
     }
 
     inline void del(uint8_t space_id, kv_key *kvkey) {
-        std::unique_lock<std::mutex> l(lock);
+        std::unique_lock l{lock};
         pending_aios.push_back(std::make_tuple(space_id, kvkey, (kv_value*)0));
         num_pending++;
     }
@@ -914,8 +914,8 @@ public:
 
 struct KvsPrefetchContext {
 private:
-    std::mutex lock;
-    std::condition_variable cond;
+    ceph::mutex lock;
+    ceph::condition_variable cond;
 public:
     CephContext* cct;
     KvsOnode *onode;
@@ -1025,7 +1025,7 @@ struct KvsTransContext  {
 class KvsOpSequencer : public RefCountedObject{
 public:
     ceph::mutex qlock = ceph::make_mutex("KvsStoreStore::OpSequencer::qlock");
-    std::condition_variable qcond;
+    ceph::condition_variable qcond;
     
     typedef boost::intrusive::list<
             KvsTransContext,

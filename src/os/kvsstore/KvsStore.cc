@@ -169,7 +169,7 @@ OnodeRef KvsCollection::get_onode(
 	if (on) {
 	  auto hit_type = l_prefetch_onode_cache_hit;
 	  {
-		  std::unique_lock<std::mutex> plock(on->prefetch_lock);
+		  std::unique_lock plock{on->prefetch_lock};
 		  if (!on->prefetched) {
 			  on->prefetch_cond.wait(plock);
 			  hit_type = l_prefetch_onode_cache_slow;
@@ -621,7 +621,7 @@ void KvsStore::_osr_drain_all() {
 void KvsStore::_osr_unregister_all() {
     set<OpSequencerRef> s;
     {
-        std::lock_guard<std::mutex> l(osr_lock);
+        std::lock_guard l(osr_lock);
         s = osr_set;
     }
     dout(10) << __func__ << " " << s << dendl;
@@ -639,7 +639,7 @@ void KvsStore::_osr_unregister_all() {
     }
     // nobody should be creating sequencers during umount either.
     {
-        std::lock_guard<std::mutex> l(osr_lock);
+        std::lock_guard l(osr_lock);
         assert(osr_set.empty());
     }
 }
@@ -1915,7 +1915,7 @@ void KvsStore::_txc_state_proc(KvsTransContext *txc) {
                 _txc_committed_kv(txc);
 
                 {
-                    std::unique_lock<std::mutex> l(kv_finalize_lock);
+                    std::unique_lock l(kv_finalize_lock);
                     kv_committing_to_finalize.push_back(txc);
                     kv_finalize_cond.notify_one();
                 }
@@ -2093,7 +2093,7 @@ void KvsStore::_txc_release_alloc(KvsTransContext *txc) {
 	txc->t8 = ceph_clock_now();
     KvsIoContext *ioc = &txc->ioc;
    {
-        std::unique_lock<std::mutex> lk(ioc->running_aio_lock);
+        std::unique_lock lk{ioc->running_aio_lock};
         // release memory
         for (const auto &p : ioc->running_aios) {
             KvsMemPool::Release_key(std::get<1> (p));
@@ -2156,7 +2156,7 @@ void KvsStore::_kv_finalize_thread() {
     FTRACE
     deque<KvsTransContext *> kv_committed;
 
-    std::unique_lock<std::mutex> l(kv_finalize_lock);
+    std::unique_lock l{kv_finalize_lock};
     assert(!kv_finalize_started);
     kv_finalize_started = true;
     kv_finalize_cond.notify_all();
@@ -2218,7 +2218,7 @@ void KvsStore::_kv_callback_thread() {
 void KvsStore::_queue_reap_collection(CollectionRef &c) {
     FTRACE
     dout(10) << __func__ << " " << c << " " << c->cid << dendl;
-    std::lock_guard<std::mutex> l(reap_lock);
+    std::lock_guard l(reap_lock);
     removed_collections.push_back(c);
 }
 
@@ -2228,7 +2228,7 @@ void KvsStore::_reap_collections() {
 
     list<CollectionRef> removed_colls;
     {
-        std::lock_guard<std::mutex> l(reap_lock);
+        std::lock_guard l(reap_lock);
         removed_colls.swap(removed_collections);
     }
 
@@ -2267,7 +2267,7 @@ int KvsStore::queue_transactions(
         vector<Transaction> &tls,
         TrackedOpRef op,
         ThreadPool::TPHandle *handle) {
-    static std::mutex journal_index_lock;
+    static ceph::mutex journal_index_lock;
     static const uint32_t MAX_JOURNAL_INDEX = 5000;
     static uint32_t journal_index;
     FTRACE;
@@ -2321,7 +2321,7 @@ int KvsStore::queue_transactions(
 
     uint32_t cur_journal_index;
     {
-        std::lock_guard<std::mutex> lock(journal_index_lock);
+        std::lock_guard lock{journal_index_lock};
         cur_journal_index = journal_index++;
         if (journal_index == MAX_JOURNAL_INDEX) journal_index = 0;
     }
@@ -3694,7 +3694,7 @@ void KvsStore::_close_db() {
 
     kv_stop = true;
     {
-        std::unique_lock<std::mutex> l(kv_finalize_lock);
+        std::unique_lock l{kv_finalize_lock};
         while (!kv_finalize_started) {
             kv_finalize_cond.wait(l);
         }
@@ -3708,7 +3708,7 @@ void KvsStore::_close_db() {
     kv_stop = false;
 
     {
-        std::lock_guard<std::mutex> l(kv_finalize_lock);
+        std::lock_guard l(kv_finalize_lock);
         kv_finalize_stop = false;
     }
 
