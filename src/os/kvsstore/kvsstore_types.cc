@@ -147,7 +147,7 @@ void flush_all_but_last()
 
 bool KvsOpSequencer::flush_commit(Context *c) {
     FTRACE
-    std::lock_guard<std::mutex> l(qlock);
+    std::lock_guard l(qlock);
     if (q.empty()) {
         return true;
     }
