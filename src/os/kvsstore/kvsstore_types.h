@@ -207,9 +207,9 @@ struct KvsOnode {
     // track txc's that have not been committed to kv store (and whose
     // effects cannot be read via the kvdb read methods)
     std::atomic<int> flushing_count = {0};
-    ceph::mutex flush_lock;  ///< protect flush_txns
+    ceph::mutex flush_lock = ceph::make_mutex("KvsStore::flush_lock");  ///< protect flush_txns
     ceph::condition_variable flush_cond;   ///< wait here for uncommitted txns
-    ceph::mutex prefetch_lock;  ///< protect flush_txns
+    ceph::mutex prefetch_lock = ceph::make_mutex("KvsStore::prefetched_lock");  ///< protect flush_txns
     ceph::condition_variable prefetch_cond;   ///< wait here for uncommitted txns
 
     KvsOnode(KvsCollection *c, const ghobject_t& o)
@@ -452,8 +452,8 @@ class LsCache
 {
     class LsData
     {
-        ceph::mutex d_lock;
-        ceph::mutex i_lock;
+        ceph::mutex d_lock = ceph::make_mutex("KvsStore::d_lock");
+        ceph::mutex i_lock = ceph::make_mutex("KvsStore::i_lock");
         bool loaded;
         bool buffering;
     public:    
@@ -581,7 +581,7 @@ class LsCache
     }; 
  
     // poolid <-> pool data
-    ceph::mutex pool_lock;
+    ceph::mutex pool_lock  = ceph::make_mutex("KvsStore::pool_lock");
     std::unordered_map<uint64_t, std::unordered_map<int8_t, LsData*> > cache;
     std::vector<LsData *> dirtylist;
 
@@ -769,7 +769,7 @@ struct KvsCollection : public ObjectStore::CollectionImpl {
 
     kvsstore_cnode_t cnode;
     RWLock lock;
-    ceph::mutex l_prefetch;
+    ceph::mutex l_prefetch  = ceph::make_mutex("KvsStore::l_prefetch_lock");
     bool exists;
 
     // cache onodes on a per-collection basis to avoid lock
@@ -870,11 +870,11 @@ public:
 
 struct KvsIoContext {
 private:
-    ceph::mutex lock;
+    ceph::mutex lock = ceph::make_mutex("KvsStore::iocontext_lock");
     ceph::condition_variable cond;
 
 public:
-    ceph::mutex running_aio_lock;
+    ceph::mutex running_aio_lock  = ceph::make_mutex("KvsStore::running_aio_lock");
     atomic_bool submitted = { false };
     CephContext* cct;
     void *priv;
@@ -914,7 +914,7 @@ public:
 
 struct KvsPrefetchContext {
 private:
-    ceph::mutex lock;
+    ceph::mutex lock = ceph::make_mutex("KvsStore::KvsPrefetch_lock");
     ceph::condition_variable cond;
 public:
     CephContext* cct;

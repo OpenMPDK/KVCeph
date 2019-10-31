@@ -182,17 +182,17 @@ private:
     bool kv_finalize_started = false;
     bool kv_finalize_stop = false;
 
-    ceph::mutex osr_lock;              ///< protect osd_set
+    ceph::mutex osr_lock  = ceph::make_mutex("KvsStore::osr_lock");              ///< protect osd_set
     std::set<OpSequencerRef> osr_set; ///< set of all OpSequencers
 
-    ceph::mutex kv_lock;               ///< control kv threads
+    ceph::mutex kv_lock  = ceph::make_mutex("KvsStore::kv_lock");               ///< control kv threads
     ceph::condition_variable kv_cond;
 
     KVCallbackThread kv_callback_thread;
     KVCallbackThread kv_callback_thread2;
 
     KVFinalizeThread kv_finalize_thread;
-    ceph::mutex kv_finalize_lock;
+    ceph::mutex kv_finalize_lock  = ceph::make_mutex("KvsStore::kv_finalize_lock");
     ceph::condition_variable kv_finalize_cond;
     deque<KvsTransContext*> kv_committing_to_finalize;   ///< pending finalization
 
@@ -200,7 +200,7 @@ private:
 
     PerfCounters *logger = nullptr;
 
-    ceph::mutex reap_lock;
+    ceph::mutex reap_lock = ceph::make_mutex("KvsStore::reap_lock");
     list<CollectionRef> removed_collections;
     kvsstore_sb_t kvsb;
 
@@ -533,8 +533,6 @@ public:
         std::lock_guard l{osr_lock};
         osr_set.erase(osr);
     }
-
-
 };
 
 /**inline ostream& operator<<(ostream& out, const KvsOpSequencer& s) {
