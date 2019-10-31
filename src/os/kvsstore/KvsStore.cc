@@ -3458,7 +3458,7 @@ int KvsStore::_remove_collection(KvsTransContext *txc, const coll_t &cid,
                 coll_map.erase(cid);
                 txc->removed_collections.push_back(*c);
                 (*c)->exists = false;
-                //_osr_register_zombie((*c)->osr.get());
+                _osr_register_zombie((*c)->osr.get());
                 c->reset();
                 kvcmds.rm_coll(&txc->ioc, cid);
                 r = 0;
