@@ -530,7 +530,7 @@ void KvsStore::_osr_attach(KvsCollection *c){
         c->osr = q->second->osr;
         ldout(cct, 10) << __func__ << " " << c->cid
            << " reusing osr " << c->osr << " from existing coll "
-           << q->second << dendl; 
+       << q->second << dendl; 
 
     } else{
         std::lock_guard l(zombie_osr_lock);
@@ -1951,7 +1951,7 @@ void KvsStore::_txc_finish_io(KvsTransContext *txc) {
     //derr << __func__ << " ### txc->state = " << txc->get_state_name()
     //     << " osr = " << osr << ", acquiring qlock "<< dendl;
     //std::unique_lock<std::mutex> l(osr->qlock);
-    std::lock_guard<std::mutex> l(osr->qlock);
+    std::lock_guard l(osr->qlock);
     txc->state = KvsTransContext::STATE_IO_DONE;
 
     //derr << __func__ << " ### txc->state = " << txc->get_state_name()
@@ -2039,7 +2039,7 @@ void KvsStore::_txc_finish(KvsTransContext *txc) {
 
     KvsOpSequencer::q_list_t releasing_txc;
     {
-        std::lock_guard<std::mutex> l(osr->qlock);
+        std::lock_guard l(osr->qlock);
         txc->state = KvsTransContext::STATE_DONE;
         bool notify = false;
         while (!osr->q.empty()) {
@@ -3458,7 +3458,7 @@ int KvsStore::_remove_collection(KvsTransContext *txc, const coll_t &cid,
                 coll_map.erase(cid);
                 txc->removed_collections.push_back(*c);
                 (*c)->exists = false;
-                _osr_register_zombie((*c)->osr.get());
+                //_osr_register_zombie((*c)->osr.get());
                 c->reset();
                 kvcmds.rm_coll(&txc->ioc, cid);
                 r = 0;

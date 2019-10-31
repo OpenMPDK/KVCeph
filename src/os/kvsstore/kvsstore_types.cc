@@ -60,7 +60,7 @@ void KvsOpSequencer::discard() {
 void KvsOpSequencer::drain() {
     FTRACE
     lderr(store->cct) << __func__ << " ### draining acquiring qlock " << dendl;
-    std::unique_lock<std::mutex> l(qlock);
+    std::unique_lock l{qlock};
     lderr(store->cct) << __func__ << " ### acquired qlock wait if q.empty = " << q.empty() << dendl;
  // debug layout 
     if (!q.empty()){
@@ -79,7 +79,7 @@ void KvsOpSequencer::drain() {
 void KvsOpSequencer::drain_preceding(KvsTransContext *txc) {
     FTRACE
     lderr(store->cct) << __func__ << " ### drain_preceding acquiring qlock " << dendl;
-    std::unique_lock<std::mutex> l(qlock);
+    std::unique_lock l{qlock};
     while (!q.empty() && &q.front() != txc)
         qcond.wait(l);
 }
@@ -100,7 +100,7 @@ bool KvsOpSequencer::_is_all_kv_submitted() {
 
 void KvsOpSequencer::flush() {
     FTRACE
-    std::unique_lock<std::mutex> l(qlock);
+    std::unique_lock l{qlock};
     while (true) {
 // set flag before the check because the condition
 // may become true outside qlock, and we need to make

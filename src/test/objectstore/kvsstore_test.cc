@@ -293,6 +293,12 @@ TEST_P(KvsStoreTest, OMapIterator) {
     std::cout << " after OMapIterator inititation " << std::endl;
     iter = store->get_omap_iterator(ch, hoid);
     std::cout << " after OMapIterator get_omap_iterator inititation " << std::endl;
+    iter->seek_to_first();
+    std::cout << " after seek_to_first()" << std::endl;
+    std::cout << " after iter->valid() = " << iter->valid()<< std::endl;
+    std::cout << " omap key = " << iter->key() << std::endl;
+    iter->next();
+    std::cout << " after iter->next()" << std::endl;
     for (iter->seek_to_first(), count=0; iter->valid(); iter->next(), count++) {
       string key = iter->key();
       bufferlist value = iter->value();

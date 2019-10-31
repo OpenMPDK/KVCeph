@@ -1024,7 +1024,7 @@ struct KvsTransContext  {
 
 class KvsOpSequencer : public RefCountedObject{
 public:
-    std::mutex qlock = ceph::make_mutex("KvsStoreStore::OpSequencer::qlock");
+    ceph::mutex qlock = ceph::make_mutex("KvsStoreStore::OpSequencer::qlock");
     std::condition_variable qcond;
     
     typedef boost::intrusive::list<
@@ -1066,7 +1066,8 @@ public:
     void _unregister();
 
     void queue_new(KvsTransContext *txc) {
-        std::lock_guard<std::mutex> l(qlock);
+       // std::lock_guard<std::mutex> l(qlock);
+        std::lock_guard l(qlock);
         txc->seq = ++last_seq;
         q.push_back(*txc);
     }
