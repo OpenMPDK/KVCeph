@@ -1790,6 +1790,7 @@ ObjectMap::ObjectMapIterator KvsStore::get_omap_iterator(
     RWLock::RLocker l(c->lock);
     OnodeRef o = c->get_onode(oid, false);
     if (!o || !o->exists) {
+        derr << __func__ << " " << oid << " does not exists"<< dendl;
         dout(10) << __func__ << " " << oid << "doesn't exist" << dendl;
         return ObjectMap::ObjectMapIterator();
     }
@@ -2077,6 +2078,13 @@ void KvsStore::_txc_finish(KvsTransContext *txc) {
     if (empty && osr->zombie) {
         dout(10) << __func__ << " reaping empty zombie osr " << osr << dendl;
         osr->_unregister();
+        std::lock_guard l(zombie_osr_lock);
+        if (zombie_osr_set.erase(osr->cid)) {
+                dout(10) << __func__ << " reaping empty zombie osr " << osr << dendl;
+        } else {
+            dout(10) << __func__ << " empty zombie osr " << osr << " already reaped"
+                     << dendl;
+    }
     }
 }
 
