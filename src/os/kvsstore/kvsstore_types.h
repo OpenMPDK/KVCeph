@@ -797,7 +797,7 @@ struct KvsCollection : public ObjectStore::CollectionImpl {
     }
 
     void split_cache(KvsCollection *dest);
-    OnodeRef get_onode(const ghobject_t& oid, bool create);
+    OnodeRef get_onode(const ghobject_t& oid, bool create, bool is_createop=false);
     int get_data(KvsTransContext *txc, const ghobject_t& oid, uint64_t offset, size_t length, bufferlist &bl);
 
 //    const coll_t &get_cid() override {
@@ -843,6 +843,9 @@ public:
     int next() override;
     string key() override;
     bufferlist value() override;
+    std::string tail_key() {
+      return tail;
+    }
     int status() override {
         return 0;
     }
@@ -865,6 +868,7 @@ public:
     int next() override;
     string key() override;
     bufferlist value() override;
+    std::string tail_key() { return (it->tail_key());}
     int status() override { return 0; }
 };
 

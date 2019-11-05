@@ -524,9 +524,14 @@ void KvsOmapIterator::makeready()
 }
 int KvsOmapIterator::seek_to_first()
 {
+    lderr(store->cct) << __func__ << " before keylist " << dendl;
     it = keylist.begin();
-    if (o->onode.has_omap()){ it = keylist.begin(); }
-    else{ it = std::set<string>::iterator(); }
+    if (o->onode.has_omap()){ 
+        lderr(store->cct) << __func__ << " has omap " << dendl;
+        it = keylist.begin();
+        }
+    else{ lderr(store->cct) << __func__ << " does not contain omaps " << dendl;
+     it = std::set<string>::iterator(); }
     return 0;
 }
 
@@ -615,7 +620,9 @@ KvsOmapIteratorImpl::KvsOmapIteratorImpl(
 
 int KvsOmapIteratorImpl::seek_to_first()
 {
+    lderr(c->store->cct) << __func__ << "  seek_to_first  before collection lock "<< dendl;
     RWLock::RLocker l(c->lock);
+    lderr(c->store->cct) << __func__ << "  seek_to_first collection lock "<< dendl;
     return it->seek_to_first();
 }
 
@@ -649,7 +656,7 @@ string KvsOmapIteratorImpl::key()
     RWLock::RLocker l(c->lock);
     return it->key();
 }
-
+ 
 bufferlist KvsOmapIteratorImpl::value()
 {
     RWLock::RLocker l(c->lock);

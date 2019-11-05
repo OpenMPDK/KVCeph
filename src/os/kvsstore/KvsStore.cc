@@ -152,7 +152,7 @@ int KvsCollection::get_data(KvsTransContext *txc, const ghobject_t &oid, uint64_
 
 OnodeRef KvsCollection::get_onode(
         const ghobject_t &oid,
-        bool create) {
+        bool create, bool is_createop) {
     FTRACE2
     assert(create ? lock.is_wlocked() : lock.is_locked());
 
@@ -1443,8 +1443,9 @@ int KvsStore::_read_omap_keys(
 
 	kv_iter_context iter_ctx;
 	kvcmds.omap_iterator_init(cct, lid, oid, &iter_ctx);
-
+    derr << __func__ << " after omap_iterator_init " << dendl;
 	int ret = db.iter_readall_aio(&iter_ctx, buflist, iter_ctx.spaceid);
+    derr << __func__ << " ret of iter_readall_aio = " << ret << dendl;
 
 	if (ret != 0) {
 		return -ENOENT;
@@ -1479,6 +1480,7 @@ int KvsStore::_read_omap_keys(
 	}
 
 	if (keylist.size() == 0) {
+        derr << __func__ << " NO keys found " << dendl;
 		return -1;
 	}
 	return 0;
@@ -1741,7 +1743,7 @@ ObjectMap::ObjectMapIterator KvsStore::get_omap_iterator(
     
     CollectionHandle c = _get_collection(cid);
     if (!c) {
-        dout(10) << __func__ << " " << cid << "doesn't exist" << dendl;
+        dout(10) << __func__ << " " << cid << " doesn't exist" << dendl;
         return ObjectMap::ObjectMapIterator();
     }
     return get_omap_iterator(c, oid);
@@ -1753,10 +1755,13 @@ ObjectMap::ObjectMapIterator KvsStore::_get_omap_iterator(
 )
 {
     o->flush();
-
+    
+    derr << __func__ << " kvsomapiterator 1 " << dendl;
     KvsOmapIterator *impl  = _get_kvsomapiterator(c, o);
+    derr << __func__ << " kvsomapiterator 2 " << dendl;
     if (impl == 0)
         return ObjectMap::ObjectMapIterator();
+    derr << __func__ << " kvsomapiterator 3 " << dendl;
     return ObjectMap::ObjectMapIterator(new KvsOmapIteratorImpl(c, impl));
 }
 
@@ -1765,14 +1770,18 @@ KvsOmapIterator* KvsStore::_get_kvsomapiterator(KvsCollection *c, OnodeRef &o) {
     kv_iter_context iter_ctx;
 
     KvsOmapIterator *impl = new KvsOmapIterator(c, o, this);
-
+    derr << __func__ << " before read_omap_keys " << dendl;
     int ret = _read_omap_keys(o->onode.lid, o->oid, impl->buflist, impl->keylist);
-    if (ret != 0) {
+    derr << __func__ << " after read_omap_keys ret = " << ret  << dendl;
+  // original was if (ret != 0) { // should be (ret != 0 && ret != -1)
+    if (ret != 0 && ret != -1) {
+    //if (ret != 0) {
         delete impl;
         return 0;
     }
-    
+    derr << __func__ << " before makeready " << dendl;
     impl->makeready();
+    derr << __func__ << " after makeready " << dendl;
     return impl;
 }
 
@@ -1783,14 +1792,16 @@ ObjectMap::ObjectMapIterator KvsStore::get_omap_iterator(
     FTRACE
     KvsCollection *c = static_cast<KvsCollection *>(c_.get());
     dout(10) << __func__ << " " << c->get_cid() << " " << oid << dendl;
+   // derr << __func__ << " " << c->get_cid() << " " << oid << dendl;
     if (!c->exists) {
+        derr << __func__ << "collection does not exists" << dendl;
         return ObjectMap::ObjectMapIterator();
     }
 
     RWLock::RLocker l(c->lock);
     OnodeRef o = c->get_onode(oid, false);
     if (!o || !o->exists) {
-        derr << __func__ << " " << oid << " does not exists"<< dendl;
+        //derr << __func__ << " " << oid << " does not exists"<< dendl;
         dout(10) << __func__ << " " << oid << "doesn't exist" << dendl;
         return ObjectMap::ObjectMapIterator();
     }
@@ -2435,9 +2446,10 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
                 {
                     uint32_t bits = op->split_bits;
                     r = -EOPNOTSUPP;
-                    r = _merge_collection(txc, &c, cvec[op->dest_cid], bits);
-                    if (!r)
-                        continue;
+                    break;
+                    //r = _merge_collection(txc, &c, cvec[op->dest_cid], bits);
+                  //  if (!r)
+                  //      continue;
                 }
                 break;
                 case Transaction::OP_COLL_HINT:
@@ -2462,7 +2474,7 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
         }
 
         if (r < 0) {
-            derr << __func__ << " error " << cpp_strerror(r)
+            derr << __func__ << " 1. error " << cpp_strerror(r)
                  << " not handled on operation " << op->op
                  << " (op " << pos << ", counting from 0)" << dendl;
             assert(0 == "unexpected error");
@@ -2472,6 +2484,7 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
         bool create = false;
         if (op->op == Transaction::OP_TOUCH ||
             op->op == Transaction::OP_WRITE ||
+            op->op == Transaction::OP_CREATE ||
             op->op == Transaction::OP_ZERO) {
             create = true;
         }
@@ -2483,12 +2496,15 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
         
         if (!o) {
             ghobject_t oid = i.get_oid(op->oid);
-            
-            o = c->get_onode(oid, create);
+           // derr << __func__ << " create onode = " << create 
+           //      << " op " << op->op << " oid = " << i.get_oid(op->oid) << dendl;
+            o = c->get_onode(oid, create, op->op == Transaction::OP_CREATE);
             
         }
         
         if (!create && (!o || !o->exists)) {
+          //  derr << __func__ << " op " << op->op << " got ENOENT on "
+          //           << i.get_oid(op->oid) << dendl;
             dout(10) << __func__ << " op " << op->op << " got ENOENT on "
                      << i.get_oid(op->oid) << dendl;
 
@@ -2496,6 +2512,8 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
             goto endop;
         }
         switch (op->op) {
+            //derr << __func__ << " FUNCTION = " << op->op << dendl;
+            case Transaction::OP_CREATE:
             case Transaction::OP_TOUCH:
                 r = _touch(txc, c, o);
                 break;
@@ -2543,6 +2561,7 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
                 bufferptr bp;
                 i.decode_bp(bp);
                 r = _setattr(txc, c, o, name, bp);
+                //derr << __func__ << " [" << op->op << " . OP_SETATTR = " << r << dendl;
             }
                 break;
 
@@ -2625,6 +2644,7 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
                 bufferlist aset_bl;
                 i.decode_attrset_bl(&aset_bl);
                 r = _omap_setkeys(txc, c, o, aset_bl);
+                //derr << __func__ << " [ " << op->op << " . OMAP_SETKEYS = " << r << dendl;
             }
                 break;
             case Transaction::OP_OMAP_RMKEYS: {
@@ -2644,6 +2664,7 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
                 bufferlist bl;
                 i.decode_bl(bl);
                 r = _omap_setheader(txc, c, o, bl);
+                //derr << __func__ << " [ "<< op->op  << " . OMAP_SETHEADER = " << r << dendl;
             }
                 break;
 
@@ -2697,7 +2718,7 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
                     msg = "ENOTEMPTY suggests garbage data in osd data dir";
                 }
 
-                derr << __func__ << " error: code = " << r << "(" << cpp_strerror(r)
+                derr << __func__ << " 2. error: code = " << r << "(" << cpp_strerror(r)
                      << ") not handled on operation " << op->op
                      << " (op " << pos << ", counting from 0)"
                      << dendl;
@@ -3152,6 +3173,7 @@ int KvsStore::_omap_clear(KvsTransContext *txc,
                           OnodeRef &o) {
     FTRACE
     dout(15) << __func__ << " " << c->cid << " " << o->oid << dendl;
+    derr << __func__ << " " << c->cid << " " << o->oid << dendl;
     int r = 0;
     if (o->onode.has_omap()) {
         o->flush();
@@ -3159,6 +3181,7 @@ int KvsStore::_omap_clear(KvsTransContext *txc,
         o->onode.clear_omap_flag();
         txc->write_onode(o);
     }
+    //derr << __func__ << " " << c->cid << " " << o->oid << " ret = " << r << dendl;
     dout(10) << __func__ << " " << c->cid << " " << o->oid << " = " << r << dendl;
     return r;
 }
@@ -3169,15 +3192,23 @@ int KvsStore::_omap_setkeys(KvsTransContext *txc,
                             bufferlist &bl) {
     FTRACE
     dout(15) << __func__ << " " << c->cid << " " << o->oid << dendl;
+   // derr << __func__ << " " << c->cid << " " << o->oid << dendl;
     int r;
     auto p = bl.cbegin();
     __u32 num;
     if (!o->onode.has_omap()) {
+        //derr << __func__ << " Does NOT have omap " << c->cid << " " << o->oid << dendl;
         o->onode.set_omap_flag();
         txc->write_onode(o);
-    }
+        string omap_headkey; 
+        bufferlist omap_headvalue;
+        // Added below
+        //_omap_setheader(txc, c, o, omap_headvalue);
+        kvcmds.add_omap(&txc->ioc, o->oid, o->onode.lid, omap_headkey, omap_headvalue);
+     }
 
     decode(num, p);
+    //derr << __func__ << " num of omaps = " << num << " cid = "<< c->cid << " " << o->oid << dendl;
     while (num--) {
         string key;
         bufferlist value;
@@ -3186,6 +3217,7 @@ int KvsStore::_omap_setkeys(KvsTransContext *txc,
         kvcmds.add_omap(&txc->ioc, o->oid, o->onode.lid, key, value);
     }
     r = 0;
+    derr << __func__ << " " << c->cid << " " << o->oid << " ret = " << r << dendl;
     dout(10) << __func__ << " " << c->cid << " " << o->oid << " = " << r << dendl;
     return r;
 }
