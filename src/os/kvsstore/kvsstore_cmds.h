@@ -65,10 +65,6 @@ public:
 
     template<typename KeyGen>
     inline void queue_store_kv(KvsIoContext *ctx, const int space_id, const int journal_spaceid, const char* data, const int datalength, const bool persistent, const KeyGen& keygen) {
-        kv_key *key = KvsMemPool::Alloc_key();
-        key->length = keygen(key->key);
-        ctx->add(space_id , key, to_kv_value(data, datalength, persistent)); // KEYSPACE_ONODE
-
        if (persistent || datalength > MAX_BATCH_VALUE_SIZE) {
     		kv_key *key = KvsMemPool::Alloc_key();
     		key->length = keygen(key->key);

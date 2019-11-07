@@ -231,7 +231,6 @@ inline uint8_t construct_omap_key(CephContext* cct, uint64_t lid, const char *na
     kvskey->hash = ceph_str_hash_linux((char*)&hdr, sizeof(struct kvs_omap_key_header));
     kvskey->group= GROUP_PREFIX_OMAP;
     kvskey->lid  = lid;
-
 // TODO: remove space id
     kvskey->spaceid = space_id;
 
@@ -249,6 +248,9 @@ inline uint32_t get_object_group_id(const uint8_t  isonode,const int8_t shardid,
 	struct kvs_key_header hdr = { GROUP_PREFIX_DATA, isonode, shardid, poolid };
 	return ceph_str_hash_linux((char*)&hdr, sizeof(struct kvs_key_header));
 }
+
+//#undef dout_prefix
+//#define dout_prefix *_dout << "kvsstore "
 
 inline uint8_t _construct_var_object_key_impl(CephContext* cct, const uint8_t keyprefix, const bool isonode, const ghobject_t& oid, void *keybuffer, uint8_t space_id) {
     struct kvs_var_object_key* kvskey = (struct kvs_var_object_key*)keybuffer;
@@ -268,6 +270,11 @@ inline uint8_t _construct_var_object_key_impl(CephContext* cct, const uint8_t ke
 
     const int namelen = (pos - &kvskey->name[0]);
 
+   // if (isonode){
+  //      std::cerr << " onode keylength, " << (35 + namelen) << std::endl;
+  //      lderr(cct) << " onode keylength, " << (35 + namelen) << dendl;
+   //  }
+   
     if (namelen > 220) {
         // panic: name is too long
     	std::cerr << "name is too long" << std::endl;

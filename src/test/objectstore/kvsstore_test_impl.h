@@ -102,6 +102,125 @@ bool sorted(const vector<ghobject_t> &in) {
   return true;
 }
 
+void colsplittest(
+  ObjectStore *store,
+  unsigned num_objects,
+  unsigned common_suffix_size,
+  bool clones
+  ) {
+  coll_t cid(spg_t(pg_t(0,52),shard_id_t::NO_SHARD));
+  coll_t tid(spg_t(pg_t(1<<common_suffix_size,52),shard_id_t::NO_SHARD));
+  auto ch = store->create_new_collection(cid);
+  auto tch = store->create_new_collection(tid);
+  int r = 0;
+  {
+    ObjectStore::Transaction t;
+    t.create_collection(cid, common_suffix_size);
+    r = queue_transaction(store, ch, std::move(t));
+    ASSERT_EQ(r, 0);
+  }
+  bufferlist small;
+  small.append("small");
+  {
+    ObjectStore::Transaction t;
+    for (uint32_t i = 0; i < (2 - (int)clones)*num_objects; ++i) {
+      stringstream objname;
+      objname << "obj" << i;
+      ghobject_t a(hobject_t(
+         objname.str(),
+         "",
+         CEPH_NOSNAP,
+         i<<common_suffix_size,
+         52, ""));
+      t.write(cid, a, 0, small.length(), small,
+        CEPH_OSD_OP_FLAG_FADVISE_WILLNEED);
+      if (clones) {
+  objname << "-clone";
+  ghobject_t b(hobject_t(
+           objname.str(),
+           "",
+           CEPH_NOSNAP,
+           i<<common_suffix_size,
+           52, ""));
+  t.clone(cid, a, b);
+      }
+      if (i % 100) {
+  r = queue_transaction(store, ch, std::move(t));
+  ASSERT_EQ(r, 0);
+  t = ObjectStore::Transaction();
+      }
+    }
+    r = queue_transaction(store, ch, std::move(t));
+    ASSERT_EQ(r, 0);
+  }
+  {
+    ObjectStore::Transaction t;
+    t.create_collection(tid, common_suffix_size + 1);
+    t.split_collection(cid, common_suffix_size+1, 1<<common_suffix_size, tid);
+    r = queue_transaction(store, ch, std::move(t));
+    ASSERT_EQ(r, 0);
+  }
+  ch->flush();
+
+  // check
+  vector<ghobject_t> objects;
+  r = store->collection_list(ch, ghobject_t(), ghobject_t::get_max(),
+           INT_MAX, &objects, 0);
+  ASSERT_EQ(r, 0);
+ // ASSERT_EQ(objects.size(), num_objects);
+  for (vector<ghobject_t>::iterator i = objects.begin();
+       i != objects.end();
+       ++i) {
+  //  ASSERT_EQ(!!(i->hobj.get_hash() & (1<<common_suffix_size)), 0u);
+  }
+
+  objects.clear();
+  r = store->collection_list(tch, ghobject_t(), ghobject_t::get_max(),
+           INT_MAX, &objects, 0);
+  ASSERT_EQ(r, 0);
+ // ASSERT_EQ(objects.size(), num_objects);
+  for (vector<ghobject_t>::iterator i = objects.begin();
+       i != objects.end();
+       ++i) {
+  //  ASSERT_EQ(!(i->hobj.get_hash() & (1<<common_suffix_size)), 0u);
+  }
+
+  // merge them again!
+  {
+    ObjectStore::Transaction t;
+    t.merge_collection(tid, cid, common_suffix_size);
+    r = queue_transaction(store, ch, std::move(t));
+    ASSERT_EQ(r, 0);
+  }
+
+  // check and clean up
+  ObjectStore::Transaction t;
+  {
+    vector<ghobject_t> objects;
+    r = store->collection_list(ch, ghobject_t(), ghobject_t::get_max(),
+             INT_MAX, &objects, 0);
+    ASSERT_EQ(r, 0);
+    ASSERT_EQ(objects.size(), num_objects * 2); // both halves
+    unsigned size = 0;
+    for (vector<ghobject_t>::iterator i = objects.begin();
+   i != objects.end();
+   ++i) {
+      t.remove(cid, *i);
+      if (++size > 100) {
+  size = 0;
+  r = queue_transaction(store, ch, std::move(t));
+  ASSERT_EQ(r, 0);
+  t = ObjectStore::Transaction();
+      }
+    }
+  }
+  t.remove_collection(cid);
+  r = queue_transaction(store, ch, std::move(t));
+  ASSERT_EQ(r, 0);
+
+  ch->flush();
+  ASSERT_TRUE(!store->collection_exists(tid));
+}
 //End of Helpers
 
 // KvsStoreTest class

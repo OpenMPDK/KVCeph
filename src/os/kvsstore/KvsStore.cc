@@ -439,8 +439,9 @@ int KvsStore::journal_replay(int prefix, const std::function<int (kv_key*)> &key
     iter_ctx.prefix  = prefix;
     iter_ctx.bitmask = 0xFFFFFFFF;
     iter_ctx.buflen  = ITER_BUFSIZE;
-
-    int ret = db.iter_readall_aio(&iter_ctx, buflist, KEYSPACE_JOURNAL);
+    // commented for batch driver fix, remove iter_readall
+    //int ret = db.iter_readall_aio(&iter_ctx, buflist, KEYSPACE_JOURNAL);
+    int ret = db.iter_readall(&iter_ctx, buflist, KEYSPACE_JOURNAL);
     if (ret != 0) return ret;
 
     for (const auto &p : buflist) {
@@ -664,7 +665,9 @@ int KvsStore::_open_collections() {
     iter_ctx.buflen = ITER_BUFSIZE;
 
     // read collections
-    ret = db.iter_readall_aio(&iter_ctx, buflist, KEYSPACE_COLLECTION);
+    // commented for batch driver fix, remove iter_readall
+    //ret = db.iter_readall_aio(&iter_ctx, buflist, KEYSPACE_COLLECTION);
+    ret = db.iter_readall(&iter_ctx, buflist, KEYSPACE_COLLECTION);
     if (ret != 0) return ret;
 
     // parse the key buffers
@@ -1375,7 +1378,10 @@ int KvsStore::iterate_objects_in_device(uint64_t poolid, int8_t shardid, std::se
     // read collections
     utime_t start_itertime = ceph_clock_now();
 
-    ret = db.iter_readall_aio(&iter_ctx, buflist, (uint8_t) space_id);
+    // commented for batch driver fix 
+    //ret = db.iter_readall_aio(&iter_ctx, buflist, (uint8_t) space_id);
+    //remove after batch driver fix
+    ret = db.iter_readall(&iter_ctx, buflist, (uint8_t) space_id);
     utime_t end_itertime = ceph_clock_now();
 
     logger->tinc(l_kvsstore_iterate_latency, end_itertime - start_itertime);
@@ -1444,7 +1450,9 @@ int KvsStore::_read_omap_keys(
 	kv_iter_context iter_ctx;
 	kvcmds.omap_iterator_init(cct, lid, oid, &iter_ctx);
     derr << __func__ << " after omap_iterator_init " << dendl;
-	int ret = db.iter_readall_aio(&iter_ctx, buflist, iter_ctx.spaceid);
+	// commented for batch driver fix, remove iter_readall
+    // int ret = db.iter_readall_aio(&iter_ctx, buflist, iter_ctx.spaceid);
+    int ret = db.iter_readall(&iter_ctx, buflist, iter_ctx.spaceid);
     derr << __func__ << " ret of iter_readall_aio = " << ret << dendl;
 
 	if (ret != 0) {
@@ -1518,6 +1526,7 @@ int KvsStore::omap_get(
     	std::list<std::pair<malloc_unique_ptr<char>, int> > buflist;
 
     	int r = _read_omap_keys(o->onode.lid, o->oid, buflist, keylist);
+        derr << __func__ << " keylist size = " << keylist.size() << dendl;
     	if (r != 0) return r;
 
         bufferlist bl;
@@ -2445,11 +2454,11 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
                 case Transaction::OP_MERGE_COLLECTION:
                 {
                     uint32_t bits = op->split_bits;
-                    r = -EOPNOTSUPP;
-                    break;
-                    //r = _merge_collection(txc, &c, cvec[op->dest_cid], bits);
-                  //  if (!r)
-                  //      continue;
+                  //  r = -EOPNOTSUPP;
+                  //  break;
+                    r = _merge_collection(txc, &c, cvec[op->dest_cid], bits);
+                    if (!r)
+                        continue;
                 }
                 break;
                 case Transaction::OP_COLL_HINT:
@@ -3823,10 +3832,10 @@ int KvsStore::_merge_collection(KvsTransContext *txc, CollectionRef *c, Collecti
   // sequencer may need to order new ops after those writes.
  
  //_osr_drain((*c)->osr.get());
-    {
+   {
         KvsOpSequencer *osr = txc->osr.get();
         osr->drain();
-    }
+   }
  
 
   // move any cached items (onodes and referenced shared blobs) that will

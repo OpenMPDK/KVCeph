@@ -5,6 +5,11 @@
 //// --------------------------------------------------------------------
 
 
+TEST_P(KvsStoreTest, ColSplitTest1) {
+//    colsplittest(store.get(), 100, 7, false);
+  }
+
+
 TEST_P(KvsStoreTest, OMapIterator) {
   coll_t cid;
   ghobject_t hoid(hobject_t("tesomap", "", CEPH_NOSNAP, 0, 0, ""));
@@ -271,9 +276,9 @@ TEST_P(KvsStoreTest, OMapTest) {
   }
 
   for (int i = 0; i < 100; i++) {
-    if (!(i%5)) {
+    //if (!(i%5)) {
       std::cout << "On iteration " << i << std::endl;
-    }
+    //}
     ObjectStore::Transaction t;
     bufferlist bl;
     map<string, bufferlist> cur_attrs;
@@ -283,14 +288,18 @@ TEST_P(KvsStoreTest, OMapTest) {
    j != attrs.end();
    ++j) {
       bool correct = cur_attrs.count(j->first) && string(cur_attrs[j->first].c_str()) == string(j->second.c_str());
-      std::cout << " curr_attrs,count() = " 
+      std::cout << " curr_attrs.count() = " 
                 << cur_attrs.count(j->first) 
+                << " attrs.size() = " << attrs.size()
                 << std::endl;
+
       if (!correct) {
-  std::cout << j->first << " is present in cur_attrs " << cur_attrs.count(j->first) << " times " << std::endl;
-  if (cur_attrs.count(j->first) > 0) {
-    std::cout << j->second.c_str() << " : " << cur_attrs[j->first].c_str() << std::endl;
-  }
+        std::cout << j->first << " is present in cur_attrs " 
+                  << cur_attrs.count(j->first) << " times " << std::endl;
+      if (cur_attrs.count(j->first) > 0) {
+        std::cout << j->second.c_str() << " : "
+                  << cur_attrs[j->first].c_str() << std::endl;
+        }
       }
       ASSERT_EQ(correct, true);
     }
