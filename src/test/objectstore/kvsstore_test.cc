@@ -5,11 +5,6 @@
 //// --------------------------------------------------------------------
 
 
-TEST_P(KvsStoreTest, ColSplitTest1) {
-//    colsplittest(store.get(), 100, 7, false);
-  }
-
-
 TEST_P(KvsStoreTest, OMapIterator) {
   coll_t cid;
   ghobject_t hoid(hobject_t("tesomap", "", CEPH_NOSNAP, 0, 0, ""));

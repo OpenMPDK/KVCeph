@@ -3831,12 +3831,7 @@ int KvsStore::_merge_collection(KvsTransContext *txc, CollectionRef *c, Collecti
   // that all deferred writes complete before we merge as the target collection's
   // sequencer may need to order new ops after those writes.
  
- //_osr_drain((*c)->osr.get());
-   {
-        KvsOpSequencer *osr = txc->osr.get();
-        osr->drain();
-   }
- 
+  _osr_drain((*c)->osr.get());
 
   // move any cached items (onodes and referenced shared blobs) that will
   // belong to the child collection post-split.  leave everything else behind.
