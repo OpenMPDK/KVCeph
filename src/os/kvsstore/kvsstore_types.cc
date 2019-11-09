@@ -59,26 +59,26 @@ void KvsOpSequencer::discard() {
 
 void KvsOpSequencer::drain() {
     FTRACE
-    lderr(store->cct) << __func__ << " ### draining acquiring qlock " << dendl;
+    //lderr(store->cct) << __func__ << " ### draining acquiring qlock " << dendl;
     std::unique_lock l{qlock};
-    lderr(store->cct) << __func__ << " ### acquired qlock wait if q.empty = " << q.empty() << dendl;
+    //lderr(store->cct) << __func__ << " ### acquired qlock wait if q.empty = " << q.empty() << dendl;
  // debug layout 
     if (!q.empty()){
         KvsTransContext *txc = &q.back();
-        lderr(store->cct) << __func__ << " q.size() = " << q.size() 
-            << " txc->state = " << txc->get_state_name() 
-            << " oncommits.size() = " << txc->oncommits.size() << dendl;
+        //lderr(store->cct) << __func__ << " q.size() = " << q.size() 
+        //    << " txc->state = " << txc->get_state_name() 
+        //    << " oncommits.size() = " << txc->oncommits.size() << dendl;
     }
 // debug layout remove 
     while (!q.empty())
         qcond.wait(l);
-    lderr(store->cct) << __func__ << " ### released qlock " << dendl;
+    //lderr(store->cct) << __func__ << " ### released qlock " << dendl;
 
 }
 
 void KvsOpSequencer::drain_preceding(KvsTransContext *txc) {
     FTRACE
-    lderr(store->cct) << __func__ << " ### drain_preceding acquiring qlock " << dendl;
+    //lderr(store->cct) << __func__ << " ### drain_preceding acquiring qlock " << dendl;
     std::unique_lock l{qlock};
     while (!q.empty() && &q.front() != txc)
         qcond.wait(l);
@@ -87,7 +87,7 @@ void KvsOpSequencer::drain_preceding(KvsTransContext *txc) {
 bool KvsOpSequencer::_is_all_kv_submitted() {
     FTRACE
     // caller must hold qlock
-    lderr(store->cct) << __func__ << " ### all qlock " << dendl;
+    //lderr(store->cct) << __func__ << " ### all qlock " << dendl;
     if (q.empty()) {
         return true;
     }
@@ -472,7 +472,7 @@ void KvsOnodeSpace::dump(CephContext *cct, int lvl)
 void KvsOnode::flush()
 {
     if (flushing_count.load()) {
-        lderr(c->store->cct) << __func__ << " cnt:" << flushing_count << dendl;
+        //lderr(c->store->cct) << __func__ << " cnt:" << flushing_count << dendl;
         std::unique_lock l(flush_lock);
         while (flushing_count.load()) {
             flush_cond.wait(l);
@@ -524,13 +524,13 @@ void KvsOmapIterator::makeready()
 }
 int KvsOmapIterator::seek_to_first()
 {
-    lderr(store->cct) << __func__ << " before keylist " << dendl;
+   // lderr(store->cct) << __func__ << " before keylist " << dendl;
     it = keylist.begin();
     if (o->onode.has_omap()){ 
-        lderr(store->cct) << __func__ << " has omap " << dendl;
+       // lderr(store->cct) << __func__ << " has omap " << dendl;
         it = keylist.begin();
         }
-    else{ lderr(store->cct) << __func__ << " does not contain omaps " << dendl;
+    else{ //lderr(store->cct) << __func__ << " does not contain omaps " << dendl;
      it = std::set<string>::iterator(); }
     return 0;
 }
@@ -620,9 +620,9 @@ KvsOmapIteratorImpl::KvsOmapIteratorImpl(
 
 int KvsOmapIteratorImpl::seek_to_first()
 {
-    lderr(c->store->cct) << __func__ << "  seek_to_first  before collection lock "<< dendl;
+    //lderr(c->store->cct) << __func__ << "  seek_to_first  before collection lock "<< dendl;
     RWLock::RLocker l(c->lock);
-    lderr(c->store->cct) << __func__ << "  seek_to_first collection lock "<< dendl;
+    //lderr(c->store->cct) << __func__ << "  seek_to_first collection lock "<< dendl;
     return it->seek_to_first();
 }
 

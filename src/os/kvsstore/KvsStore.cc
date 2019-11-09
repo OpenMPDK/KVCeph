@@ -94,7 +94,7 @@ void KvsStore::prefetch_onode(const coll_t& cid, const ghobject_t *oid) {
 int KvsCollection::get_data(KvsTransContext *txc, const ghobject_t &oid, uint64_t offset, size_t length, bufferlist &bl) {
 
     bl.clear();
-    
+    //lderr(store->cct) << __func__ << " oid = " << oid << dendl;  
     if (txc) {
         // modified objects within a transaction
         auto it = txc->tempbuffers.find(oid);
@@ -110,7 +110,7 @@ int KvsCollection::get_data(KvsTransContext *txc, const ghobject_t &oid, uint64_
             }
             if (length > 0)
                 bl.append((const char *)((char*)data.c_str() + offset), length);
-
+      //  lderr(store->cct) << __func__ << " 1. oid = " << oid << dendl; 
             return bl.length();
         }
     }
@@ -125,7 +125,7 @@ int KvsCollection::get_data(KvsTransContext *txc, const ghobject_t &oid, uint64_
             if (maxlength < 0) maxlength = 0;
             if (maxlength > 0) bl.append(o->buffer.c_str() + offset, maxlength);
         }
-        
+     //lderr(store->cct) << __func__ << " 2. oid = " << oid << dendl;    
         return bl.length();
     }
 
@@ -146,7 +146,7 @@ int KvsCollection::get_data(KvsTransContext *txc, const ghobject_t &oid, uint64_
     } else {
         return -EIO;
     }
-
+    //lderr(store->cct) << __func__ << " 3. oid = " << oid << dendl; 
     return bl.length();
 }
 
@@ -440,8 +440,8 @@ int KvsStore::journal_replay(int prefix, const std::function<int (kv_key*)> &key
     iter_ctx.bitmask = 0xFFFFFFFF;
     iter_ctx.buflen  = ITER_BUFSIZE;
     // commented for batch driver fix, remove iter_readall
-    //int ret = db.iter_readall_aio(&iter_ctx, buflist, KEYSPACE_JOURNAL);
-    int ret = db.iter_readall(&iter_ctx, buflist, KEYSPACE_JOURNAL);
+    int ret = db.iter_readall_aio(&iter_ctx, buflist, KEYSPACE_JOURNAL);
+    //int ret = db.iter_readall(&iter_ctx, buflist, KEYSPACE_JOURNAL);
     if (ret != 0) return ret;
 
     for (const auto &p : buflist) {
@@ -494,10 +494,10 @@ int KvsStore::umount() {
     FTRACE
 
     assert(mounted);
-    derr << __func__ << " before drain all " << dendl;
+    //derr << __func__ << " before drain all " << dendl;
     _osr_drain_all();
 
-    derr << __func__ << " before unregister all " << dendl;
+    //derr << __func__ << " before unregister all " << dendl;
     _osr_unregister_all();
 
     mounted = false;
@@ -574,14 +574,14 @@ void KvsStore::_osr_drain_all() {
     dout(10) << __func__ << dendl;
     set<OpSequencerRef> s;
     vector<OpSequencerRef> zombies;
-    derr << __func__ << " before acquiring coll_lock " << dendl;
+   // derr << __func__ << " before acquiring coll_lock " << dendl;
     {
         RWLock::RLocker l(coll_lock);
         for (auto& i : coll_map) {
             s.insert(i.second->osr);
         }
     }
-     derr << __func__ << " before acquiring zombie_osr_lock " << dendl;
+   //  derr << __func__ << " before acquiring zombie_osr_lock " << dendl;
     {
         std::lock_guard l(zombie_osr_lock);
         for (auto& i : zombie_osr_set) {
@@ -591,11 +591,11 @@ void KvsStore::_osr_drain_all() {
     }
 
     for (auto osr : s) {
-        derr << __func__ << " drain " << osr << dendl;
+     //   derr << __func__ << " drain " << osr << dendl;
         dout(20) << __func__ << " drain " << osr << dendl;
         osr->drain();
     }
- derr << __func__ << " before acquiring zombie_osr_lock -- 2 " << dendl;
+ //derr << __func__ << " before acquiring zombie_osr_lock -- 2 " << dendl;
     {
     std::lock_guard l(zombie_osr_lock);
     for (auto& osr : zombies) {
@@ -612,7 +612,7 @@ void KvsStore::_osr_drain_all() {
       }
     }
   }
- derr << __func__ << " DONE " << dendl;
+ //derr << __func__ << " DONE " << dendl;
   dout(10) << __func__ << " done" << dendl;
 
 
@@ -666,8 +666,8 @@ int KvsStore::_open_collections() {
 
     // read collections
     // commented for batch driver fix, remove iter_readall
-    //ret = db.iter_readall_aio(&iter_ctx, buflist, KEYSPACE_COLLECTION);
-    ret = db.iter_readall(&iter_ctx, buflist, KEYSPACE_COLLECTION);
+    ret = db.iter_readall_aio(&iter_ctx, buflist, KEYSPACE_COLLECTION);
+    //ret = db.iter_readall(&iter_ctx, buflist, KEYSPACE_COLLECTION);
     if (ret != 0) return ret;
 
     // parse the key buffers
@@ -951,6 +951,7 @@ int KvsStore::set_collection_opts(CollectionHandle &ch, const pool_opts_t &opts)
     return 0;
 }
 
+
 int KvsStore::read(
         const coll_t &cid,
         const ghobject_t &oid,
@@ -966,6 +967,7 @@ int KvsStore::read(
     return read(c, oid, offset, length, bl, op_flags);
 }
 
+
 int KvsStore::read(
         CollectionHandle &c_,
         const ghobject_t &oid,
@@ -980,7 +982,7 @@ int KvsStore::read(
     dout(15) << __func__ << " " << cid << " " << oid
              << " 0x" << std::hex << offset << "~" << length << std::dec
              << dendl;
-
+    
     if (!c->exists)
         return -ENOENT;
 
@@ -1379,9 +1381,9 @@ int KvsStore::iterate_objects_in_device(uint64_t poolid, int8_t shardid, std::se
     utime_t start_itertime = ceph_clock_now();
 
     // commented for batch driver fix 
-    //ret = db.iter_readall_aio(&iter_ctx, buflist, (uint8_t) space_id);
+    ret = db.iter_readall_aio(&iter_ctx, buflist, (uint8_t) space_id);
     //remove after batch driver fix
-    ret = db.iter_readall(&iter_ctx, buflist, (uint8_t) space_id);
+   // ret = db.iter_readall(&iter_ctx, buflist, (uint8_t) space_id);
     utime_t end_itertime = ceph_clock_now();
 
     logger->tinc(l_kvsstore_iterate_latency, end_itertime - start_itertime);
@@ -1449,11 +1451,11 @@ int KvsStore::_read_omap_keys(
 
 	kv_iter_context iter_ctx;
 	kvcmds.omap_iterator_init(cct, lid, oid, &iter_ctx);
-    derr << __func__ << " after omap_iterator_init " << dendl;
+   // derr << __func__ << " after omap_iterator_init " << dendl;
 	// commented for batch driver fix, remove iter_readall
-    // int ret = db.iter_readall_aio(&iter_ctx, buflist, iter_ctx.spaceid);
-    int ret = db.iter_readall(&iter_ctx, buflist, iter_ctx.spaceid);
-    derr << __func__ << " ret of iter_readall_aio = " << ret << dendl;
+     int ret = db.iter_readall_aio(&iter_ctx, buflist, iter_ctx.spaceid);
+    //int ret = db.iter_readall(&iter_ctx, buflist, iter_ctx.spaceid);
+    //derr << __func__ << " ret of iter_readall_aio = " << ret << dendl;
 
 	if (ret != 0) {
 		return -ENOENT;
@@ -1488,7 +1490,7 @@ int KvsStore::_read_omap_keys(
 	}
 
 	if (keylist.size() == 0) {
-        derr << __func__ << " NO keys found " << dendl;
+       // derr << __func__ << " NO keys found " << dendl;
 		return -1;
 	}
 	return 0;
@@ -1526,7 +1528,7 @@ int KvsStore::omap_get(
     	std::list<std::pair<malloc_unique_ptr<char>, int> > buflist;
 
     	int r = _read_omap_keys(o->onode.lid, o->oid, buflist, keylist);
-        derr << __func__ << " keylist size = " << keylist.size() << dendl;
+        //derr << __func__ << " keylist size = " << keylist.size() << dendl;
     	if (r != 0) return r;
 
         bufferlist bl;
@@ -1765,12 +1767,12 @@ ObjectMap::ObjectMapIterator KvsStore::_get_omap_iterator(
 {
     o->flush();
     
-    derr << __func__ << " kvsomapiterator 1 " << dendl;
+    //derr << __func__ << " kvsomapiterator 1 " << dendl;
     KvsOmapIterator *impl  = _get_kvsomapiterator(c, o);
-    derr << __func__ << " kvsomapiterator 2 " << dendl;
+    //derr << __func__ << " kvsomapiterator 2 " << dendl;
     if (impl == 0)
         return ObjectMap::ObjectMapIterator();
-    derr << __func__ << " kvsomapiterator 3 " << dendl;
+    //derr << __func__ << " kvsomapiterator 3 " << dendl;
     return ObjectMap::ObjectMapIterator(new KvsOmapIteratorImpl(c, impl));
 }
 
@@ -1779,18 +1781,18 @@ KvsOmapIterator* KvsStore::_get_kvsomapiterator(KvsCollection *c, OnodeRef &o) {
     kv_iter_context iter_ctx;
 
     KvsOmapIterator *impl = new KvsOmapIterator(c, o, this);
-    derr << __func__ << " before read_omap_keys " << dendl;
+    //derr << __func__ << " before read_omap_keys " << dendl;
     int ret = _read_omap_keys(o->onode.lid, o->oid, impl->buflist, impl->keylist);
-    derr << __func__ << " after read_omap_keys ret = " << ret  << dendl;
+   // derr << __func__ << " after read_omap_keys ret = " << ret  << dendl;
   // original was if (ret != 0) { // should be (ret != 0 && ret != -1)
-    if (ret != 0 && ret != -1) {
+    if (ret == -ENOENT) {
     //if (ret != 0) {
         delete impl;
         return 0;
     }
-    derr << __func__ << " before makeready " << dendl;
+    //derr << __func__ << " before makeready " << dendl;
     impl->makeready();
-    derr << __func__ << " after makeready " << dendl;
+    //derr << __func__ << " after makeready " << dendl;
     return impl;
 }
 
@@ -2620,15 +2622,15 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
                 break;
 
             case Transaction::OP_COLL_ADD:
-                assert(0 == "not implemented");
+                ceph_abort_msg("not implemented");
                 break;
 
             case Transaction::OP_COLL_REMOVE:
-                assert(0 == "not implemented");
+                ceph_abort_msg("not implemented");
                 break;
 
             case Transaction::OP_COLL_MOVE:
-                assert(0 == "deprecated");
+                ceph_abort_msg("deprecated");
                 break;
 
             case Transaction::OP_COLL_MOVE_RENAME:
@@ -2901,6 +2903,7 @@ int KvsStore::_write(KvsTransContext *txc,
     dout(20) << __func__ << " " << c->cid << " " << o->oid << ","
              << offset << "~" << length 
              << dendl;
+
     int r = 0;
 
     if (offset + length > KVS_OBJECT_MAX_SIZE) {
@@ -2940,6 +2943,7 @@ int KvsStore::_write(KvsTransContext *txc,
     dout(10) << __func__ << " " << c->cid << " " << o->oid
              << " 0x" << std::hex << offset << "~" << length << std::dec
              << " = " << r << dendl;
+
 
     return r;
 }
@@ -3226,7 +3230,7 @@ int KvsStore::_omap_setkeys(KvsTransContext *txc,
         kvcmds.add_omap(&txc->ioc, o->oid, o->onode.lid, key, value);
     }
     r = 0;
-    derr << __func__ << " " << c->cid << " " << o->oid << " ret = " << r << dendl;
+   // derr << __func__ << " " << c->cid << " " << o->oid << " ret = " << r << dendl;
     dout(10) << __func__ << " " << c->cid << " " << o->oid << " = " << r << dendl;
     return r;
 }
@@ -3854,7 +3858,9 @@ int KvsStore::_merge_collection(KvsTransContext *txc, CollectionRef *c, Collecti
 
    // remove source collection
     {
-    RWLock::WLocker l3(coll_lock);
+    //RWLock::WLocker l3(coll_lock);
+    std::unique_lock l3(coll_lock);
+    coll_map.erase((*c)->cid);
     txc->removed_collections.push_back(*c);
     (*c)->exists = false;
     _osr_register_zombie((*c)->osr.get());
@@ -3893,12 +3899,14 @@ void KvsCollection::split_cache(KvsCollection *dest)
         while (p != onode_map.onode_map.end()) {
             if (!p->second->oid.match(destbits, destpg.pgid.ps())) {
                 // onode does not belong to this child
+                ldout(store->cct, 20) << __func__ << " onode  " << p->second->oid
+                                 << " does not belong to this child = "
+                                 << dest->cid << dendl;
                 ++p;
             } else {
                 OnodeRef o = p->second;
                 ldout(store->cct, 20) << __func__ << " moving " << o << " " << o->oid
                                     << dendl;
-
                 cache->_rm_onode(p->second);
                 p = onode_map.onode_map.erase(p);
 
