@@ -3300,14 +3300,16 @@ int KvsStore::_omap_rmkey_range(KvsTransContext *txc,
         std::list<std::pair<malloc_unique_ptr<char>, int> > buflist;
 
         ret = _read_omap_keys(lid,o->oid, buflist, keylist);
-        if (ret != 0) return ret;
+        if (ret == -ENOENT) return ret;
 
-        auto startKey = std::lower_bound(keylist.begin(), keylist.end(), first);
-        auto lastKey  = std::lower_bound(keylist.begin(), keylist.end(), last);
+        if (ret == KV_SUCCESS){
+            auto startKey = std::lower_bound(keylist.begin(), keylist.end(), first);
+            auto lastKey  = std::lower_bound(keylist.begin(), keylist.end(), last);
 
-        for (auto it = startKey; it != lastKey; ++it) {
-            const string user_key = *it;
-            kvcmds.rm_omap(&txc->ioc, o->oid, o->onode.lid, user_key);
+            for (auto it = startKey; it != lastKey; ++it) {
+                const string user_key = *it;
+                kvcmds.rm_omap(&txc->ioc, o->oid, o->onode.lid, user_key);
+             }
         }
 
     }

@@ -770,7 +770,7 @@ int ObjBencher::seq_read_bench(
     locker.unlock();
     completion_wait(slot);
     locker.lock();
-#if 0   
+#if 0  
     r = completion_ret(slot);
 #endif
     if (r < 0) {
