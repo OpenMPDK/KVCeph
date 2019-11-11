@@ -2465,11 +2465,25 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
                 break;
                 case Transaction::OP_COLL_HINT:
                 {
+                    uint32_t type = op->hint_type;
                     bufferlist hint;
                     i.decode_bl(hint);
-                    continue;
-            }
-                break;
+                    auto hiter = hint.cbegin();
+                    if (type == Transaction::COLL_HINT_EXPECTED_NUM_OBJECTS) {
+                      uint32_t pg_num;
+                      uint64_t num_objs;
+                      decode(pg_num, hiter);
+                      decode(num_objs, hiter);
+                      dout(10) << __func__ << " collection hint objects is a no-op, "
+                       << " pg_num " << pg_num << " num_objects " << num_objs
+                       << dendl;
+                    } else {
+                      // Ignore the hint
+                      dout(10) << __func__ << " unknown collection hint " << type << dendl;
+                    }
+                continue;
+                  }
+                  break;
 
             case Transaction::OP_COLL_SETATTR:
                 r = -EOPNOTSUPP;

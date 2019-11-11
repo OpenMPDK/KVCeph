@@ -751,7 +751,7 @@ int ObjBencher::seq_read_bench(
     
     // invalidate internal crc cache
     cur_contents->invalidate_crc();
-  #if 0
+  #if 1
     if (!no_verify) {
       snprintf(data.object_contents, data.op_size, "I'm the %16dth op!", current_index);
       if ( (cur_contents->length() != data.op_size) || 
@@ -770,7 +770,7 @@ int ObjBencher::seq_read_bench(
     locker.unlock();
     completion_wait(slot);
     locker.lock();
-#if 0  
+#if 1  
     r = completion_ret(slot);
 #endif
     if (r < 0) {
@@ -809,7 +809,7 @@ int ObjBencher::seq_read_bench(
     slot = data.finished % concurrentios;
     completion_wait(slot);
     locker.lock();
-#if 0
+#if 1
     r = completion_ret(slot);
 #endif
     if (r < 0) {
@@ -999,7 +999,7 @@ int ObjBencher::rand_read_bench(
     cur_contents = contents[slot].get();
     completion_wait(slot);
     locker.lock();
-#if 0    
+#if 1    
     r = completion_ret(slot);
 #endif    
     if (r < 0) {
@@ -1017,7 +1017,7 @@ int ObjBencher::rand_read_bench(
     data.avg_latency = total_latency / data.finished;
     --data.in_flight;
     locker.unlock();
-#if 0    
+#if 1    
     if (!no_verify) {
       snprintf(data.object_contents, data.op_size, "I'm the %16dth op!", current_index);
       if ((cur_contents->length() != data.op_size) || 
@@ -1056,7 +1056,7 @@ int ObjBencher::rand_read_bench(
     slot = data.finished % concurrentios;
     completion_wait(slot);
     locker.lock();
-#if 0    
+#if 1    
     r = completion_ret(slot);
 #endif    
     if (r < 0) {
