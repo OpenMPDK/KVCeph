@@ -413,6 +413,10 @@ case $1 in
         spdk_enabled=1
         shift
         ;;
+    --kvsstore-dev)
+        kvsstore_dev="$2"
+        shift
+        ;;
     --bluestore-devs )
         IFS=',' read -r -a bluestore_dev <<< "$2"
         for dev in "${bluestore_dev[@]}"; do
@@ -424,10 +428,16 @@ case $1 in
         shift
         ;;
     * )
+        echo "Unknown parameter: $1" 
         usage_exit
 esac
 shift
 done
+
+if [ -z "$kvsstore_dev" ]; then
+    echo "kvsstore_dev paramter is missing" 
+    exit
+fi
 
 if [ $kill_all -eq 1 ]; then
     $SUDO $INIT_CEPH stop
@@ -601,7 +611,7 @@ prepare_conf() {
 [global]
         #kvsdbg_server=$kvsdbg_server
         #kvsdbg_port=$kvsdbg_port
-        kvsstore_dev_path= "/dev/nvme2n1"
+        kvsstore_dev_path=$kvsstore_dev
 
         fsid = $(uuidgen)
         osd failsafe full ratio = .99

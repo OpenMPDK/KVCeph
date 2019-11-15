@@ -1,7 +1,9 @@
 #!/bin/bash
 
+device=$(grep CEPH_OSD0_DEVS ./kvceph-conf/bluestore_env.conf | cut -d '(' -f 2 | cut -d ')' -f 1)
+echo "DEVICE: $devicename"
+
 echo "Deploy Mode SingleNode for Bluestore"
-device=$1
 
 if [ -z "$device" ]
 then
