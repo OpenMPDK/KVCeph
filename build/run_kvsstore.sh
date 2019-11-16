@@ -16,5 +16,5 @@ sudo rm -rf dev
 echo "Format device $devicename"
 sudo nvme format $devicename -s0 -n1
 echo "## VSTART"
-echo "sudo CEPH_DEV=1 MON=1 MDS=1 MGR=1 RGW=1 OSD=1 ../src/vstart_kvs.sh -n -X --kvsstore"
-sudo CEPH_DEV=1 MON=1 MDS=1 MGR=1 RGW=1 OSD=1 ../src/vstart_kvs.sh -n -X --kvsstore --kvsstore-dev $devicename
+echo "sudo CEPH_DEV=1 MON=1 MDS=1 MGR=1 RGW=1 OSD=1 ../src/vstart_kvs.sh -n -X --kvsstore --kvsstore-dev $devicename"
+/usr/bin/sudo CEPH_DEV=1 MON=1 MDS=0 MGR=1 RGW=0 OSD=1 ../src/vstart_kvs.sh -n -X --kvsstore --kvsstore-dev $devicename

@@ -168,6 +168,8 @@ monmap_fn="/tmp/ceph_monmap.$$"
 inc_osd_num=0
 
 msgr="21"
+debug_mkfs=0
+debug_kvsstore=0
 
 usage="usage: $0 [option]... \nex: MON=3 OSD=1 MDS=1 MGR=1 RGW=1 $0 -n -d\n"
 usage=$usage"options:\n"
@@ -412,6 +414,12 @@ case $1 in
         pci_id="$2"
         spdk_enabled=1
         shift
+        ;;
+    --debug-mkfs)
+        debug_mkfs=1
+        ;;
+    --debug-kvsstore)
+        debug_kvsstore=1
         ;;
     --kvsstore-dev)
         kvsstore_dev="$2"
@@ -888,7 +896,13 @@ EOF
             echo "{\"cephx_secret\": \"$OSD_SECRET\"}" > $CEPH_DEV_DIR/osd$osd/new.json
             ceph_adm osd new $uuid -i $CEPH_DEV_DIR/osd$osd/new.json
             rm $CEPH_DEV_DIR/osd$osd/new.json
-            $SUDO $CEPH_BIN/$ceph_osd $extra_osd_args -i $osd $ARGS --mkfs --key $OSD_SECRET --osd-uuid $uuid
+
+            if [ $debug_mkfs -eq 1 ]; then
+                echo "$SUDO gdbserver localhost:7788 $CEPH_BIN/$ceph_osd $extra_osd_args -i $osd $ARGS --mkfs --key $OSD_SECRET --osd-uuid $uuid"
+                sudo env PATH="$PATH" gdbserver localhost:7788 $CEPH_BIN/$ceph_osd $extra_osd_args -i $osd $ARGS --mkfs --key $OSD_SECRET --osd-uuid $uuid
+            else
+                $SUDO $CEPH_BIN/$ceph_osd $extra_osd_args -i $osd $ARGS --mkfs --key $OSD_SECRET --osd-uuid $uuid
+            fi
 
             local key_fn=$CEPH_DEV_DIR/osd$osd/keyring
             cat > $key_fn<<EOF
@@ -902,9 +916,15 @@ EOF
             # designate a single CPU node $osd for osd.$osd
             extra_seastar_args="--smp 1 --cpuset $osd"
         fi
-        run 'osd' $osd $SUDO $CEPH_BIN/$ceph_osd \
-            $extra_seastar_args $extra_osd_args \
-            -i $osd $ARGS $COSD_ARGS
+       
+        if [ $debug_kvsstore -eq 1 ]; then 
+            echo "sudo gdbserver localhost:7788 $CEPH_BIN/$ceph_osd $extra_seastar_args $extra_osd_args -i $osd $ARGS $COSD_ARGS"
+            sudo env PATH="$PATH" gdbserver localhost:7788 $CEPH_BIN/$ceph_osd $extra_seastar_args $extra_osd_args -i $osd $ARGS $COSD_ARGS
+        else
+            run 'osd' $osd $SUDO $CEPH_BIN/$ceph_osd \
+                $extra_seastar_args $extra_osd_args \
+                -i $osd $ARGS $COSD_ARGS
+        fi
     done
     if [ $inc_osd_num -gt 0 ]; then
         # update num osd
