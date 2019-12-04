@@ -23,26 +23,15 @@
 #include "common/WorkQueue.h"
 #include "os/ObjectStore.h"
 #include "os/fs/FS.h"
-// for dout //
+#include "kvio_options.h"
 
-
-
-typedef unsigned __int128 uint128_t;
-
-const uint8_t GROUP_PREFIX_ONODE = 0;
-const uint8_t GROUP_PREFIX_OMAP  = 1;
-const uint8_t GROUP_PREFIX_DATA  = 2;
-const uint8_t GROUP_PREFIX_COLL  = 3;
-const uint8_t GROUP_PREFIX_SUPER = 4;
-const uint8_t GROUP_PREFIX_JOURNAL_ONODE = 6;
-const uint8_t GROUP_PREFIX_JOURNAL_OMAP  = 7;
 
 /// superblock
 struct kvsstore_sb_t {
     uint64_t lid_last;
     uint64_t is_uptodate;
 
-    explicit kvsstore_sb_t() {}
+    explicit kvsstore_sb_t(): lid_last(0), is_uptodate(0) {}
 
     DENC(kvsstore_sb_t, v, p) {
         DENC_START(1, 1, p);
@@ -81,53 +70,33 @@ WRITE_CLASS_DENC(kvsstore_cnode_t)
 struct kvsstore_onode_t {
     uint64_t lid = 0;
     uint64_t size = 0;                   ///< object size
-    map<mempool::kvsstore_cache_other::string,  bufferptr> attrs;        ///< attrs
-    uint8_t flags = 0;
+    bufferlist omap_header;
+    map<mempool::kvsstore_cache_other::string, bufferptr>  attrs;        ///< attrs
+    set<string>             omaps;
 
-    enum {
-        FLAG_OMAP = 1,
-    };
-
-    string get_flags_string() const {
-        string s;
-        if (flags & FLAG_OMAP) {
-            s = "omap";
-        }
-        return s;
-    }
-
-    bool has_flag(unsigned f) const {
-        return flags & f;
-    }
-
-    void set_flag(unsigned f) {
-        flags |= f;
-    }
-
-    void clear_flag(unsigned f) {
-        flags &= ~f;
+    template<typename Functor>
+    void fill_omap_values(map<string, bufferlist> *out, Functor &&read_omap_value) {
+    	for (auto &p: omaps) {
+    		if (read_omap_value(p, (*out)[p]) != 0) {
+    			throw "fill_omap_values: key is not found";
+    		}
+    	}
+    	return;
     }
 
     bool has_omap() const {
-        return has_flag(FLAG_OMAP);
+
+    	return omaps.size() > 0;
     }
-
-    void set_omap_flag() {
-        set_flag(FLAG_OMAP);
-    }
-
-    void clear_omap_flag() {
-        clear_flag(FLAG_OMAP);
-    }
-
-
 
     DENC(kvsstore_onode_t, v, p) {
         DENC_START(1, 1, p);
             denc_varint(v.lid, p);
             denc_varint(v.size, p);
             denc(v.attrs, p);
-            denc(v.flags, p);
+            denc(v.omaps, p);
+            denc(v.omap_header, p);
+            //denc(v.flags, p);
         DENC_FINISH(p);
     }
 

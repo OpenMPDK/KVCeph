@@ -10,12 +10,13 @@
 
 #include <chrono>
 #include <assert.h>
+#include "kadi_types.h"
 #include <sys/eventfd.h>
 #include <sys/select.h>
 #include <sys/epoll.h>
 #include <sys/time.h>
 #include <chrono>
-#include "kadi_types.h"
+#include <unordered_map>
 
 class KADI;
 
@@ -26,8 +27,8 @@ public:
 	std::chrono::high_resolution_clock::time_point t1;
 
     int index;
-    kv_key   *key   = 0;
-    kv_value *value = 0;
+    kv_key   key;
+    kv_value value;
 
     void *post_data;
     void (*post_fn)(kv_io_context &result, void *data);
@@ -113,22 +114,52 @@ public:
 	int poll(uint32_t timeout_us);
 };
 
+struct __attribute__((packed)) oplog_header
+{
+	uint16_t signature;
+	uint16_t keyspaceid;
+	uint64_t seqeunce;
+	uint32_t logcount;
+	uint32_t size;
+	uint8_t  reserved[44];
+};
+
+struct __attribute__((packed)) oplog_entry
+{
+	uint16_t optype;
+	uint16_t keyspaceid;
+	uint32_t keysize;
+	uint8_t reserved[8];
+};
+
+
 class iterbuf_reader {
+protected:
     void *cct;
     void *buf;
     int bufoffset;
     int byteswritten;
 
     int numkeys;
-
 public:
     iterbuf_reader(void *c, void *buf_, int length_);
-
+    virtual ~iterbuf_reader() {}
     bool hasnext() { return byteswritten - bufoffset > 0; }
 
-    bool nextkey(void **key, int *length);
+    virtual bool nextkey(int *optype, void **key, int *length);
 
-    int numkeys_ret(){ return numkeys;}
+    int numkeys_ret() { return numkeys; }
+};
+
+
+class opbuf_reader: public iterbuf_reader {
+	int curkeyid;
+    struct oplog_header* hdr;
+public:
+    opbuf_reader(void *c, int gropuid_, void *buf_, int length_);
+    virtual ~opbuf_reader() {}
+
+    virtual bool nextkey(int *optype, void **key, int *length);
 };
 
 

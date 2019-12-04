@@ -5,12 +5,12 @@
  *      Author: ywkang
  */
 
+#include "kadi_cmds.h"
+#include "kadi_helpers.h"
 #include <iostream>
 #include <unistd.h>
 #include <sys/ioctl.h>
 
-#include "kadi_helpers.h"
-#include "kadi_cmds.h"
 
 using namespace std;
 
@@ -105,18 +105,81 @@ int ioevent_listener::poll(uint32_t timeout_us) {
 /// Iterator buffer reader
 ///
 
-iterbuf_reader::iterbuf_reader(void *c, void *buf_, int length_):
-    cct(c), buf(buf_), bufoffset(0), byteswritten(length_),  numkeys(0)
-{
+inline void print_oplog_header(int groupid, void *buf, int length_) {
+	struct oplog_header* hdr = (struct oplog_header*)buf;
+    cout << "OPLOG Header " << endl;
+    cout << " groupid:"<< groupid <<endl;
+    //cout << " signature:"<< hdr->signature<<endl;
+	//cout << " keyspaceid:"<< hdr->keyspaceid <<endl;
+	cout << " seqeunce:"<< hdr->seqeunce <<endl;
+	//cout << " logcount:"<< hdr->logcount <<endl;
+	//cout << " size:"<< hdr->size << endl;
+    //cout << "Contents (including header)" << endl;
+    //cout << " " << print_key((const char*)buf, length_) << endl;
+}
 
-    if (hasnext()) {
-        numkeys = *((unsigned int*)buf);
-        bufoffset += 4;
-    }
+inline void print_oplog_entry(const char *b, int length_) {
+	oplog_entry *entry = (oplog_entry *)b;
+    cout << "OPENTRY Header " << endl;
+	cout << "oplog_entry: type = " << entry->optype << endl;
+	cout << "oplog_entry: keyspaceid = " << entry->keyspaceid<< endl;
+	cout << "oplog_entry: keysize  = " << entry->keysize << endl;
+	cout << "oplog_entry: key      = " << print_key((const char*)b + sizeof(oplog_entry), entry->keysize) << endl;
+
+	/*cout << "Contents (including header)" << endl;
+    cout << " " << print_key((const char*)b, length_) << endl;*/
 }
 
 
-bool iterbuf_reader::nextkey(void **key, int *length)
+opbuf_reader::opbuf_reader(void *c, int gropuid_, void *buf_, int length_)
+    : iterbuf_reader(c, buf_, length_), curkeyid(0), hdr(0) {
+	bufoffset = 0;
+    if (hasnext()) {
+    	hdr = (struct oplog_header*)buf;
+        numkeys = hdr->logcount;
+        bufoffset += sizeof(struct oplog_header);
+        //print_oplog_header(gropuid_, buf, byteswritten);
+    }
+}
+
+bool opbuf_reader::nextkey(int *optype, void **key, int *length)
+{
+	if (numkeys == curkeyid) return false;
+	//cout << "nextkey: " <<curkeyid + 1 << "/" << numkeys << ", offset = " << bufoffset << "/" << byteswritten<< endl;
+	if (bufoffset + (int)sizeof(oplog_entry) >= byteswritten) {
+		return false;
+	}
+
+	oplog_entry *entry = ((oplog_entry *)(((char*) buf) + bufoffset));	bufoffset += sizeof(oplog_entry);
+
+	*optype = entry->optype;
+	*length = entry->keysize;
+    if (bufoffset + *length > byteswritten) {
+    	cout << "key length is too big " << *length << std::endl;
+    	return false;
+    }
+
+    *key    = (((char*)buf)+bufoffset);
+
+   	//std::cout << "key found: " << print_key((const char*)(((char*)buf)+bufoffset), *length ) << ", length = " << *length << endl;
+
+    bufoffset += ((entry->keysize -1) / 16 +  1) * 16;
+    curkeyid++;
+
+    return true;
+}
+
+iterbuf_reader::iterbuf_reader(void *c, void *buf_, int length_):
+    cct(c), buf(buf_), bufoffset(0), byteswritten(length_),  numkeys(0)
+{
+	if (hasnext()) {
+		numkeys = *((unsigned int*)buf);
+		bufoffset += 4;
+	}
+}
+
+
+bool iterbuf_reader::nextkey(int *optype, void **key, int *length)
 {
 	if (numkeys == 0) return false;
 
@@ -129,6 +192,7 @@ bool iterbuf_reader::nextkey(void **key, int *length)
 
     if (bufoffset + *length > byteswritten) return false;
 
+    *optype = 0;
     *key    = (current_pos+bufoffset);
     afterKeygap = (((*length + 3) >> 2) << 2);
     bufoffset += afterKeygap;

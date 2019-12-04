@@ -898,9 +898,12 @@ EOF
             rm $CEPH_DEV_DIR/osd$osd/new.json
 
             if [ $debug_mkfs -eq 1 ]; then
-                echo "$SUDO gdbserver localhost:7788 $CEPH_BIN/$ceph_osd $extra_osd_args -i $osd $ARGS --mkfs --key $OSD_SECRET --osd-uuid $uuid"
-                sudo env PATH="$PATH" gdbserver localhost:7788 $CEPH_BIN/$ceph_osd $extra_osd_args -i $osd $ARGS --mkfs --key $OSD_SECRET --osd-uuid $uuid
+            #    echo "$SUDO gdbserver localhost:7788 $CEPH_BIN/$ceph_osd $extra_osd_args -i $osd $ARGS --mkfs --key $OSD_SECRET --osd-uuid $uuid"
+            #    sudo env PATH="$PATH" gdbserver localhost:7788 $CEPH_BIN/$ceph_osd $extra_osd_args -i $osd $ARGS --mkfs --key $OSD_SECRET --osd-uuid $uuid
+                echo "$SUDO $CEPH_BIN/$ceph_osd $extra_osd_args -i $osd $ARGS --mkfs --key $OSD_SECRET --osd-uuid $uuid"
+                exit
             else
+                echo "$SUDO $CEPH_BIN/$ceph_osd $extra_osd_args -i $osd $ARGS --mkfs --key $OSD_SECRET --osd-uuid $uuid"
                 $SUDO $CEPH_BIN/$ceph_osd $extra_osd_args -i $osd $ARGS --mkfs --key $OSD_SECRET --osd-uuid $uuid
             fi
 
@@ -918,8 +921,9 @@ EOF
         fi
        
         if [ $debug_kvsstore -eq 1 ]; then 
-            echo "sudo gdbserver localhost:7788 $CEPH_BIN/$ceph_osd $extra_seastar_args $extra_osd_args -i $osd $ARGS $COSD_ARGS"
-            sudo env PATH="$PATH" gdbserver localhost:7788 $CEPH_BIN/$ceph_osd $extra_seastar_args $extra_osd_args -i $osd $ARGS $COSD_ARGS
+            #echo "sudo gdbserver localhost:7788 $CEPH_BIN/$ceph_osd $extra_seastar_args $extra_osd_args -i $osd $ARGS $COSD_ARGS"
+            echo "$CEPH_BIN/$ceph_osd $extra_seastar_args $extra_osd_args -i $osd $ARGS $COSD_ARGS"
+            exit          
         else
             run 'osd' $osd $SUDO $CEPH_BIN/$ceph_osd \
                 $extra_seastar_args $extra_osd_args \

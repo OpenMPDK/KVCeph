@@ -8,8 +8,13 @@
 #ifndef SRC_API_KADI_CMDS_H_
 #define SRC_API_KADI_CMDS_H_
 
-#include "kadi_types.h"
 #include "kadi_helpers.h"
+#include "kadi_types.h"
+#include <unordered_map>
+#include <map>
+
+
+
 
 class KADI {
 	int fd = -1;		// device file descriptor
@@ -20,12 +25,12 @@ class KADI {
     const int qdepth = MAX_AIO_EVENTS;		// io queue depth
 	//std::mutex aioevent_lock;
 	int aioctx_ctxid;
-
+	int ksid_oplog;
 
 public:
     typedef std::list<std::pair<kv_key *, kv_value *> >::iterator aio_iter;
 
-    KADI(void *c): cct(c),nsid(0), aioctx_ctxid(0) { }
+    KADI(void *c): cct(c),nsid(0), aioctx_ctxid(0), ksid_oplog(7) { }
     ~KADI() { close(); }
 
 private:
@@ -39,24 +44,34 @@ public:
     int close();
 
     int kv_store_aio(uint8_t space_id, kv_key *key, kv_value *value, const kv_cb& cb);
+    int kv_store_aio(uint8_t space_id, kv_value *value, const kv_cb& cb, const std::function< void (struct nvme_passthru_kv_cmd&)> &fill);
+
     int kv_store_sync(uint8_t space_id, kv_key *key, kv_value *value);
+    int kv_store_sync(uint8_t space_id, kv_value *value, const std::function< void (struct nvme_passthru_kv_cmd&)> &fill);
 
     int kv_retrieve_aio(uint8_t space_id, kv_key *key, kv_value *value, const kv_cb& cb);
     int kv_retrieve_sync(uint8_t space_id, kv_key *key, kv_value *value);
     int kv_retrieve_sync(uint8_t space_id, kv_key *key, kv_value *value, const std::function< kv_value*(kv_value *,int) >& kv_realloc);
+    int kv_retrieve_sync(uint8_t space_id, kv_value *value, const std::function< void (struct nvme_passthru_kv_cmd&)> &fill);
 
     int kv_delete_aio(uint8_t space_id, kv_key *key, const kv_cb& cb);
+    int kv_delete_aio(uint8_t space_id, const kv_cb& cb, const std::function< void (struct nvme_passthru_kv_cmd&)> &fill);
+
     int kv_delete_sync(uint8_t space_id, kv_key *key);
+    int kv_delete_sync(uint8_t space_id, const std::function< void (struct nvme_passthru_kv_cmd&)> &fill);
 
     int iter_open(kv_iter_context *iter_handle, int space_id);
     int iter_close(kv_iter_context *iter_handle, int space_id);
     int iter_read(kv_iter_context *iter_handle, int space_id);
     int iter_read_aio(int space_id, unsigned char handle, void *buf, uint32_t buflen, const kv_cb& cb);
-    int iter_readall(kv_iter_context *iter_ctx, std::list<std::pair<malloc_unique_ptr<char>, int> > &buflist, int space_id);
-    int iter_readall_aio(kv_iter_context *iter_ctx, std::list<std::pair<malloc_unique_ptr<char>, int> > &buflist, int space_id);
+    int iter_readall(kv_iter_context *iter_ctx, buflist_t &buflist, int space_id);
+    int iter_readall_aio(kv_iter_context *iter_ctx, buflist_t &buflist, int space_id);
 
     int batch_submit(kv_batch_context *batch_handle, int space_id);
     int batch_submit_aio(kv_batch_context *batch_handle, int space_id, const kv_cb& cb);
+    int fill_oplog_info(const uint8_t spaceid, const uint32_t prefix, struct oplog_info &info);
+
+   	uint64_t list_oplog(const uint8_t spaceid, const uint32_t prefix,const std::function< void (int, int, uint64_t, const char*, int) > &key_listener);
 
     int poll_completion(uint32_t &num_events, uint32_t timeout_us);
     int get_freespace(uint64_t &bytesused, uint64_t &capacity, double &utilization);

@@ -159,6 +159,7 @@ namespace mempool {
   f(buffer_anon)		      \
   f(buffer_meta)		      \
   f(kvsstore_cache_onode)       \
+  f(kvsstore_cache_data)       \
   f(kvsstore_cache_other)       \
   f(kvsstore_txc)         \
   f(osd)			      \
