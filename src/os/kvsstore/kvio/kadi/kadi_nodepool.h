@@ -12,6 +12,7 @@
 #include <unordered_map>
 #include "kadi_cmds.h"
 #include "kadi_types.h"
+#include "../../kvsstore_debug.h"
 
 #define DATANODE_BITMAP_CNT 8
 typedef uint64_t bp_addr_t;
@@ -109,14 +110,18 @@ public:
 	int buffer_size;
 
 	kv_indexnode(const bp_addr_t &addr_, char *buffer_, int buffer_size_):
-		addr(addr_), buffer(buffer_), buffer_size(buffer_size_) {}
+		addr(addr_), buffer(buffer_), buffer_size(buffer_size_) {
+        TR << "created: op = " << op << ", addr = " << addr << TREND;
+	}
 
 	void set_dirty() {
 		op = NODE_OP_WRITE;
+		TR << "set dirty: op = " << op << ", addr = " << addr << TREND;
 	}
 
 	void set_invalid() {
 		op = NODE_OP_DELETE;
+        TR << "set invalid: op = " << op << ", addr = " << addr << TREND;
 	}
 
 	virtual ~kv_indexnode() {
@@ -246,22 +251,26 @@ private:
 	}
 
 	void _flush_dirtylist() {
-		int ret;
+	    FTRACE
+		int ret = 0;
 		kv_value value;
 		uint32_t qdepth  = 0, num_completed = 0;
 		struct flush_ctx flushctx;
 		const uint32_t num_ios = pool.size();
-
+        TR << "num ios = " << num_ios << TREND;
 		value.offset = 0;
 
 		auto it = pool.begin();
 		while (num_ios > num_completed) {
 
 			while (it != pool.end() && qdepth < 16) {
+			    TR << "1" << TREND;
 				const auto &p = it->second;
 
+                TR << "2 p->op" << p->op << ", addr = " << p->addr << TREND;
 				switch (p->op) {
 					case NODE_OP_NOP:
+					    num_completed--;
 						break;
 					case NODE_OP_WRITE:
 						value.length = p->size();

@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <stdint.h>
 #include "kvio_options.h"
+#include "../kvsstore_debug.h"
 
 //# encoders & decoders
 //----------------------
@@ -143,13 +144,14 @@ inline uint8_t calculate_collkey_length(const int namelen)
 
 inline uint8_t construct_collkey_impl(void *buffer, const char *name, const int namelen)
 {
+    FTRACE
     struct kvs_coll_key *collkey = (struct kvs_coll_key *)buffer;
-
+TR << "1 buffer = " << buffer << TREND;
     collkey->prefix = GROUP_PREFIX_COLL;	// for list_collections
     collkey->group  = GROUP_PREFIX_COLL;
-
-    memcpy(buffer, name, namelen);
-
+    TR << "2 name = " << name << ",name len " << namelen << TREND;
+    memcpy((char*)buffer + sizeof(kvs_coll_key), name, namelen);
+    TR << "returning " <<sizeof(kvs_coll_key) + namelen << TREND;
     return (sizeof(kvs_coll_key) + namelen);
 }
 

@@ -42,6 +42,7 @@ kv_key KvsBptreeIterator::key() {
 	char *key = 0;
 	int   len = 0;
 	iter->get_key((char**)&key, len);
+    TR << print_kvssd_key(key, len) << TREND;
 	return { key, (uint8_t)len };
 }
 

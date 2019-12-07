@@ -118,7 +118,7 @@ inline malloc_unique_ptr<T> make_malloc_unique(int sz) {
 
 template<typename T>
 inline malloc_unique_ptr<T> make_malloc_unique_ptr(void *ptr) {
-	if (ptr == 0) {
+	if (ptr == nullptr) {
 		return malloc_unique_ptr<T>{ nullptr, free };
 	}
 	return malloc_unique_ptr<T>{ reinterpret_cast<T*>(ptr), free };

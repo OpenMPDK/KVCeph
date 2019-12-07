@@ -10,6 +10,7 @@
 #include <iostream>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include "../../kvsstore_debug.h"
 
 
 using namespace std;
@@ -161,7 +162,7 @@ bool opbuf_reader::nextkey(int *optype, void **key, int *length)
 
     *key    = (((char*)buf)+bufoffset);
 
-   	//std::cout << "key found: " << print_key((const char*)(((char*)buf)+bufoffset), *length ) << ", length = " << *length << endl;
+   	TR << "key found: " << print_key((const char*)(((char*)buf)+bufoffset), *length ) << ", length = " << *length <<TREND;
 
     bufoffset += ((entry->keysize -1) / 16 +  1) * 16;
     curkeyid++;

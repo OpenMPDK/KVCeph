@@ -24,7 +24,7 @@
 
 #include "kadi_nodepool.h"
 #include "kadi_slottedpage.h"
-
+#include "../../kvsstore_debug.h"
 enum {
         BPLUS_TREE_LEAF,
         BPLUS_TREE_NON_LEAF = 1,
@@ -323,6 +323,7 @@ public:
 
 	void flush() {
 		if (root) {
+		    TR << "root->addr = " << root->addr << TREND;
 			pool.flush(root->addr);
 		}
 	}
@@ -330,7 +331,13 @@ private:
 	///
 	/// B+ TREE ALGORITHM - INSERT
 	///
-
+    inline bp_addr_t replicate_key(const bp_addr_t &key){
+        char *k;
+        int l;
+        get_key_from_datanode(key, &k, l);
+        return insert_key_to_datanode(k, l);
+        //std::cerr << "split key = " << std::string(k + 4, 12) << std::endl;
+    }
 	int leaf_insert(bptree_node *leaf, char *userkey, int keylength)
 	{
 		/* Search key location */
@@ -338,12 +345,13 @@ private:
 		//std::cout << "binary search result = " << insert << std::endl;
 		if (insert >= 0) {
 			/* Already exists */
-			return -1;
+			return 0;
 		}
 
 		bp_addr_t key = insert_key_to_datanode(userkey, keylength);
 		insert = -insert - 1;
 
+		TR << "tree insert key = " << key << TREND;
 		/* leaf is full */
 	  	if (leaf->get_children() == param.max_entries) {
 				bp_addr_t split_key;
@@ -357,6 +365,8 @@ private:
 				} else {
 						split_key = leaf_split_right(leaf, sibling, key, insert);
 				}
+
+                split_key = replicate_key(split_key);
 
 				/* build new parent */
 				if (insert < split) {
@@ -609,6 +619,8 @@ private:
 	                } else {
 	                        split_key = non_leaf_split_right2(node, sibling, l_ch, r_ch, key, insert);
 	                }
+
+                    split_key = replicate_key(split_key);
 
 	                /* build new parent */
 	                if (insert < split) {
@@ -955,11 +967,13 @@ private:
 
 	inline void leaf_simple_remove(bptree_node *leaf, int remove)
 	{
-	        memmove(&leaf->key()[remove], &leaf->key()[remove + 1], (leaf->get_children() - remove - 1) * sizeof(bp_addr_t));
-	        //memmove(&data(leaf)[remove], &data(leaf)[remove + 1], (leaf->get_children() - remove - 1) * sizeof(off_t));
-	        leaf->inc_children(-1);
 
-	        remove_key_from_datanode(leaf->key()[remove]);
+        remove_key_from_datanode(leaf->key()[remove]);
+        memmove(&leaf->key()[remove], &leaf->key()[remove + 1],
+                (leaf->get_children() - remove - 1) * sizeof(bp_addr_t));
+        //memmove(&data(leaf)[remove], &data(leaf)[remove + 1], (leaf->get_children() - remove - 1) * sizeof(off_t));
+        leaf->inc_children(-1);
+
 	}
 
 	inline int parent_key_index(bptree_node *parent, bp_addr_t key)
@@ -1167,7 +1181,10 @@ private:
 		{}
 
 		virtual void move_next(const long int movement) {
-			if (tree == 0) return;
+			if (tree == 0) {
+                end();
+                return;
+			}
 
 			bptree_node *node = tree->pool.fetch_tree_node(nodeaddr);
 			if (!node) {

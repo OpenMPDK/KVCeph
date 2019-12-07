@@ -107,6 +107,15 @@ public:
 		return adi.open(devpath, csum_type);
 	}
 
+	inline int close_iterators() {
+	    kv_iter_context ctx;
+	    for (int i =0 ; i < 5; i++) {
+            ctx.id = i;
+            adi.iter_close(&ctx, 0);
+	    }
+	    return 0;
+	}
+
 	inline int close() {
 		return adi.close();
 	}

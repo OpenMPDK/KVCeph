@@ -260,8 +260,13 @@ struct KvsJournal {
 	//const std::function<int (char *)>
 	template<typename Functor>
 	void add_journal_entry(Functor &&filler) {
+	    FTRACE
+
+	    TR << " journal buffer = " << (void*)journal_buffer << ", pos = " <<  journal_buffer_pos << TREND;
 		journal_buffer_pos += filler(journal_buffer + journal_buffer_pos);
+        TR << " filler is done" <<  journal_buffer_pos << TREND;
 		*num_io_pos = *num_io_pos + 1;
+        TR << " # of IOs in the journal" <<  *num_io_pos << TREND;
 	}
 
 	template<typename Functor>
@@ -335,30 +340,41 @@ public:
 
     template<typename Keygen>
 	inline void add_to_journal(const int spaceid, const int object_type, bufferlist *bl, const Keygen &keygen) {
-
+        FTRACE
 		const int bl_length = (bl == 0)? 0:align_4B(bl->length());
-
+        TR << "1" << TREND;
 		const int journal_entry_size = sizeof(kvs_journal_entry) + KVKEY_MAX_SIZE + bl_length;
 		if (cur_journal->is_full(journal_entry_size)) {
+            TR << "2" << TREND;
 			create_new_journal();
 		}
 
+        TR << "3" << TREND;
 		// entry + value + key  (start address of each item is 4B aligned)
 		cur_journal->add_journal_entry([&] (char *buffer)-> int {
+            TR << "4 buffer = " << (void*)buffer << TREND;
 			kvs_journal_entry* entry = (kvs_journal_entry*)buffer;
+            TR << "5  bl_length" <<  bl_length << TREND;
 			entry->spaceid 	   = spaceid;
 			entry->object_type = object_type;
 			entry->op_type     = (bl == 0); //1 /* delete */: 0 /* write */;
+            TR << "6" << TREND;
 			entry->key_length  = keygen(buffer + sizeof(kvs_journal_entry) + bl_length);
+            TR << "7" << TREND;
 
 			if (bl) {
+                TR << "8" << TREND;
 				bl->copy(0, bl->length(), buffer + sizeof(kvs_journal_entry));
+                TR << "9" << TREND;
 				entry->length = bl->length();
+                TR << "10" << TREND;
 			} else {
 				entry->length =0;
 			}
+            TR << "11" << TREND;
 			return journal_entry_size - KVKEY_MAX_SIZE + entry->key_length;
 		});
+        TR << "5" << TREND;
 	}
 
 

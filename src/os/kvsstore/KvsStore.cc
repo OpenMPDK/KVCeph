@@ -317,6 +317,7 @@ out:
 	return r;
 }
 
+static int open_count =0;
 int KvsStore::_open_collections() {
 	FTRACE
 	std::unique_lock<std::mutex> lck(compact_lock,std::defer_lock);
@@ -331,7 +332,9 @@ int KvsStore::_open_collections() {
 	for (it->begin(); it->valid(); it->next()) {
 		coll_t cid;
 		kv_key collkey = it->key();
-		std::string name((char*)collkey.key, collkey.length);
+        TR << "returned key : " << print_kvssd_key(std::string((char*)collkey.key, collkey.length)) << TREND;
+		std::string name((char*)collkey.key + sizeof(kvs_coll_key), collkey.length);
+		TR << "found collection: " << name << TREND;
 		if (cid.parse(name)) {
 		  auto c = ceph::make_ref<KvsCollection>( this,
 		  	  onode_cache_shards[cid.hash_to_shard(onode_cache_shards.size())],
@@ -357,6 +360,10 @@ int KvsStore::_open_collections() {
 		} else {
 		  derr << __func__ << " unrecognized collection " << print_kvssd_key(it->key().key, it->key().length) << dendl;
 		}
+	}
+	if ( open_count > 0 && coll_map.size() == 0) {
+        ceph_abort_msg("no collections found");
+        open_count++;
 	}
 	if (it) delete it;
 	return 0;
@@ -717,10 +724,10 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
 				r = _create_collection(txc, cid, op->split_bits, &c);
                 TR << "after crete_collection " << c->cid << TREND;
 				if (!r) {
-                    TR << "MKCOLL failed" << TREND;
+                    TR << "MKCOLL success" << TREND;
                     continue;
                 }
-				TR << "MKCOLL success" << TREND;
+                TR << "MKCOLL failed" << TREND;
 			}
 			break;
 
@@ -1316,34 +1323,25 @@ int KvsStore::_create_collection(KvsTransContext *txc, const coll_t &cid,
 	dout(15) << __func__ << " " << cid << " bits " << bits << dendl;
 
 	int r;
-TR << "1" << TREND;
+
     bufferlist bl;
-    TR << "2" << TREND;
     {
         std::unique_lock l(coll_lock);
-        TR << "3" << TREND;
         if (*c) {
             derr << " the collection already exists: " << cid << dendl;
-            TR << "4" << TREND;
             r = -EEXIST;
             goto out;
         }
-        TR << "5" << TREND;
         auto p = new_coll_map.find(cid);
-        TR << "6" << TREND;
         ceph_assert(p != new_coll_map.end());
-        TR << "7" << TREND;
         *c = p->second;
         (*c)->cnode.bits = bits;
         coll_map[cid] = *c;
         new_coll_map.erase(p);
-        TR << "8" << TREND;
     }
-    TR << "9" << TREND;
     encode((*c)->cnode, bl);
-    TR << "10" << TREND;
+
     db.add_coll(&txc->ioc, cid, bl);
-    TR << "11" << TREND;
 	r = 0;
 
 out:
@@ -1654,6 +1652,9 @@ void KvsStore::set_cache_shards(unsigned num) {
 
 int KvsStore::mount() {
 	FTRACE
+
+    derr <<  "Mount ----------------------------------------  " << dendl;
+    TR   <<  "Mount ----------------------------------------  " << TREND;
 	int r = _open_path();
 	if (r < 0)
 		return r;
@@ -1672,9 +1673,8 @@ int KvsStore::mount() {
 	r = _open_db(false);
 	if (r < 0)
 		goto out_fsid;
-	 derr << __func__ << " open db = " << r << dendl;
 	r = _fsck();
-	 derr << __func__ << " return of _fsck = " << r << dendl;
+
 	if (r < 0)
 		goto out_db;
 
@@ -1684,16 +1684,19 @@ int KvsStore::mount() {
 	// to update superblock
 	this->kvsb.is_uptodate = 0;
 	r = _write_sb();
-	//derr << __func__ << " return of _write_sb = " << r << dendl;
+	derr << __func__ << "new superblock is written, ret = " << r << dendl;
 	if (r < 0)
 		goto out_db;
 
 	r = _open_collections();
-	//derr << __func__ << " return of _open_collections = " << r << dendl;
+	derr << __func__ << "_open_collections, ret = " << r << dendl;
 	if (r < 0)
 		goto out_db;
 
 	mounted = true;
+
+	derr <<  "Mounted " << dendl;
+	TR << "Mounted" << TREND;
 
 	return 0;
 
@@ -1721,15 +1724,11 @@ int KvsStore::_fsck() {
 	FTRACE
 
 	int ret = _read_sb();
-	if (ret < 0)
-		return 0;
+	if (ret < 0) return 0;
+	derr <<  "read superblock, ret = " << ret  << dendl;
 
 	ret = _journal_replay();
-	if (ret != 0)
-		return ret;
-
-	if (ret != 0)
-		return ret;
+    derr <<  "journal, ret = " << ret  << dendl;
 
 	return ret;
 }
@@ -1949,30 +1948,34 @@ int KvsStore::_lock_fsid() {
 }
 
 int KvsStore::_open_db(bool create) {
-	FTRACE
-	finisher.start();
+    FTRACE
+    finisher.start();
 
-	kv_stop = false;
+    kv_stop = false;
 
-	if (cct->_conf->kvsstore_dev_path == "") {
-		return -1;
-	}
-	if (cct->_conf->kvsstore_csum_type == "crc32c") {
-		csum_type = kvsstore_csum_crc32c;
-	} else if (cct->_conf->kvsstore_csum_type == "none") {
-		csum_type = kvsstore_csum_none;
-	} else {
-		derr << "unknown checksum algorithm: "
-							<< cct->_conf->kvsstore_csum_type << dendl;
-	}
+    if (cct->_conf->kvsstore_dev_path == "") {
+        return -1;
+    }
+    if (cct->_conf->kvsstore_csum_type == "crc32c") {
+        csum_type = kvsstore_csum_crc32c;
+    } else if (cct->_conf->kvsstore_csum_type == "none") {
+        csum_type = kvsstore_csum_none;
+    } else {
+        derr << "unknown checksum algorithm: "
+             << cct->_conf->kvsstore_csum_type << dendl;
+    }
 
-	if (this->db.open(cct->_conf->kvsstore_dev_path) != 0) {
-		return -1;
-	}
+    if (this->db.open(cct->_conf->kvsstore_dev_path) != 0) {
+        return -1;
+    }
+
+    this->db.close_iterators();
 
 	kv_callback_thread.create("kvscallback");
 	kv_index_thread.create("kvsindex");
 	kv_finalize_thread.create("kvsfinalize");
+
+
 
 	return 0;
 }
@@ -2010,7 +2013,7 @@ int KvsStore::_write_sb() {
 
 void KvsStore::_close_db() {
 	FTRACE
-
+    derr << "kv_finalize " << dendl;
 	{
 		std::unique_lock l ( kv_finalize_lock );
 		while (!kv_finalize_started) {
@@ -2019,27 +2022,30 @@ void KvsStore::_close_db() {
 		kv_finalize_stop = true;
 		kv_finalize_cond.notify_all();
 	}
-    
+
+    kv_finalize_thread.join();
+
+    derr << "kv_index_thread " << dendl;
+
     {
         std::unique_lock l ( kv_lock );
         kv_index_stop = true;
     }
 
-    
-    kv_finalize_thread.join();
-    
     kv_index_thread.join();
-    
+
+    derr << "finisher " << dendl;
     finisher.wait_for_empty();
     
 	finisher.stop();
 
-    
+    derr << "kv_callback_thread " << dendl;
     {
         kv_stop = true;
         kv_callback_thread.join();
     }
-    
+
+    derr << "db_close " << dendl;
 	this->db.close();
     
     kv_finalize_stop = false;
@@ -2898,6 +2904,7 @@ int KvsStore::_write(KvsTransContext *txc, CollectionRef &c, OnodeRef &o,
     TR << "0" << TREND;
 	const uint64_t enddata_off = offset + length;
     TR << "1" << TREND;
+
 	KvsStoreDataObject &datao = txc->databuffers[o->oid];
 	if (bl) {
         TR << "2" << TREND;
@@ -2916,9 +2923,10 @@ int KvsStore::_write(KvsTransContext *txc, CollectionRef &c, OnodeRef &o,
 			return 0;
 		});
 	}
+
     TR << "4" << TREND;
 	if (r == 0 && enddata_off > o->onode.size) {
-		o->onode.size =datao.data_len;
+		//o->onode.size =datao.data_len;
 		txc->write_onode(o);
 	}
     TR << "5" << TREND;

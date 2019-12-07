@@ -38,6 +38,7 @@ struct FtraceFile {
     }
 
     void return_fp() {
+        fp.flush();
         lock.unlock();
     }
 };
@@ -84,11 +85,13 @@ inline std::string print_kvssd_key(T* in_, unsigned length)
     char buf[10];
     char *in = (char *)in_;
 
-    out.reserve(length * 2);
+    out.reserve(length * 2 + 10);
     for (i=0; i < length; ++i) {
     	snprintf(buf, sizeof(buf), "%02x", (int)(unsigned char)in[i]);
         out.append(buf);
     }
+    snprintf(buf, sizeof(buf), "(%d B)", length);
+    out.append(buf);
     return out;
 }
 

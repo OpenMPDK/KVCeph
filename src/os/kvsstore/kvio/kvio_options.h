@@ -13,7 +13,7 @@ typedef unsigned __int128 uint128_t;
 //# BATCH
 //-------
 
-#define DISABLE_BATCH false
+#define DISABLE_BATCH true
 
 //# KEYSPACE
 //  0 - enable indexing, 1 - disable indexing

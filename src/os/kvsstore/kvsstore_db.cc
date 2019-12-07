@@ -227,17 +227,26 @@ int KvsStoreDB::read_omap(const ghobject_t& oid, const uint64_t index, const std
 
 
 void KvsStoreDB::add_coll(KvsIoContext *ctx, const coll_t &cid, bufferlist &bl) {
+    FTRACE
 	const char *cidkey_str = cid.c_str();
 	const int   cidkey_len = (int)strlen(cidkey_str);
+
 	assert_keylength(sizeof(kvs_coll_key) + cidkey_len );
+
 	auto keyfunc = [&] (void *buffer)->uint8_t {
-		return construct_collkey_impl(buffer, cidkey_str, cidkey_len);
+	    TR << "key func " << TREND;
+	    int l =  construct_collkey_impl(buffer, cidkey_str, cidkey_len);
+        TR << "l = " << l<< TREND;
+	    TR << "add_coll key = " << print_kvssd_key(std::string ((char*)buffer, l)) << TREND;
+		return l;
 	};
 	ctx->add_to_journal(KEYSPACE_COLLECTION, KVS_JOURNAL_ENTRY_COLL, &bl, keyfunc);
 	ctx->add_pending_meta(KEYSPACE_COLLECTION, bl, keyfunc);
+
 }
 
 void KvsStoreDB::rm_coll(KvsIoContext *ctx, const coll_t &cid) {
+    FTRACE
 	const char *cidkey_str = cid.c_str();
 	const int   cidkey_len = (int)strlen(cidkey_str);
 
@@ -254,6 +263,7 @@ void KvsStoreDB::rm_coll(KvsIoContext *ctx, const coll_t &cid) {
 
 
 void KvsStoreDB::add_onode(KvsIoContext *ctx,const ghobject_t &oid, bufferlist &bl) {
+    FTRACE
 	const uint8_t space_id = (oid.hobj.is_temp())? KEYSPACE_ONODE_TEMP:KEYSPACE_ONODE;
 	const auto keygen = [&] (void *buffer)->uint8_t {
 		return construct_onode_key(cct, oid, buffer);
@@ -265,6 +275,7 @@ void KvsStoreDB::add_onode(KvsIoContext *ctx,const ghobject_t &oid, bufferlist &
 }
 
 void KvsStoreDB::rm_onode(KvsIoContext *ctx,const ghobject_t& oid){
+    FTRACE
 	const uint8_t space_id = (oid.hobj.is_temp())? KEYSPACE_ONODE_TEMP:KEYSPACE_ONODE;
 	const auto keygen = [&] (void *buffer)->uint8_t {
 		return construct_onode_key(cct, oid, buffer);
@@ -275,12 +286,14 @@ void KvsStoreDB::rm_onode(KvsIoContext *ctx,const ghobject_t& oid){
 }
 
 void KvsStoreDB::add_userdata(KvsIoContext *ctx,const ghobject_t& oid, char *page, int length, int pageid){
+    FTRACE
 	ctx->add_pending_data(KEYSPACE_DATA, page, length, [&] (void *buffer)->uint8_t {
 		return construct_object_key(cct, oid, buffer, pageid);
 	});
 }
 
 void KvsStoreDB::rm_data(KvsIoContext *ctx,const ghobject_t& oid, int blockid){
+    FTRACE
 	ctx->add_pending_remove(KEYSPACE_DATA, [&] (void *buffer)->uint8_t {
 		return construct_object_key(cct, oid, buffer, blockid);
 	});
@@ -288,6 +301,7 @@ void KvsStoreDB::rm_data(KvsIoContext *ctx,const ghobject_t& oid, int blockid){
 
 void KvsStoreDB::add_omap(KvsIoContext *ctx,const ghobject_t& oid, uint64_t index, const std::string &strkey, bufferlist &bl)
 {
+    FTRACE
 	ctx->add_pending_meta(KEYSPACE_DATA, bl, [&] (void *buffer)->uint8_t {
 		return construct_omapkey_impl(buffer, index, strkey.c_str(), strkey.length(), KEYSPACE_OMAP);
 	});
@@ -295,6 +309,7 @@ void KvsStoreDB::add_omap(KvsIoContext *ctx,const ghobject_t& oid, uint64_t inde
 
 void KvsStoreDB::rm_omap(KvsIoContext *ctx,const ghobject_t& oid, uint64_t index, const std::string &strkey)
 {
+    FTRACE
 	ctx->add_pending_remove(KEYSPACE_OMAP, [&] (void *buffer)->uint8_t {
 		return construct_omapkey_impl(buffer, index, strkey.c_str(), strkey.length(), KEYSPACE_OMAP);
 	});
@@ -357,13 +372,16 @@ int KvsStoreDB::aio_submit(KvsTransContext *txc)
 		else {
 			if (ior->data) {
 				set_kv_value(&value, ior->data);
+                TR << "ior->data_length = " << ior->data->length() << TREND;
 			} else {
 				set_kv_value(&value, ior->raw_data, ior->raw_data_length);
+                TR << "raw data_length = " << ior->raw_data_length << TREND;
 			}
 
 			res = kadi.kv_store_aio(ior->spaceid, ior->key, &value, { txc_data_callback, static_cast<void*>(txc) });
+            TR << "{SUBMIT} STORE " << print_kvssd_key(ior->key->key, ior->key->length) << ", value length = " << value.length << ", spaceid = " << ior->spaceid << ", retcode = " << res << TREND;
 		}
-		if (res != 0) return res;
+        if (res != 0) return res;
 	}
 
 
@@ -378,8 +396,7 @@ KvsIterator *KvsStoreDB::get_iterator(uint32_t prefix)
 }
 
 uint64_t KvsStoreDB::compact() {
-	FTRACE
-	if (1) return 0;
+	//FTRACE
 	uint64_t processed_keys = 0;
 	bptree onode_tree(&kadi.adi, 6, GROUP_PREFIX_ONODE);
 	bptree  coll_tree(&kadi.adi, 6, GROUP_PREFIX_COLL);
@@ -392,26 +409,36 @@ uint64_t KvsStoreDB::compact() {
 
 			if (prefix == GROUP_PREFIX_ONODE) {
 				tree = &onode_tree;
+                TR  << "onode tree insert " << TREND;
 			} else if (prefix == GROUP_PREFIX_COLL) {
 				tree = &coll_tree;
+                TR  << "coll tree insert " << TREND;
 			} else {
 				return;
 			}
 
-			//derr << "opcode = " << opcode << ", key = " << print_key((const char*)key, length) << ", length = " << length << dendl;
+            TR  << "opcode = " << opcode << ", key = " << print_key((const char*)key, length) << ", length = " << length << TREND;
 
-			if (opcode == 0) {
-				onode_tree.insert((char*)key, length);
-			} else if (opcode == 1) {
-				onode_tree.remove((char*)key, length);
+			if (opcode == nvme_cmd_kv_store) {
+                TR  << "tree insert " << TREND;
+                tree->insert((char*)key, length);
+			} else if (opcode == nvme_cmd_kv_delete) {
+                TR  << "tree remove" << TREND;
+                tree->remove((char*)key, length);
 			}
+
+			TR  << "DONE adding one key" << TREND;
+
 			//cout << "read: group"  << groupid << ", seq " << sequence << ", " << print_key((const char*)key, length) << ", length = " << length << endl;
 	});
-	//derr << "compact 2" << dendl;
+
 	if (processed_keys > 0) {
+        TR  << "flush onode tree" << TREND;
 		onode_tree.flush();
+        TR  << "flush coll tree" << TREND;
 		coll_tree.flush();
 	}
+    TR  << "DONE - processed keys = " <<   processed_keys << TREND;
 	//derr << "compact 3" << dendl;
 
 	return processed_keys;

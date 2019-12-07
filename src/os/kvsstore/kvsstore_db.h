@@ -21,6 +21,7 @@ public:
 	KADIWrapper *get_adi() { return &kadi; }
 	inline int open(const std::string &devpath) {return kadi.open(devpath, 0);	}
 	inline int close() { return kadi.close(); }
+	inline int close_iterators() { return kadi.close_iterators(); }
 	inline bool is_opened() { return kadi.is_opened(); }
 
 	inline int poll_completion(uint32_t &num_events, uint32_t timeout_us) {	return kadi.poll_completion(num_events, timeout_us); }

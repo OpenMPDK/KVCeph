@@ -21,6 +21,7 @@
 #include <boost/intrusive_ptr.hpp>
 #include <include/encoding.h>
 #include "kvio/kvio_options.h"
+#include "kvsstore_debug.h"
 
 struct KvsPage {
 
@@ -68,9 +69,10 @@ struct KvsPage {
   KvsPage(char *data, uint64_t offset) : data(data), offset(offset), nrefs(1) {}
 
   static void operator delete(void *p) {
-	KvsPage* page = reinterpret_cast<KvsPage*>(p);
-	if (page->data) free(page->data);
-	delete page;
+      if (p) {
+          KvsPage *page = reinterpret_cast<KvsPage *>(p);
+          if (page->data) free(page->data);
+      }
   }
 };
 
@@ -157,7 +159,8 @@ class KvsPageSet {
 
         // assume that the caller will write to the range [offset,length),
         //  so we only need to read data offset
-        if (offset + length < page->offset + page_size || offset > page->offset) {
+        //offset + length < page->offset + page_size
+        if (offset > page->offset) {
         	int ret = page_loader(page->data, page_offset / page_size);
         	if (ret != 0) throw "page load failed";
         }
