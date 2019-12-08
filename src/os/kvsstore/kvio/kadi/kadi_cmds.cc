@@ -695,7 +695,7 @@ int KADI::fill_oplog_info(const uint8_t spaceid, const uint32_t prefix, struct o
 		int ret = iter_readall_aio(&ctx, info.buflist, info.spaceid);	// async
 		if (ret != 0) return ret;
 
-		TR << __func__ << "..2" << TREND;
+		TR << __func__ << "..oplog pages = " << info.buflist.size() << TREND;
 		for (const auto &p: info.buflist) {
 			int optype;
 			void *key;
@@ -740,7 +740,7 @@ int KADI::fill_oplog_info(const uint8_t spaceid, const uint32_t prefix, struct o
                 TR << __func__ << "..6" << TREND;
 				const auto  &oplogpair = *it;
 				const struct oplog_key *oplogkey = ((struct oplog_key*)oplogpair.first);
-				sub_read_ctx->buf = make_malloc_unique<char>(sub_read_ctx->buflength);
+
 
 				k.key    = oplogpair.first;
 				k.length = oplogpair.second;
@@ -770,6 +770,7 @@ int KADI::fill_oplog_info(const uint8_t spaceid, const uint32_t prefix, struct o
 					}
 					else if (sub_read_ctx->byteswritten > 0) {
 						info.oplog_list[sub_read_ctx->groupid].insert(std::make_pair(sub_read_ctx->sequence, std::make_pair(std::move(sub_read_ctx->buf), sub_read_ctx->byteswritten)));
+                        sub_read_ctx->buf = make_malloc_unique<char>(sub_read_ctx->buflength);
 					}
 					iter_aioctx.return_free_context(sub_read_ctx);
 				}
@@ -868,7 +869,7 @@ int KADI::iter_readall_aio(kv_iter_context *iter_ctx, std::list<std::pair<malloc
 	KvsAioContext<kv_iter_context> iter_aioctx;
     TR << __func__ << ": 4" << TREND;
 
-	iter_aioctx.init(4, [&](int id) {
+	iter_aioctx.init(4, [&](int id)->kv_iter_context* {
 		return new kv_iter_context(id, iter_ctx->handle, &iter_aioctx);
 	});
 
@@ -888,7 +889,7 @@ int KADI::iter_readall_aio(kv_iter_context *iter_ctx, std::list<std::pair<malloc
                 TR << __func__ << ": 6" << TREND;
 
                 //std::cerr << __func__ << ": 4"  << std::endl;
-				sub_iter_ctx->buf = make_malloc_unique<char>(ITER_BUFSIZE);
+
 
                 TR << __func__ << ": 6.1 SUBMIT READ, ctx =  " <<  (void*)sub_iter_ctx  << TREND;
                 //std::cerr << __func__ << ": 5"  << std::endl;
@@ -917,6 +918,7 @@ int KADI::iter_readall_aio(kv_iter_context *iter_ctx, std::list<std::pair<malloc
 				//printf("buffer list: %d bytes\n",  sub_iter_ctx->byteswritten);
 				buflist.push_back(std::make_pair(
 						std::move(sub_iter_ctx->buf), sub_iter_ctx->byteswritten));
+                sub_iter_ctx->buf = make_malloc_unique<char>(ITER_BUFSIZE);
 			}
 
             TR << __func__ << ": returned " << (void*) sub_iter_ctx<< TREND;

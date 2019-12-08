@@ -25,7 +25,7 @@ struct FtraceFile {
     std::mutex lock;
     std::ofstream fp;
     FtraceFile() {
-        fp.open(name);
+        fp.open(name, std::ofstream::out | std::ofstream::app);
     }
 
     ~FtraceFile() {

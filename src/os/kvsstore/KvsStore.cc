@@ -325,9 +325,10 @@ int KvsStore::_open_collections() {
 	if (lck.try_lock()) {
 		db.compact();
 	} else {
+        TR << "waiting for the lock" << TREND;
 		lck.lock();
 	}
-
+    TR << "begin iterator" << TREND;
 	KvsIterator *it = db.get_iterator(GROUP_PREFIX_COLL);
 	for (it->begin(); it->valid(); it->next()) {
 		coll_t cid;
@@ -359,6 +360,7 @@ int KvsStore::_open_collections() {
 
 		} else {
 		  derr << __func__ << " unrecognized collection " << print_kvssd_key(it->key().key, it->key().length) << dendl;
+		  ceph_abort_msg("unrecognized collection");
 		}
 	}
 	if ( open_count > 0 && coll_map.size() == 0) {

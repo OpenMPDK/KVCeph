@@ -149,6 +149,8 @@ public:
 	virtual int size() {
 		return buffer_size;
 	}
+
+	virtual void dump() = 0;
 };
 
 class bptree_meta;
@@ -257,17 +259,14 @@ private:
 		uint32_t qdepth  = 0, num_completed = 0;
 		struct flush_ctx flushctx;
 		const uint32_t num_ios = pool.size();
-        TR << "num ios = " << num_ios << TREND;
 		value.offset = 0;
 
 		auto it = pool.begin();
 		while (num_ios > num_completed) {
 
 			while (it != pool.end() && qdepth < 16) {
-			    TR << "1" << TREND;
 				const auto &p = it->second;
 
-                TR << "2 p->op" << p->op << ", addr = " << p->addr << TREND;
 				switch (p->op) {
 					case NODE_OP_NOP:
 					    num_completed--;
@@ -275,6 +274,10 @@ private:
 					case NODE_OP_WRITE:
 						value.length = p->size();
 						value.value  = p->buffer;
+
+						TR << "flushing " << TREND;
+						p->dump();
+
 						ret = adi->kv_store_aio(ksid_skp, &value, {kv_indexnode_flush_cb, &flushctx},
 								[&] (struct nvme_passthru_kv_cmd& cmd){
 									cmd.key_length = 12;

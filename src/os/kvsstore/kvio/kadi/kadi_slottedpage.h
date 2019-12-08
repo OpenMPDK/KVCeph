@@ -26,7 +26,7 @@ class KvsSlottedPage : public kv_indexnode {
 		inline bool is_free() { return (offset == 0); }
 	};
 	struct Header *header;
-
+    virtual void dump() {}
 public:
 
 	KvsSlottedPage(const bp_addr_t &addr, char *buffer, int buffer_size, bool isnew):

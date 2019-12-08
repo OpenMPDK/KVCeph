@@ -43,6 +43,9 @@ static inline void set_dirty(kv_indexnode *sub_node) {
 
 class bptree_meta: public kv_indexnode {
 public:
+    virtual void dump() {
+        TR << "bpmeta" << TREND;
+    }
 	const static int META_SIZE = 8;
 	bool isnew;
 	bptree_meta(bp_addr_t &addr, char *buffer, bool load):
@@ -212,6 +215,14 @@ public:
 	inline bp_addr_t* key()  { return (bp_addr_t*)offset_ptr(); }
 	//inline char* data() { return node_buffer + (max_entries * sizeof(bp_addr_t)); }
 	inline bp_addr_t* sub()  { return (bp_addr_t*)(offset_ptr() + ((max_order -1) * sizeof(bp_addr_t))); }
+
+	void dump() {
+        TR << "NODE ADDR = " << addr << TREND;
+        auto keys = key();
+        for (int i = 0; i < get_children(); i++) {
+            TR << i << "th key addr = " << keys[i] << TREND;
+        }
+    }
 };
 
 
@@ -1178,9 +1189,15 @@ private:
 	public:
 		bptree_iterator_impl(bptree *tree_, int keyindex_ = 0, bp_addr_t nodeaddr_ = 0):
 			bptree_iterator(tree_, keyindex_, nodeaddr_)
-		{}
+		{
+		    TR << "bptree iterator: index = " << keyindex << ", nodeaddr == " << nodeaddr << TREND;
+		    if (nodeaddr == 0) {
+		        end();
+		    }
+		}
 
 		virtual void move_next(const long int movement) {
+            TR << "MOVE NEXT " << TREND;
 			if (tree == 0) {
                 end();
                 return;
@@ -1193,14 +1210,17 @@ private:
 				return;
 			}
 
+            TR << "MOVE NEXT - index+1" << TREND;
 			this->keyindex++;
 
 			if (this->keyindex >= node->get_children()) {
 
 				node = tree->pool.fetch_tree_node(node->header()->next);
 				if (node == 0) {
+                    TR << "REACHED TO THE END" << TREND;
 					end();
 				} else {
+                    TR << "REACHED TO THE NODE END" << TREND;
 					this->keyindex = 0;
 					nodeaddr = node->addr;
 				}
@@ -1208,14 +1228,22 @@ private:
 		}
 
 		virtual bool get_key(char **key, int &length) {
+            FTRACE
+
 			if (is_end()) return false;
 			auto *node = tree->pool.fetch_tree_node(nodeaddr);
+            TR << "fetch  NODE  " << node << TREND;
 			if (!node) return false;
 
-			return tree->get_key_from_datanode(node->key()[keyindex], key, length);
+            TR << "get key from  NODE addr " << nodeaddr << TREND;
+            node->dump();
+
+
+            return tree->get_key_from_datanode(node->key()[keyindex], key, length);
 		}
 
 		virtual void begin() {
+		    TR<< "BEGIN" << TREND;
 			lower_bound("", 0);
 		}
 
@@ -1298,7 +1326,7 @@ private:
 	};
 public:
 	bptree_iterator *get_iterator() {
-		return new bptree_iterator_impl(this);
+		return new bptree_iterator_impl(this, 0, (this->root)? this->root->addr:0);
 	}
 };
 

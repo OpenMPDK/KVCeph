@@ -32,12 +32,10 @@ static inline void assert_keylength(const int len) {
 // -------------------------------------
 
 // for reads
-static inline void to_kv_value(kv_value *value, const int offset, const int length, bufferlist &bl) {
-	bl.clear();
+static inline void to_kv_value(kv_value *value, const int offset, const int length) {
 	value->offset = offset;
 	value->length = make_align_4B(length);
-	bl.reserve(value->length);
-	value->value  = bl.c_str();
+	value->value  = malloc(value->length);
 }
 
 static inline void to_kv_value(kv_value *value, const int offset, const int length, char *data) {
@@ -89,15 +87,21 @@ bool KvsStoreDB::read_journal(int index, kv_value *value) {
 int KvsStoreDB::_read_impl(uint8_t space_id, int offset, int length, bufferlist &bl, const std::function< void (struct nvme_passthru_kv_cmd&)> &fill, bool &ispartial, bool retry) {
 
 	kv_value value;
-	to_kv_value(&value, offset, length, bl);
+	to_kv_value(&value, offset, length);
 
 	int ret = kadi.sync_read(space_id, &value, ispartial, fill);
 
 	if (retry && ret ==0 && value.offset == 0 && value.actual_value_size > (unsigned)length) {
 		// if buffer size was small, retry with the actual value size
-		to_kv_value(&value, 0, value.actual_value_size, bl);
+		free(value.value);
+		to_kv_value(&value, 0, value.actual_value_size);
 		ret = kadi.sync_read(space_id, &value, ispartial, fill);
 	}
+
+    if (ret == 0) {
+        bufferptr bptr(buffer::claim_malloc(value.length, (char*)value.value));
+        bl.append(std::move(bptr));
+    }
 
 	return ret;
 }
@@ -149,20 +153,23 @@ int KvsStoreDB::read_data(const ghobject_t &oid, bufferlist &bl, bool &ispartial
 }
 
 int KvsStoreDB::read_block(const ghobject_t &oid, const int blockindex, bufferlist &bl, uint32_t &nread) {
-	bool ispartial;
-	auto keymem = make_malloc_unique<char>(256);
+    bool ispartial;
+    auto keymem = make_malloc_unique<char>(256);
 
-	kv_value value;
-	to_kv_value(&value, 0, KVS_OBJECT_SPLIT_SIZE, bl);
+    kv_value value;
+    to_kv_value(&value, 0, KVS_OBJECT_SPLIT_SIZE);
 
-	int ret = kadi.sync_read(KEYSPACE_DATA, &value, ispartial, [&] (struct nvme_passthru_kv_cmd &cmd) {
-		void *long_keyaddr = keymem.get();
-		cmd.key_addr = (__u64)long_keyaddr;
-		cmd.key_length = construct_object_key(cct, oid, long_keyaddr, blockindex);
-	});
+    int ret = kadi.sync_read(KEYSPACE_DATA, &value, ispartial, [&](struct nvme_passthru_kv_cmd &cmd) {
+        void *long_keyaddr = keymem.get();
+        cmd.key_addr = (__u64) long_keyaddr;
+        cmd.key_length = construct_object_key(cct, oid, long_keyaddr, blockindex);
+    });
 
-	if (ret == 0)
-		nread = value.length;
+    if (ret == 0) {
+        nread = value.length;
+        bufferptr bptr(buffer::claim_malloc(value.length, (char*)value.value));
+        bl.append(std::move(bptr));
+    }
 
 	return ret;
 }

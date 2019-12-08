@@ -344,7 +344,7 @@ public:
 
     // for sub iter contexts
     kv_iter_context(int id_,  unsigned char h, void *parent_):
-    	handle(h), prefix(0), bitmask(0), buf(make_malloc_unique_ptr<char>(nullptr)), buflen(ITER_BUFSIZE), byteswritten(0), buflength(0),
+    	handle(h), prefix(0), bitmask(0), buf(make_malloc_unique<char>(ITER_BUFSIZE)), buflen(ITER_BUFSIZE), byteswritten(0), buflength(0),
 		bufoffset(0), end(false), id (id_), parent(parent_), retcode(0), elapsed_us(0), spaceid(0)
     {
 
@@ -369,8 +369,11 @@ public:
 	}
 	void init(int qdepth, const std::function<T*(int)> &creator)
 	{
+        free_iter_contexts.clear();
+        free_iter_contexts.reserve(qdepth);
 		for (int i = 0;  i < qdepth; i++) {
-			free_iter_contexts.push_back(creator(i) );
+		    T *inst = creator(i);
+			free_iter_contexts.push_back( inst );
 		}
 	}
 
@@ -428,7 +431,7 @@ public:
 
     kv_read_context(int id_, int spaceid_,  int buflength_, void *parent_):
     	id(id_), retcode(0), spaceid(spaceid_), buflength(buflength_), byteswritten(0), parent(parent_),
-		end(false), groupid(0), sequence(0), buf(make_malloc_unique_ptr<char>(nullptr))
+		end(false), groupid(0), sequence(0), buf(make_malloc_unique<char>(buflength))
 	{}
 };
 
