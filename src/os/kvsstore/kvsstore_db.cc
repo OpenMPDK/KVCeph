@@ -413,13 +413,13 @@ uint64_t KvsStoreDB::compact() {
 	processed_keys = list_oplog(KEYSPACE_ONODE, 0xffffffff,
 			[&] (int opcode, int groupid, uint64_t sequence, const char* key, int length) {
 			const uint32_t prefix = *(uint32_t*)key;
-
+            std::string treename = "";
 			if (prefix == GROUP_PREFIX_ONODE) {
 				tree = &onode_tree;
-                TR  << "onode tree insert " << TREND;
+                treename = "onode tree: ";
 			} else if (prefix == GROUP_PREFIX_COLL) {
 				tree = &coll_tree;
-                TR  << "coll tree insert " << TREND;
+                treename = "coll tree: ";
 			} else {
 				return;
 			}
@@ -427,10 +427,10 @@ uint64_t KvsStoreDB::compact() {
             TR  << "opcode = " << opcode << ", key = " << print_key((const char*)key, length) << ", length = " << length << TREND;
 
 			if (opcode == nvme_cmd_kv_store) {
-                TR  << "tree insert " << TREND;
+                TR << "tree-insert " << treename << ", key: " << print_kvssd_key(std::string((char*)key,length)) << TREND;
                 tree->insert((char*)key, length);
 			} else if (opcode == nvme_cmd_kv_delete) {
-                TR  << "tree remove" << TREND;
+                TR << "tree-remove " << treename << ", key: " << print_kvssd_key(std::string((char*)key,length)) << TREND;
                 tree->remove((char*)key, length);
 			}
 
@@ -439,14 +439,34 @@ uint64_t KvsStoreDB::compact() {
 			//cout << "read: group"  << groupid << ", seq " << sequence << ", " << print_key((const char*)key, length) << ", length = " << length << endl;
 	});
 
-	if (processed_keys > 0) {
-        TR  << "flush onode tree" << TREND;
-		onode_tree.flush();
-        TR  << "flush coll tree" << TREND;
-		coll_tree.flush();
-	}
-    TR  << "DONE - processed keys = " <<   processed_keys << TREND;
-	//derr << "compact 3" << dendl;
+    TRITER << "flush onode tree" << TREND;
+    onode_tree.flush();
 
+    TRITER  << "flush coll tree" << TREND;
+    coll_tree.flush();
+
+    TR  << "DONE - processed keys = " <<   processed_keys << TREND;
+    {
+        bptree_iterator *t = coll_tree.get_iterator();
+        while (!t->is_end()) {
+            char *key;
+            int length;
+            t->get_key(&key, length);
+            TR << "returned key - colltree: " << print_kvssd_key(std::string((char*)key,length)) << TREND;
+            t->move_next();
+        }
+    }
+	//derr << "compact 3" << dendl;
+    /*if (processed_keys > 0) */{
+        KvsIterator *it = get_iterator(GROUP_PREFIX_COLL);
+        for (it->begin(); it->valid(); it->next()) {
+            coll_t cid;
+            kv_key collkey = it->key();
+            TR << "returned key : " << print_kvssd_key(std::string((char*)collkey.key, collkey.length)) << TREND;
+            std::string name((char*)collkey.key + sizeof(kvs_coll_key), collkey.length);
+            TR << "found collection: " << name << TREND;
+            break;
+        }
+    }
 	return processed_keys;
 }

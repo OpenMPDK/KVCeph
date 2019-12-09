@@ -295,10 +295,10 @@ int KADI::kv_retrieve_sync(uint8_t space_id, kv_key *key, kv_value *value) {
 #ifdef ENABLE_IOTRACE
     if (ret == 0) {
         TR << "<READ> " << print_kvssd_key(std::string((const char*)key->key, key->length))
-           << ", value = " << value->value << ", value length = " << std::min(cmd.result, value->length) << " OK" << TREND;
+           << ", value = " << value->value << ", offset = " << value->offset << ", value length = " << std::min(cmd.result, value->length) << " OK" << TREND;
     } else {
         TR << "<READ> " << print_kvssd_key(std::string((const char*)key->key, key->length))
-           << ", value = " << value->value << ", value length = " << value->length
+           << ", value = " << value->value << ", offset = " << value->offset << ", value length = " << value->length
            << ", retcode = " << ret << ", FAILED" << TREND;
     }
 #endif
@@ -337,10 +337,10 @@ int KADI::kv_retrieve_sync(uint8_t space_id, kv_value *value, const std::functio
     }
     if (ret == 0) {
         TR << "<READ> " << print_kvssd_key(std::string((const char*)keyptr, cmd.key_length))
-           << ", value = " << value->value << ", value length = " << std::min(cmd.result, value->length) << " OK" << TREND;
+           << ", value = " << value->value << ", offset = " << value->offset<< ", value length = " << std::min(cmd.result, value->length) << " OK" << TREND;
     } else {
         TR << "<READ> " << print_kvssd_key(std::string((const char*)keyptr, cmd.key_length))
-           << ", value = " << value->value << ", value length = " << value->length
+           << ", value = " << value->value << ", offset = " << value->offset << ", value length = " << value->length
            << ", retcode = " << ret << ", FAILED" << TREND;
     }
 #endif
@@ -378,10 +378,10 @@ retry:
 #ifdef ENABLE_IOTRACE
     if (ret == 0) {
         TR << "<READ> " << print_kvssd_key(std::string((const char*)key->key, key->length))
-           << ", value = " << value->value << ", value length = " << std::min(cmd.result, value->length) << " OK" << TREND;
+           << ", value = " << value->value << ", offset = " << value->offset<< ", value length = " << std::min(cmd.result, value->length) << " OK" << TREND;
     } else {
         TR << "<READ> " << print_kvssd_key(std::string((const char*)key->key, key->length))
-           << ", value = " << value->value << ", value length = " << value->length
+           << ", value = " << value->value << ", offset = " << value->offset<< ", value length = " << value->length
            << ", retcode = " << ret << ", FAILED" << TREND;
     }
 #endif
@@ -658,9 +658,7 @@ int KADI::iter_read_aio(int space_id, unsigned char handle, void *buf, uint32_t 
 
 void iter_callback(kv_io_context &op, void* private_data)
 {
-    FTRACE
 	kv_iter_context *ctx = (kv_iter_context *)private_data;
-    TR << "iter callback ctx = " << (void*)ctx << TREND;
     ctx->end = op.hiter.end;
 	ctx->retcode = op.retcode;
 	ctx->byteswritten = op.hiter.byteswritten;
@@ -676,7 +674,7 @@ void oplog_callback(kv_io_context &op, void* private_data)
 	ctx->retcode = op.retcode;
 	ctx->byteswritten = op.value.length;
 
-	std::cerr << "oplog read callback " << ctx->byteswritten << ", retcode = " << ctx->retcode << endl;
+	//std::cerr << "oplog read callback " << ctx->byteswritten << ", retcode = " << ctx->retcode << endl;
 	if (ctx->parent)
     	((KvsAioContext<kv_read_context>*)ctx->parent)->fire_event(ctx);
 }
@@ -706,12 +704,12 @@ int KADI::fill_oplog_info(const uint8_t spaceid, const uint32_t prefix, struct o
 				info.oplog_keys.emplace_back(key, length);
 			}
 		}
-        TR << __func__ << "..3" << TREND;
+        //TR << __func__ << "..3" << TREND;
 
 		if (info.oplog_keys.empty()) return 0;
 	}
 
-    TR << __func__ << "..4" << TREND;
+   // TR << __func__ << "..4" << TREND;
 
 	{ // step 2. read oplog pages asynchronously
 		kv_key k;
@@ -729,7 +727,7 @@ int KADI::fill_oplog_info(const uint8_t spaceid, const uint32_t prefix, struct o
 
 		auto it  = info.oplog_keys.begin();
 		auto end = info.oplog_keys.end();
-        TR << __func__ << "..5" << TREND;
+       // TR << __func__ << "..5" << TREND;
 		do {
 			for (size_t i =0 ; i < max && it != end; i++) {
 				if (info.oplog_keys.empty()) { break; }
@@ -737,7 +735,7 @@ int KADI::fill_oplog_info(const uint8_t spaceid, const uint32_t prefix, struct o
 				kv_read_context *sub_read_ctx = iter_aioctx.get_free_context();
 				if (sub_read_ctx == 0) {  break; }
 
-                TR << __func__ << "..6" << TREND;
+               // TR << __func__ << "..6" << TREND;
 				const auto  &oplogpair = *it;
 				const struct oplog_key *oplogkey = ((struct oplog_key*)oplogpair.first);
 
@@ -749,7 +747,7 @@ int KADI::fill_oplog_info(const uint8_t spaceid, const uint32_t prefix, struct o
 				sub_read_ctx->groupid = oplogkey->groupid;
 				sub_read_ctx->sequence = oplogkey->sequenceid;
 
-                TR << __func__ << "..7 - send read " <<  print_key((const char*)k.key, k.length) << TREND;
+               // TR << __func__ << "..7 - send read " <<  print_key((const char*)k.key, k.length) << TREND;
 				//cout << "issue oplog read = " << print_key((const char*)k.key, k.length) << ", groupid = " << sub_read_ctx->groupid << endl;
 
 				r = kv_retrieve_aio(ksid_oplog, &k, &v, { oplog_callback, sub_read_ctx });
@@ -761,7 +759,7 @@ int KADI::fill_oplog_info(const uint8_t spaceid, const uint32_t prefix, struct o
 			iter_aioctx.get_events(ctxs);
 
 			if (ctxs.size() > 0) {
-                std::cerr << __func__ << "..8 read " << ctxs.size() << std::endl;
+                //std::cerr << __func__ << "..8 read " << ctxs.size() << std::endl;
 				sent -= ctxs.size();
 
 				for (kv_read_context *sub_read_ctx: ctxs) {
@@ -860,20 +858,13 @@ int KADI::iter_readall_aio(kv_iter_context *iter_ctx, std::list<std::pair<malloc
     FTRACE
     //std::cerr << __func__ << ": 1" << std::endl;
 	int r = iter_open(iter_ctx, space_id);
-    TR << __func__ << ": 2 opened ? " << r << TREND;
-
 	if (r != 0) return r;
 
-    TR << __func__ << ": 3" << TREND;
-
 	KvsAioContext<kv_iter_context> iter_aioctx;
-    TR << __func__ << ": 4" << TREND;
 
 	iter_aioctx.init(4, [&](int id)->kv_iter_context* {
 		return new kv_iter_context(id, iter_ctx->handle, &iter_aioctx);
 	});
-
-    TR << __func__ << ": 5" << TREND;
 
 	int sent = 0;
 
@@ -886,12 +877,9 @@ int KADI::iter_readall_aio(kv_iter_context *iter_ctx, std::list<std::pair<malloc
 				kv_iter_context *sub_iter_ctx = iter_aioctx.get_free_context();
 				if (sub_iter_ctx == 0) break;
 
-                TR << __func__ << ": 6" << TREND;
-
                 //std::cerr << __func__ << ": 4"  << std::endl;
 
 
-                TR << __func__ << ": 6.1 SUBMIT READ, ctx =  " <<  (void*)sub_iter_ctx  << TREND;
                 //std::cerr << __func__ << ": 5"  << std::endl;
 				r = iter_read_aio(space_id, iter_ctx->handle,
 							sub_iter_ctx->buf.get(), ITER_BUFSIZE,
@@ -899,7 +887,6 @@ int KADI::iter_readall_aio(kv_iter_context *iter_ctx, std::list<std::pair<malloc
                 //std::cerr << __func__ << ": 6 r = " << r  << std::endl;
 				if (r != 0) { goto error_exit; }
                 sent++;
-                TR << __func__ << ": 7 sent = " << sent  << TREND;
 			}
 		}
         //std::cerr << __func__ << ": 8 sent = " << sent  << std::endl;
@@ -909,30 +896,23 @@ int KADI::iter_readall_aio(kv_iter_context *iter_ctx, std::list<std::pair<malloc
 		bool received = iter_aioctx.get_events(ctxs);
 		if (!received) continue;
 
-        TR << __func__ << ": 9 received = " << ctxs.size()  << TREND;
 		sent -= ctxs.size();
 
 		for (kv_iter_context *sub_iter_ctx: ctxs) {
             if (sub_iter_ctx->byteswritten > 0) {
-                TR << __func__ << ": 10 read = " << sub_iter_ctx->byteswritten  << TREND;
 				//printf("buffer list: %d bytes\n",  sub_iter_ctx->byteswritten);
 				buflist.push_back(std::make_pair(
 						std::move(sub_iter_ctx->buf), sub_iter_ctx->byteswritten));
                 sub_iter_ctx->buf = make_malloc_unique<char>(ITER_BUFSIZE);
 			}
 
-            TR << __func__ << ": returned " << (void*) sub_iter_ctx<< TREND;
 			finished |= sub_iter_ctx->end;
 			iter_aioctx.return_free_context(sub_iter_ctx);
             //std::cerr << __func__ << ": 12" << std::endl;
 		}
-        TR << __func__ << ": 13" << TREND;
 	} while (!finished || sent != 0);
 
-
-    TR << __func__ << ": 14 closing.." << TREND;
 	r = iter_close(iter_ctx, space_id);
-    TR << __func__ << ": 14 closed r = " << r << TREND;
 	return r;
 
 error_exit:

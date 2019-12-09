@@ -117,7 +117,7 @@ void KvsStore::_kv_index_thread() {
 
 	while(true) {
 		if (lck.try_lock()) {
-			db.compact();
+			//db.compact();
 			lck.unlock();
 		}
 
@@ -613,6 +613,8 @@ void KvsStore::_txc_finish(KvsTransContext *txc) {
 			osr->qcond.notify_all();
 		}
 	}
+
+	//db.compact();
 
 	while (!releasing_txc.empty()) {
 		// release to allocator only after all preceding txc's have also

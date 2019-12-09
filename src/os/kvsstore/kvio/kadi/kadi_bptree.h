@@ -47,15 +47,26 @@ public:
         TR << "bpmeta" << TREND;
     }
 	const static int META_SIZE = 8;
+    char metabuffer[META_SIZE];
 	bool isnew;
-	bptree_meta(bp_addr_t &addr, char *buffer, bool load):
-		kv_indexnode(addr, buffer, META_SIZE)
+
+    bptree_meta(bp_addr_t &addr, char *buffer_):
+            kv_indexnode(addr, metabuffer, META_SIZE), isnew(false)
+    {
+        memcpy(metabuffer, buffer_, META_SIZE);
+
+        TRITER << "loaded meta: root addr = " << get_root_addr() << TREND;
+        TRITER << "loaded meta: last pgid = " << get_last_pgid() << TREND;
+    }
+
+	bptree_meta(bp_addr_t &addr):
+		kv_indexnode(addr, metabuffer, META_SIZE), isnew(true)
 	{
-		isnew = (!load);
-		if (isnew) {
-			set_next_pgid(2);
-			set_root_addr(1);
-		}
+        set_root_addr( create_metanode_addr(1));
+        set_next_pgid(2);
+
+        TRITER << "new meta: root addr = " << get_root_addr()  << TREND;
+        TRITER << "new meta: last pgid = " << get_last_pgid() << TREND;
 	}
 
 	inline uint64_t get_last_pgid() {
@@ -192,6 +203,9 @@ public:
 	bptree_node(const bp_addr_t &addr, char *buffer, uint16_t buffer_size, bool isnew, bool leaf, int max_order_, int max_entries_):
 		kv_indexnode(addr, buffer, buffer_size), max_order(max_order_), max_entries(max_entries_) {
 
+	    if (addr == 0) {
+	        TR << "---------------WRONG ADDRESS -------------" << TREND;
+	    }
 		if (isnew) {
 			header()->type = (leaf)? BPLUS_TREE_LEAF:BPLUS_TREE_NON_LEAF;
 			header()->children = 0;
@@ -233,10 +247,11 @@ public:
 	bptree_pool  pool;
 	bptree_node *root;
 	bptree_meta *meta;
-
 	int level;
+    bool dirty;
+
 	bptree(KADI *adi, int ksid_skp, uint32_t prefix, int block_size = 28*1024):
-		param(block_size), pool(adi, ksid_skp, prefix, &param), level(0)
+		param(block_size), pool(adi, ksid_skp, prefix, &param), level(0), dirty(false)
 	{
 		// create or fetch root node
 		meta = pool.get_meta();
@@ -289,6 +304,7 @@ public:
 
 		while (node != NULL) {
 			if (node->is_leaf()) {
+			    dirty = true;
 				return leaf_insert(node, userkey, keylength);
 			} else {
 				int i = key_binary_search(node, userkey, keylength);
@@ -306,7 +322,7 @@ public:
 		root->set_children(1);
 		set_dirty(root);
 		this->level = 1;
-
+        this->dirty = true;
 		return 0;
 	}
 
@@ -318,6 +334,7 @@ public:
 
 		while (node != NULL) {
 				if (node->is_leaf()) {
+                        this->dirty = true;
 						return leaf_remove(node, userkey, keylength);
 				} else {
 						int i = key_binary_search(node, userkey, keylength);
@@ -333,8 +350,8 @@ public:
 	}
 
 	void flush() {
-		if (root) {
-		    TR << "root->addr = " << root->addr << TREND;
+		if (root && dirty) {
+		    TRITER << "FLUSH - root->addr = " << root->addr << " prefix = " << pool.prefix << TREND;
 			pool.flush(root->addr);
 		}
 	}

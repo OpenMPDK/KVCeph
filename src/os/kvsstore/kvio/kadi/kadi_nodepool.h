@@ -96,7 +96,7 @@ static inline bp_addr_t create_datanode_addr(const uint64_t pageid)  {
 }
 
 static inline bp_addr_t create_key_addr(const uint64_t pageid, const uint16_t fragid)  {
-	return (pageid << 48 | fragid );
+	return (pageid << 48 | (fragid & 0xFFFF));
 }
 
 const static bp_addr_t invalid_key_addr = create_key_addr(0, -1);
@@ -158,6 +158,7 @@ class bptree_node;
 class KvsSlottedPage;
 
 class bptree_pool {
+public:
 	std::unordered_map<bp_addr_t, kv_indexnode*> pool;
 
 	KADI *adi;
@@ -237,6 +238,7 @@ private:
 	int read_page(const bp_addr_t &addr, void *buffer, uint32_t buffersize) {
 		kv_value page;
 		page.length = buffersize;
+		page.offset = 0;
 		page.value  = buffer;
 
 		int ret = adi->kv_retrieve_sync(ksid_skp, &page, [&] (struct nvme_passthru_kv_cmd& cmd){

@@ -57,15 +57,18 @@ KvsSlottedPage *bptree_pool::create_data_node() {
 
 void bptree_pool::flush(const bp_addr_t &newrootaddr) {
     if (newrootaddr == invalid_key_addr) return;
+
 	meta->set_next_pgid(next_pgid);
 	meta->set_root_addr(newrootaddr);
 	meta->set_dirty();
+    TRITER << "Nodepool Flush - set meta - rootaddr = " << newrootaddr << ", get_root_addr = " << meta->get_root_addr() << ", meta addr = " << meta->addr<< TREND;
 	_flush_dirtylist();
 }
 
 bptree_meta *bptree_pool::_fetch_meta() {
 	bptree_meta *n = 0;
-	bp_addr_t addr = create_metanode_addr();
+    TRITER << "fetch_meta - prefix = " << prefix << TREND;
+	bp_addr_t addr = create_metanode_addr(prefix);
 
 	auto it = pool.find(addr);
 	if (it != pool.end()) {
@@ -73,16 +76,20 @@ bptree_meta *bptree_pool::_fetch_meta() {
 	}
 
 	void *buffer = malloc(bptree_meta::META_SIZE);
+    TRITER << "read page " << TREND;
 	int nread = read_page(addr, buffer, bptree_meta::META_SIZE);
 	if (nread == bptree_meta::META_SIZE) {
 		// load meta from data
-		n = new bptree_meta(addr, (char*)buffer, true);
+		TRITER << "fetch meta - meta addr " << addr << TREND;
+		n = new bptree_meta(addr, (char*)buffer);
 	} else {
 		// new meta
-		n = new bptree_meta(addr, (char*)buffer, false);
+        TRITER << "fetch meta - new meta addr " << addr << TREND;
+		n = new bptree_meta(addr);
 	}
 
 	pool[addr] = n;
+	free(buffer);
 	return n;
 }
 
@@ -90,6 +97,7 @@ kv_indexnode *bptree_pool::_fetch_node(const bp_addr_t &addr) {
 	// search the cache
 	if (addr == invalid_key_addr) return 0;
 
+	TRITER << "fetch node " << TREND;
 	auto it = pool.find(addr);
 	if (it != pool.end()) {
 		if (it->second->is_invalid()) return 0; // deleted
@@ -104,10 +112,24 @@ kv_indexnode *bptree_pool::_fetch_node(const bp_addr_t &addr) {
 			kv_indexnode *n;
 			const int off = bpaddr_fragid(addr);
 			if (off == NODE_TYPE_TREE) {
+			    TR << "fetch bptree node " << TREND;
 				n = new bptree_node(addr, (char*)data, param->treenode_block_size, false, true, param->max_order, param->max_entries);
+                if (((bptree_node*)n)->header()->self == 0) {
+                    TR << "self addr == 0 " << TREND;
+                }
+                if (((bptree_node*)n)->header()->next == 0) {
+                    TR << "next addr == 0 " << TREND;
+                }
+
+            }
+			else if (off == NODE_TYPE_DATA){
+                TR << "fetch data node " << TREND;
+                n = new KvsSlottedPage(addr, (char *) data, param->datanode_block_size, false);
+            } else {
+			    free(data);
+			    return 0;
 			}
-			else
-				n = new KvsSlottedPage(addr, (char*)data, param->datanode_block_size, false);
+
 
 			pool[addr] = n;
 			return n;

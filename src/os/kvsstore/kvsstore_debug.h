@@ -66,7 +66,9 @@ struct FtraceObject {
 };
 
 #define FTRACE FtraceObject fobj(__FUNCTION__, __LINE__);
+#define TRITER kvs_ff.get_fp() << pthread_self() << " "
 #define TR kvs_ff.get_fp() << pthread_self() << " "
+//#define TR std::cout << pthread_self() << " "
 #define TREND "\n"; do { kvs_ff.return_fp(); } while(0)
 #else
 #define FTRACE
