@@ -446,7 +446,7 @@ uint64_t KvsStoreDB::compact() {
     coll_tree.flush();
 
     TR  << "DONE - processed keys = " <<   processed_keys << TREND;
-    {
+    /*{
         bptree_iterator *t = coll_tree.get_iterator();
         while (!t->is_end()) {
             char *key;
@@ -455,18 +455,9 @@ uint64_t KvsStoreDB::compact() {
             TR << "returned key - colltree: " << print_kvssd_key(std::string((char*)key,length)) << TREND;
             t->move_next();
         }
-    }
+    }*/
 	//derr << "compact 3" << dendl;
-    /*if (processed_keys > 0) */{
-        KvsIterator *it = get_iterator(GROUP_PREFIX_COLL);
-        for (it->begin(); it->valid(); it->next()) {
-            coll_t cid;
-            kv_key collkey = it->key();
-            TR << "returned key : " << print_kvssd_key(std::string((char*)collkey.key, collkey.length)) << TREND;
-            std::string name((char*)collkey.key + sizeof(kvs_coll_key), collkey.length);
-            TR << "found collection: " << name << TREND;
-            break;
-        }
-    }
+    /*if (processed_keys > 0) */
+
 	return processed_keys;
 }

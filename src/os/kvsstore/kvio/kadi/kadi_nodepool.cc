@@ -60,14 +60,19 @@ void bptree_pool::flush(const bp_addr_t &newrootaddr) {
 
 	meta->set_next_pgid(next_pgid);
 	meta->set_root_addr(newrootaddr);
+    TRITER << "FLUSH meta root->addr = " << desc(meta->get_root_addr()) << " next pgid  = " << next_pgid << TREND;
+
 	meta->set_dirty();
+
+
     TRITER << "Nodepool Flush - set meta - rootaddr = " << newrootaddr << ", get_root_addr = " << meta->get_root_addr() << ", meta addr = " << meta->addr<< TREND;
 	_flush_dirtylist();
 }
 
 bptree_meta *bptree_pool::_fetch_meta() {
+    TR << ">> 1. fetching metadata: prefix = " << prefix << TREND;
+
 	bptree_meta *n = 0;
-    TRITER << "fetch_meta - prefix = " << prefix << TREND;
 	bp_addr_t addr = create_metanode_addr(prefix);
 
 	auto it = pool.find(addr);
@@ -76,16 +81,15 @@ bptree_meta *bptree_pool::_fetch_meta() {
 	}
 
 	void *buffer = malloc(bptree_meta::META_SIZE);
-    TRITER << "read page " << TREND;
 	int nread = read_page(addr, buffer, bptree_meta::META_SIZE);
 	if (nread == bptree_meta::META_SIZE) {
 		// load meta from data
-		TRITER << "fetch meta - meta addr " << addr << TREND;
+		TRITER << "metadata fetched " << desc(addr) << TREND;
 		n = new bptree_meta(addr, (char*)buffer);
 	} else {
 		// new meta
-        TRITER << "fetch meta - new meta addr " << addr << TREND;
-		n = new bptree_meta(addr);
+        TRITER << "create new metadata " << desc(addr) << TREND;
+		n = new bptree_meta(addr, prefix);
 	}
 
 	pool[addr] = n;
@@ -94,6 +98,7 @@ bptree_meta *bptree_pool::_fetch_meta() {
 }
 
 kv_indexnode *bptree_pool::_fetch_node(const bp_addr_t &addr) {
+    FTRACE
 	// search the cache
 	if (addr == invalid_key_addr) return 0;
 
@@ -110,7 +115,7 @@ kv_indexnode *bptree_pool::_fetch_node(const bp_addr_t &addr) {
 		int nread = read_page(addr, data, param->datanode_block_size);
 		if (nread > 0) {
 			kv_indexnode *n;
-			const int off = bpaddr_fragid(addr);
+			const int off = bpaddr_slotid(addr);
 			if (off == NODE_TYPE_TREE) {
 			    TR << "fetch bptree node " << TREND;
 				n = new bptree_node(addr, (char*)data, param->treenode_block_size, false, true, param->max_order, param->max_entries);

@@ -21,9 +21,11 @@ enum {
 	NODE_OP_NOP = -1,
 	NODE_OP_WRITE = 0,
 	NODE_OP_DELETE = 1,
-	NODE_TYPE_TREE = UINT16_MAX,
-	NODE_TYPE_META = UINT16_MAX -1,
-	NODE_TYPE_DATA = UINT16_MAX -2
+    NODE_TYPE_INVALID = UINT16_MAX,
+	NODE_TYPE_TREE = UINT16_MAX -1,
+	NODE_TYPE_META = UINT16_MAX -2,
+	NODE_TYPE_DATA = UINT16_MAX -3,
+
 };
 
 struct _bp_addr_t
@@ -71,7 +73,7 @@ static inline uint64_t bpaddr_pageid(const bp_addr_t &addr)  {
 	return (addr >> 48);
 }
 
-static inline uint16_t bpaddr_fragid(const bp_addr_t &addr)  {
+static inline uint16_t bpaddr_slotid(const bp_addr_t &addr)  {
 	return (addr & 0xFFFF);
 }
 
@@ -83,23 +85,40 @@ static inline int keylength_to_fragments(const int length) {
 	return ((length -1) >> bptree_param::fragment_shift) + 1;
 }
 
-static inline bp_addr_t create_metanode_addr(const uint64_t pageid = 0)  {
-	return (pageid << 48 | (NODE_TYPE_META & 0xFF) );
+static inline bp_addr_t create_key_addr(const uint64_t pageid, const uint16_t slotid)  {
+    return (pageid << 48 | (slotid & 0xFFFF));
+}
+
+static inline bp_addr_t create_metanode_addr(int treeindex)  {
+	return create_key_addr(treeindex, NODE_TYPE_META);
 }
 
 static inline bp_addr_t create_treenode_addr(const uint64_t pageid)  {
-	return (pageid << 48 | (NODE_TYPE_TREE & 0xFF) );
+	return create_key_addr(pageid,NODE_TYPE_TREE);
 }
 
 static inline bp_addr_t create_datanode_addr(const uint64_t pageid)  {
-	return (pageid << 48 | (NODE_TYPE_DATA & 0xFF) );
+	return create_key_addr(pageid, NODE_TYPE_DATA);
 }
 
-static inline bp_addr_t create_key_addr(const uint64_t pageid, const uint16_t fragid)  {
-	return (pageid << 48 | (fragid & 0xFFFF));
+static inline std::string bpaddr_slottype(const bp_addr_t &addr) {
+    const int slotid = bpaddr_slotid(addr);
+    if (slotid == NODE_TYPE_INVALID) return "INVALID";
+    if (slotid == NODE_TYPE_DATA) return "DATA NODE";
+    if (slotid == NODE_TYPE_TREE) return "TREE NODE";
+    if (slotid == NODE_TYPE_META) return "META NODE";
+    else {
+        return " key slot # " + std::to_string(slotid);
+    }
 }
 
-const static bp_addr_t invalid_key_addr = create_key_addr(0, -1);
+static inline std::string desc(const bp_addr_t &addr)  {
+    std::stringstream ss;
+    ss << "addr = " << addr << ": pageid " << bpaddr_pageid(addr) << ", slot type " << bpaddr_slottype(addr);
+    return ss.str();
+}
+
+const static bp_addr_t invalid_key_addr = create_key_addr(0, NODE_TYPE_INVALID);
 
 
 class kv_indexnode {
@@ -111,17 +130,17 @@ public:
 
 	kv_indexnode(const bp_addr_t &addr_, char *buffer_, int buffer_size_):
 		addr(addr_), buffer(buffer_), buffer_size(buffer_size_) {
-        TR << "created: op = " << op << ", addr = " << addr << TREND;
+        TRITER << "node created: addr = " << desc(addr) << TREND;
 	}
 
 	void set_dirty() {
 		op = NODE_OP_WRITE;
-		TR << "set dirty: op = " << op << ", addr = " << addr << TREND;
+		TRITER << "set dirty: op = " << op << ", addr = " << addr << TREND;
 	}
 
 	void set_invalid() {
 		op = NODE_OP_DELETE;
-        TR << "set invalid: op = " << op << ", addr = " << addr << TREND;
+		TRITER << "set invalid: op = " << op << ", addr = " << addr << TREND;
 	}
 
 	virtual ~kv_indexnode() {
@@ -129,22 +148,22 @@ public:
 	}
 
 	inline bool is_treenode() {
-		return bpaddr_fragid(addr) == NODE_TYPE_TREE;
+		return bpaddr_slotid(addr) == NODE_TYPE_TREE;
 	}
 
 	inline bool is_datanode() {
-		return bpaddr_fragid(addr) == NODE_TYPE_DATA;
+		return bpaddr_slotid(addr) == NODE_TYPE_DATA;
 	}
 
 	inline bool is_metanode() {
-		return bpaddr_fragid(addr) == NODE_TYPE_META;
+		return bpaddr_slotid(addr) == NODE_TYPE_META;
 	}
 
 	inline bool is_invalid() {
 		return op == NODE_OP_DELETE;
 	}
 
-	int get_type() { return bpaddr_fragid(addr); }
+	int get_type() { return bpaddr_slotid(addr); }
 
 	virtual int size() {
 		return buffer_size;
@@ -176,7 +195,9 @@ public:
 
 	~bptree_pool() {
 		for (auto &p : pool) {
+		    TRITER << "freeing " << (void*)p.second << TREND;
 			delete p.second;
+            TRITER << "freeing done" << TREND;
 		}
 		pool.clear();
 	}
@@ -242,10 +263,9 @@ private:
 		page.value  = buffer;
 
 		int ret = adi->kv_retrieve_sync(ksid_skp, &page, [&] (struct nvme_passthru_kv_cmd& cmd){
-		    cmd.key_length = 12;
-		    kvs_page_key* k = (kvs_page_key*)cmd.key;
-		    k->prefix = this->prefix;
-		    k->pageid = bpaddr_pageid(addr);
+		    cmd.key_length = fill_cmdkey_for_index_nodes(cmd.key, addr);
+
+			TRITER << "read_page: key = " << print_kvssd_key((char*)cmd.key, cmd.key_length) << ", " << desc(addr) << TREND;
 		});
 
 		if (ret == 0) {
@@ -254,8 +274,14 @@ private:
 		return 0;
 	}
 
+	inline int fill_cmdkey_for_index_nodes(void *key, const bp_addr_t &addr) {
+        kvs_page_key* k = (kvs_page_key*)key;
+        k->prefix = bpaddr_slotid(addr);
+        k->pageid = bpaddr_pageid(addr);
+        return sizeof(kvs_page_key);
+	}
+
 	void _flush_dirtylist() {
-	    FTRACE
 		int ret = 0;
 		kv_value value;
 		uint32_t qdepth  = 0, num_completed = 0;
@@ -266,45 +292,41 @@ private:
 		auto it = pool.begin();
 		while (num_ios > num_completed) {
 
-			while (it != pool.end() && qdepth < 16) {
-				const auto &p = it->second;
+            while (it != pool.end() && qdepth < 16) {
+                const auto &p = it->second;
 
-				switch (p->op) {
-					case NODE_OP_NOP:
-					    num_completed--;
-						break;
-					case NODE_OP_WRITE:
-						value.length = p->size();
-						value.value  = p->buffer;
+                switch (p->op) {
+                    case NODE_OP_NOP:
+                        num_completed--;
+                        ret = 0;
+                        break;
+                    case NODE_OP_WRITE:
+                        value.length = p->size();
+                        value.value  = p->buffer;
 
-						TR << "flushing " << TREND;
-						p->dump();
+                        ret = adi->kv_store_aio(ksid_skp, &value, {kv_indexnode_flush_cb, &flushctx},
+                                                [&] (struct nvme_passthru_kv_cmd& cmd){
+                                                    cmd.key_length = fill_cmdkey_for_index_nodes(cmd.key, p->addr);
+                                                    TRITER << "store node:  key = " << print_kvssd_key((char*)cmd.key, cmd.key_length) << ", " << desc (p->addr) << TREND;
+                                                });
 
-						ret = adi->kv_store_aio(ksid_skp, &value, {kv_indexnode_flush_cb, &flushctx},
-								[&] (struct nvme_passthru_kv_cmd& cmd){
-									cmd.key_length = 12;
-									kvs_page_key* k = (kvs_page_key*)cmd.key;
-									k->prefix = this->prefix;
-									k->pageid = bpaddr_pageid(p->addr);
-								});
-						break;
-					case NODE_OP_DELETE:
-						ret = adi->kv_delete_aio(ksid_skp, {kv_indexnode_flush_cb, &flushctx},
-								[&] (struct nvme_passthru_kv_cmd& cmd){
-									cmd.key_length = 12;
-									kvs_page_key* k = (kvs_page_key*)cmd.key;
-									k->prefix = this->prefix;
-									k->pageid = bpaddr_pageid(p->addr);
-								});
+                        break;
+                    case NODE_OP_DELETE:
+                        ret = adi->kv_delete_aio(ksid_skp, {kv_indexnode_flush_cb, &flushctx},
+                                                 [&] (struct nvme_passthru_kv_cmd& cmd){
+                                                     cmd.key_length = fill_cmdkey_for_index_nodes(cmd.key, p->addr);
+                                                 });
+                        break;
+                };
 
-						break;
-				};
+                if (ret != 0) {
+                    break;
+                } else if (p->op != NODE_OP_NOP) {
+                    qdepth++;
+                }
 
-				if (ret != 0) { break; }
-
-				qdepth++;
-				it++;
-			}
+                it++;
+            }
 
 			if (qdepth > 0) {
 				const int done = flushctx.completed.exchange(0, std::memory_order_relaxed);

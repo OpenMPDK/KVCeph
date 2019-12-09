@@ -101,7 +101,7 @@ public:
     {
     	if (addr == invalid_key_addr) return false;
 
-    	unsigned slotID = bpaddr_fragid(addr);
+    	unsigned slotID = bpaddr_slotid(addr);
 
 		Header& header = reinterpret_cast<Header*>(buffer)[0];
 		Slot&   slot   = reinterpret_cast<Slot*>(buffer+sizeof(Header))[slotID];
@@ -128,7 +128,7 @@ public:
     bool lookup(bp_addr_t addr, char **data, int &length) {
     	if (addr == invalid_key_addr) return false;
 
-		Slot& slot = reinterpret_cast<Slot*>(buffer+sizeof(Header))[bpaddr_fragid(addr)];
+		Slot& slot = reinterpret_cast<Slot*>(buffer+sizeof(Header))[bpaddr_slotid(addr)];
 		*data = buffer+slot.offset;
 		length = slot.length;
 		return true;

@@ -46,27 +46,27 @@ public:
     virtual void dump() {
         TR << "bpmeta" << TREND;
     }
-	const static int META_SIZE = 8;
+	const static int META_SIZE = 16;
     char metabuffer[META_SIZE];
 	bool isnew;
 
     bptree_meta(bp_addr_t &addr, char *buffer_):
-            kv_indexnode(addr, metabuffer, META_SIZE), isnew(false)
-    {
+            kv_indexnode(addr, metabuffer, META_SIZE), isnew(false) {
+
         memcpy(metabuffer, buffer_, META_SIZE);
 
-        TRITER << "loaded meta: root addr = " << get_root_addr() << TREND;
-        TRITER << "loaded meta: last pgid = " << get_last_pgid() << TREND;
+        TRITER << "  loaded meta: root addr = " << desc(get_root_addr()) << TREND;
+        TRITER << "  loaded meta: last pgid = " << get_last_pgid() << TREND;
     }
 
-	bptree_meta(bp_addr_t &addr):
+	bptree_meta(bp_addr_t &addr, int treeindex):
 		kv_indexnode(addr, metabuffer, META_SIZE), isnew(true)
 	{
-        set_root_addr( create_metanode_addr(1));
+        set_root_addr( create_metanode_addr(treeindex) );
         set_next_pgid(2);
 
-        TRITER << "new meta: root addr = " << get_root_addr()  << TREND;
-        TRITER << "new meta: last pgid = " << get_last_pgid() << TREND;
+        TRITER << "  new meta: root addr = " << desc(get_root_addr())  << TREND;
+        TRITER << "  new meta: last pgid = " << get_last_pgid() << TREND;
 	}
 
 	inline uint64_t get_last_pgid() {
@@ -77,6 +77,7 @@ public:
 	inline void set_next_pgid(uint64_t pgid) {
 		uint64_t* values = (uint64_t*)buffer;
 		values[0] = pgid;
+        //TRITER << "updated buffer = " << print_kvssd_key(buffer, META_SIZE) << ", 0th " << values[0] << ", 1th" << values[1] << ", next pageid =" << pgid << TREND;
 	}
 
 	inline bp_addr_t get_root_addr() {
@@ -84,9 +85,11 @@ public:
 		return values[1];
 	}
 
-	inline void set_root_addr(bp_addr_t pgid) {
+	inline void set_root_addr(bp_addr_t addr) {
 		bp_addr_t* values = (bp_addr_t*)buffer;
-		values[1] = pgid;
+		values[1] = addr;
+        //TRITER << "updated buffer = " << print_kvssd_key(buffer, META_SIZE) << ", 0th " << values[0] << ", 1th" << values[1] << ", root addr =" << addr << ", get root addr = " << get_root_addr() << TREND;
+
 	}
 };
 
@@ -253,6 +256,8 @@ public:
 	bptree(KADI *adi, int ksid_skp, uint32_t prefix, int block_size = 28*1024):
 		param(block_size), pool(adi, ksid_skp, prefix, &param), level(0), dirty(false)
 	{
+	    TR << ">> 2. constructing B+ tree for prefix " << prefix << TREND;
+
 		// create or fetch root node
 		meta = pool.get_meta();
 		if (meta->isnew) {
@@ -260,7 +265,9 @@ public:
 		}
 		else {
 			root = pool.fetch_tree_node(pool.get_meta()->get_root_addr());
-			if (root == 0) { std::cerr << "cannot find the root node" << std::endl; }
+			if (root == 0) {
+			    std::cerr << "cannot find the root node" << std::endl;
+			}
 		}
 	}
 
@@ -268,14 +275,18 @@ public:
 		for (KvsSlottedPage* datanode : datanode_cache) {
 			bp_addr_t keyaddr = datanode->insert(key, length);
 			if (keyaddr != invalid_key_addr) {
+                datanode->set_dirty();
+                TRITER << "DN insert: DN ADDR " << desc(datanode->addr) << ", KEY ADDR " << desc(keyaddr) << TREND;
 				return keyaddr;
 			}
 		}
 
 		KvsSlottedPage* dn = pool.create_data_node();
 		datanode_cache.push_back(dn);
-
-		return dn->insert(key, length);
+        bp_addr_t keyaddr = dn->insert(key, length);
+        dn->set_dirty();
+        TRITER << "DN insert: DN ADDR " << desc(dn->addr) << ", KEY ADDR " << desc(keyaddr) << TREND;
+		return keyaddr;
 	}
 
 	bool get_key_from_datanode(const bp_addr_t& key, char **keyfound, int &keylength) {
@@ -296,6 +307,7 @@ public:
 			exit(1);
 		}
 		dn->remove(key);
+		dn->set_dirty();
 	}
 
 	int insert(char *userkey, int keylength)
@@ -323,6 +335,7 @@ public:
 		set_dirty(root);
 		this->level = 1;
         this->dirty = true;
+        TRITER << "root node created: addr = " << desc(root->addr) << TREND;
 		return 0;
 	}
 
@@ -351,7 +364,6 @@ public:
 
 	void flush() {
 		if (root && dirty) {
-		    TRITER << "FLUSH - root->addr = " << root->addr << " prefix = " << pool.prefix << TREND;
 			pool.flush(root->addr);
 		}
 	}
