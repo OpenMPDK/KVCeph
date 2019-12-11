@@ -70,7 +70,7 @@ struct bptree_param
 };
 
 static inline uint64_t bpaddr_pageid(const bp_addr_t &addr)  {
-	return (addr >> 48);
+	return (addr >> 16);
 }
 
 static inline uint16_t bpaddr_slotid(const bp_addr_t &addr)  {
@@ -86,8 +86,12 @@ static inline int keylength_to_fragments(const int length) {
 }
 
 static inline bp_addr_t create_key_addr(const uint64_t pageid, const uint16_t slotid)  {
-    return (pageid << 48 | (slotid & 0xFFFF));
+    bp_addr_t addr = (slotid & 0xFFFF);
+    addr |= (pageid & 0xFFFFFFFFFFFFFFFFull ) << 16;
+    return addr;
 }
+
+
 
 static inline bp_addr_t create_metanode_addr(int treeindex)  {
 	return create_key_addr(treeindex, NODE_TYPE_META);
@@ -127,6 +131,10 @@ public:
 	bp_addr_t addr;
 	char *buffer;
 	int buffer_size;
+
+    kv_indexnode(const bp_addr_t &addr_):
+            addr(addr_), buffer(0), buffer_size(0) {
+    }
 
 	kv_indexnode(const bp_addr_t &addr_, char *buffer_, int buffer_size_):
 		addr(addr_), buffer(buffer_), buffer_size(buffer_size_) {
@@ -257,6 +265,7 @@ private:
 	}
 
 	int read_page(const bp_addr_t &addr, void *buffer, uint32_t buffersize) {
+	    FTRACE
 		kv_value page;
 		page.length = buffersize;
 		page.offset = 0;
@@ -275,6 +284,7 @@ private:
 	}
 
 	inline int fill_cmdkey_for_index_nodes(void *key, const bp_addr_t &addr) {
+	    FTRACE
         kvs_page_key* k = (kvs_page_key*)key;
         k->prefix = bpaddr_slotid(addr);
         k->pageid = bpaddr_pageid(addr);

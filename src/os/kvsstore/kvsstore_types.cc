@@ -177,7 +177,7 @@ OnodeRef KvsCollection::get_onode(const ghobject_t &oid, bool create,
 		bool is_createop) {
 
 	ceph_assert(create ? ceph_mutex_is_wlocked(lock) : ceph_mutex_is_locked(lock));
-TR << __func__ << "1" << TREND;
+    TR << __func__ << " oid = " << oid << TREND;
 	spg_t pgid;
 	if (cid.is_pg(&pgid)) {
 		if (!oid.match(cnode.bits, pgid.ps())) {
@@ -186,39 +186,34 @@ TR << __func__ << "1" << TREND;
 			ceph_abort();
 		}
 	}
-    TR << __func__ << "2" << TREND;
+
 	OnodeRef o = onode_map.lookup(oid);
 	if (o)
 		return o;
-    TR << __func__ << "3" << TREND;
+
 	bufferlist v;
 	int ret = KV_ERR_KEY_NOT_EXIST;
 	KvsOnode *on;
-    TR << __func__ << "4" << TREND;
+
 	if (!is_createop) {
 		ret = store->db.read_onode(oid, v);
-        TR << __func__ << "5, ret = " << ret << TREND;
 	}
-    TR << __func__ << "6" << TREND;
+
 	if (ret == KV_ERR_KEY_NOT_EXIST) {
 		if (!create)
 			return OnodeRef();
-        TR << __func__ << "7" << TREND;
 		// new object, new onode
 		on = new KvsOnode(this, oid);
 		uint64_t lid = ++store->lid_last;
 		on->onode.lid = lid;
 		on->onode.size = 0;
-
 	} else if (ret == KV_SUCCESS) {
-        TR << __func__ << "8" << TREND;
 		on = KvsOnode::decode(this, oid, v);
-        TR << __func__ << "9" << TREND;
 	} else {
 		lderr(store->cct) << __func__ << "I/O Error: ret = " << ret << dendl;
 		ceph_abort_msg("Failed to read an onode due to an I/O error");
 	}
-    TR << __func__ << "10" << TREND;
+    TR << __func__ << "oid is loaded " << on->oid << TREND;
 	o.reset(on);
 	return onode_map.add(oid, o);
 }

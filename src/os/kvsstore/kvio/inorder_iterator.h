@@ -17,8 +17,8 @@ class LsCache
 {
     class LsData
     {
-        ceph::mutex d_lock = ceph::make_mutex("KvsStore::d_lock");
-        ceph::mutex i_lock = ceph::make_mutex("KvsStore::i_lock");
+        std::mutex d_lock;// = ceph::make_mutex("KvsStore::d_lock");
+        std::mutex i_lock;// = ceph::make_mutex("KvsStore::i_lock");
         bool loaded;
         bool buffering;
     public:
@@ -146,7 +146,7 @@ class LsCache
     };
 
     // poolid <-> pool data
-    ceph::mutex pool_lock  = ceph::make_mutex("KvsStore::pool_lock");
+    std::mutex pool_lock; //  = ceph::make_mutex("KvsStore::pool_lock");
     std::unordered_map<uint64_t, std::unordered_map<int8_t, LsData*> > cache;
     std::vector<LsData *> dirtylist;
 

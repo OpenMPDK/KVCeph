@@ -47,26 +47,23 @@ public:
         TR << "bpmeta" << TREND;
     }
 	const static int META_SIZE = 16;
-    char metabuffer[META_SIZE];
-	bool isnew;
+    bool isnew;
 
-    bptree_meta(bp_addr_t &addr, char *buffer_):
-            kv_indexnode(addr, metabuffer, META_SIZE), isnew(false) {
-
-        memcpy(metabuffer, buffer_, META_SIZE);
-
-        TRITER << "  loaded meta: root addr = " << desc(get_root_addr()) << TREND;
-        TRITER << "  loaded meta: last pgid = " << get_last_pgid() << TREND;
+    bptree_meta(const bp_addr_t &addr): kv_indexnode(addr), isnew(false) {
+        buffer = (char*)malloc(META_SIZE);
+        buffer_size = META_SIZE;
     }
 
-	bptree_meta(bp_addr_t &addr, int treeindex):
-		kv_indexnode(addr, metabuffer, META_SIZE), isnew(true)
-	{
-        set_root_addr( create_metanode_addr(treeindex) );
-        set_next_pgid(2);
+    char *get_raw_buffer() { return buffer; }
 
-        TRITER << "  new meta: root addr = " << desc(get_root_addr())  << TREND;
-        TRITER << "  new meta: last pgid = " << get_last_pgid() << TREND;
+
+    void init(int treeid)
+	{
+        set_root_addr( create_metanode_addr(treeid) );
+        set_next_pgid(2);
+        isnew = true;
+        //TRITER << "  new meta: root addr = " << desc(get_root_addr())  << TREND;
+        //TRITER << "  new meta: last pgid = " << get_last_pgid() << TREND;
 	}
 
 	inline uint64_t get_last_pgid() {
@@ -256,6 +253,7 @@ public:
 	bptree(KADI *adi, int ksid_skp, uint32_t prefix, int block_size = 28*1024):
 		param(block_size), pool(adi, ksid_skp, prefix, &param), level(0), dirty(false)
 	{
+	    FTRACE
 	    TR << ">> 2. constructing B+ tree for prefix " << prefix << TREND;
 
 		// create or fetch root node
@@ -269,6 +267,7 @@ public:
 			    std::cerr << "cannot find the root node" << std::endl;
 			}
 		}
+
 	}
 
 	bp_addr_t insert_key_to_datanode(char *key, int length) {

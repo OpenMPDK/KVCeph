@@ -27,6 +27,7 @@ struct KvsPage {
 
   char *const data;
   uint64_t offset;
+  uint32_t length;
 
   boost::intrusive::avl_set_member_hook<> hook;
 
@@ -57,8 +58,12 @@ struct KvsPage {
   }
 
   static Ref create(size_t page_size, uint64_t offset = 0) {
-	char *buffer = (char*)malloc(page_size);
-    return new KvsPage(buffer, offset);
+      const auto align = alignof(KvsPage);
+      page_size = (page_size + align - 1) & ~(align - 1);
+      // allocate the Page and its data in a single buffer
+      char *buffer = (char*) malloc(page_size + sizeof(KvsPage));
+
+      return new (buffer+page_size) KvsPage (buffer, offset);
   }
 
   // copy disabled
@@ -66,13 +71,10 @@ struct KvsPage {
   const KvsPage& operator=(const KvsPage&) = delete;
 
  private: // private constructor, use create() instead
-  KvsPage(char *data, uint64_t offset) : data(data), offset(offset), nrefs(1) {}
+  KvsPage(char *data_, uint64_t offset_) : data(data_), offset(offset_), nrefs(1) {}
 
   static void operator delete(void *p) {
-      if (p) {
-          KvsPage *page = reinterpret_cast<KvsPage *>(p);
-          if (page->data) free(page->data);
-      }
+    free(reinterpret_cast<KvsPage *>(p)->data);
   }
 };
 
@@ -148,6 +150,7 @@ class KvsPageSet {
 
     std::lock_guard<lock_type> lock(mutex);
     iterator cur = pages.end();
+    uint64_t c;
     while (length) {
       const uint64_t page_offset = position & ~(page_size-1); // start offset of the page, 0, 8192, ... if pagesize = 8k
 
@@ -157,21 +160,30 @@ class KvsPageSet {
     	auto page = KvsPage::create(page_size, page_offset);
         cur = pages.insert_commit(*page, commit);
 
-        // assume that the caller will write to the range [offset,length),
-        //  so we only need to read data offset
-        //offset + length < page->offset + page_size
         if (offset > page->offset) {
-        	int ret = page_loader(page->data, page_offset / page_size);
-        	if (ret != 0) throw "page load failed";
+        	int ret = page_loader(page->data, page_offset / page_size, page->length);
+        	if (ret != 0) {
+        	    //fill zero from pageoffset to offset
+                std::fill(page->data, page->data + offset - page->offset, 0);
+                page->length = std::min(length, (position & (page_size-1)) + 1);
+        	}
+        } else {
+            page->length = std::min(length, (position & (page_size-1)) + 1);
         }
+        if (offset + length < page->offset + page->length)
+          std::fill(page->data + offset + length - page->offset,
+                    page->data + page->length, 0);
+
+        c = page->length;
       } else { // exists
         cur = insert.first;
+        c = cur->length;
       }
+
       // add a reference to output vector
       out->reset(&*cur);
       ++out;
 
-      auto c = std::min(length, (position & (page_size-1)) + 1);
       position -= c;
       length -= c;
     }
@@ -180,10 +192,10 @@ class KvsPageSet {
   }
 
 
-  bool alloc_range_for_read(uint64_t offset, uint64_t length, const std::function< int (char *, int) > &page_loader) {
+  bool alloc_range_for_read(uint64_t offset, uint64_t length, const std::function< int (char *, int, uint32_t&) > &page_loader) {
       uint64_t position = offset + length - 1;
-
       std::lock_guard<lock_type> lock(mutex);
+      uint64_t c;
       iterator cur = pages.end();
       while (length) {
         const uint64_t page_offset = position & ~(page_size-1); // start offset of the page, 0, 8192, ... if pagesize = 8k
@@ -194,16 +206,22 @@ class KvsPageSet {
           // load the page
           auto page = KvsPage::create(page_size, page_offset);
 
-          int ret = page_loader(page->data, page_offset / page_size);
+          int ret = page_loader(page->data, page_offset / page_size, page->length);
           if (ret != 0) { page->put(); return false; }
 
           cur = pages.insert_commit(*page, commit);
 
+          c = (uint64_t)page->length;
+
         } else { // exists
           cur = insert.first;
+          c = (*cur).length;
+          //c = std::min(length, (position & (page_size-1)) + 1);
+        }
+        if (c < (position & (page_size-1)) + 1) {
+            break;
         }
 
-        auto c = std::min(length, (position & (page_size-1)) + 1);
         position -= c;
         length -= c;
       }
@@ -213,7 +231,7 @@ class KvsPageSet {
 
 
   // return all allocated pages that intersect the range [offset,length)
-  bool get_range(uint64_t offset, uint64_t length, page_vector &range, const std::function< int (char *, int) > &page_loader) {
+  bool get_range(uint64_t offset, uint64_t length, page_vector &range, const std::function< int (char *, int, uint32_t&) > &page_loader) {
 	// ensure all pages are loaded
 	if (!alloc_range_for_read(offset, length, page_loader)) {
 		return false;
@@ -240,7 +258,7 @@ class KvsPageSet {
     std::lock_guard<lock_type> lock(mutex);
     auto cur = pages.begin();
     while (cur != pages.end()) {
-    	mypage(cur->offset / page_size, cur->data, page_size);
+    	mypage(cur->offset / page_size, cur->data,cur->length);
     	cur++;
     }
   }

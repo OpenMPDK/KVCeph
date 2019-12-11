@@ -325,7 +325,7 @@ public:
     unsigned int prefix;
     unsigned int bitmask;
 
-    malloc_unique_ptr<char> buf;
+    char *buf;
     //void *buf2;
     int buflen;
     int byteswritten;
@@ -344,11 +344,13 @@ public:
 
     // for sub iter contexts
     kv_iter_context(int id_,  unsigned char h, void *parent_):
-    	handle(h), prefix(0), bitmask(0), buf(make_malloc_unique<char>(ITER_BUFSIZE)), buflen(ITER_BUFSIZE), byteswritten(0), buflength(0),
+    	handle(h), prefix(0), bitmask(0), buf(0), buflen(ITER_BUFSIZE), byteswritten(0), buflength(0),
 		bufoffset(0), end(false), id (id_), parent(parent_), retcode(0), elapsed_us(0), spaceid(0)
     {
 
     }
+
+
 };
 
 template<typename T>
@@ -427,11 +429,11 @@ public:
     bool end;
     int groupid;
     uint64_t sequence;
-    malloc_unique_ptr<char> buf;
+    char* buf;
 
     kv_read_context(int id_, int spaceid_,  int buflength_, void *parent_):
     	id(id_), retcode(0), spaceid(spaceid_), buflength(buflength_), byteswritten(0), parent(parent_),
-		end(false), groupid(0), sequence(0), buf(make_malloc_unique<char>(buflength))
+		end(false), groupid(0), sequence(0), buf(0)
 	{}
 };
 
@@ -442,8 +444,8 @@ struct __attribute__((packed)) oplog_key
 	uint32_t groupid;
 };
 
-typedef std::list<std::pair<malloc_unique_ptr<char>, int> > buflist_t;
-typedef std::unordered_map<int, std::map<uint64_t, std::pair< malloc_unique_ptr<char>, int >>> oploglist_t;	// group, sequence
+typedef std::list<std::pair<char*, int> > buflist_t;
+typedef std::unordered_map<int, std::map<uint64_t, std::pair< char*, int >>> oploglist_t;	// group, sequence
 typedef std::vector<std::pair<void *, int>> keylist_t;
 
 struct oplog_info {
@@ -452,6 +454,13 @@ struct oplog_info {
 	buflist_t buflist;
 	keylist_t oplog_keys;
 	oploglist_t oplog_list;
+
+	~oplog_info() {
+	    // free the oplog buffers
+        for (const auto &p: buflist) {
+            free(p.first);
+        }
+	}
 };
 
 inline std::string print_key(const char* in, unsigned length)

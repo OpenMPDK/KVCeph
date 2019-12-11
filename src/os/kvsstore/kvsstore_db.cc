@@ -101,6 +101,8 @@ int KvsStoreDB::_read_impl(uint8_t space_id, int offset, int length, bufferlist 
     if (ret == 0) {
         bufferptr bptr(buffer::claim_malloc(value.length, (char*)value.value));
         bl.append(std::move(bptr));
+        //bl.append((char*)value.value, value.length);
+        //free (value.value);
     }
 
 	return ret;
@@ -129,23 +131,29 @@ int KvsStoreDB::read_sb(bufferlist &bl) {
 
 
 int KvsStoreDB::read_onode(const ghobject_t &oid, bufferlist &bl) {
+    FTRACE
 	bool ispartial;
 	auto keymem = make_malloc_unique<char>(256);
-	return _read_impl(KEYSPACE_ONODE, bl, [&] (struct nvme_passthru_kv_cmd &cmd) {
+	int ret = _read_impl(KEYSPACE_ONODE, bl, [&] (struct nvme_passthru_kv_cmd &cmd) {
 		void *long_keyaddr = keymem.get();
 		cmd.key_addr = (__u64)long_keyaddr;
-		cmd.key_length = construct_onode_key(cct, oid, long_keyaddr);
+		cmd.key_length = construct_onode_key(cct, oid, (void*)long_keyaddr);
 	},ispartial);
+
+	//free((void*)long_keyaddr);
+	return ret;
 }
 
 int KvsStoreDB::read_data(const ghobject_t &oid, int offset, int length, bufferlist &bl, bool &ispartial) {
-	auto keymem = make_malloc_unique<char>(256);
+    auto keymem = make_malloc_unique<char>(256);
 
-	return _read_impl(KEYSPACE_DATA, offset, length, bl, [&] (struct nvme_passthru_kv_cmd &cmd) {
+	int ret =  _read_impl(KEYSPACE_DATA, offset, length, bl, [&] (struct nvme_passthru_kv_cmd &cmd) {
 		void *long_keyaddr = keymem.get();
 		cmd.key_addr = (__u64)long_keyaddr;
 		cmd.key_length = construct_object_key(cct, oid, long_keyaddr);
 	}, ispartial, true /* retry */);
+
+    return ret;
 }
 
 int KvsStoreDB::read_data(const ghobject_t &oid, bufferlist &bl, bool &ispartial) {
@@ -338,6 +346,7 @@ void txc_journal_callback(kv_io_context &op, void* private_data) {
 
 // sync write
 int KvsStoreDB::write_journal(KvsTransContext *txc) {
+    FTRACE
 	int ret;
 	kv_value value;
 	for (const KvsJournal *p : txc->ioc.journal) {
@@ -370,7 +379,7 @@ int KvsStoreDB::aio_submit(KvsTransContext *txc)
     txc->ioc.running_ios.splice(txc->ioc.running_ios.begin(), txc->ioc.pending_ios);
     txc->ioc.num_running = txc->ioc.running_ios.size() + num_batch_cmds;
 
-	std::unique_lock lk(txc->ioc.running_aio_lock);
+	std::unique_lock<std::mutex> lk(txc->ioc.running_aio_lock);
 	for (auto ior : txc->ioc.running_ios) {
 
 		if (ior->data == 0 && ior->raw_data == 0) { // delete
@@ -386,6 +395,7 @@ int KvsStoreDB::aio_submit(KvsTransContext *txc)
 			}
 
 			res = kadi.kv_store_aio(ior->spaceid, ior->key, &value, { txc_data_callback, static_cast<void*>(txc) });
+
             TR << "{SUBMIT} STORE " << print_kvssd_key(ior->key->key, ior->key->length) << ", value length = " << value.length << ", spaceid = " << ior->spaceid << ", retcode = " << res << TREND;
 		}
         if (res != 0) return res;
@@ -405,6 +415,7 @@ KvsIterator *KvsStoreDB::get_iterator(uint32_t prefix)
 uint64_t KvsStoreDB::compact() {
 	//FTRACE
 	uint64_t processed_keys = 0;
+
 	bptree onode_tree(&kadi.adi, 6, GROUP_PREFIX_ONODE);
 	bptree  coll_tree(&kadi.adi, 6, GROUP_PREFIX_COLL);
 	bptree *tree;
@@ -412,6 +423,7 @@ uint64_t KvsStoreDB::compact() {
 	//derr << "compact 1" << dendl;
 	processed_keys = list_oplog(KEYSPACE_ONODE, 0xffffffff,
 			[&] (int opcode, int groupid, uint64_t sequence, const char* key, int length) {
+
 			const uint32_t prefix = *(uint32_t*)key;
             std::string treename = "";
 			if (prefix == GROUP_PREFIX_ONODE) {
@@ -446,18 +458,6 @@ uint64_t KvsStoreDB::compact() {
     coll_tree.flush();
 
     TR  << "DONE - processed keys = " <<   processed_keys << TREND;
-    /*{
-        bptree_iterator *t = coll_tree.get_iterator();
-        while (!t->is_end()) {
-            char *key;
-            int length;
-            t->get_key(&key, length);
-            TR << "returned key - colltree: " << print_kvssd_key(std::string((char*)key,length)) << TREND;
-            t->move_next();
-        }
-    }*/
-	//derr << "compact 3" << dendl;
-    /*if (processed_keys > 0) */
 
 	return processed_keys;
 }

@@ -160,12 +160,12 @@ public:
 
 public:
 
-	inline kv_result iter_readall(kv_iter_context *iter_ctx, std::list<std::pair<malloc_unique_ptr<char>, int> > &buflist, int space_id)
+	inline kv_result iter_readall(kv_iter_context *iter_ctx, buflist_t &buflist, int space_id)
 	{
 		return adi.iter_readall(iter_ctx, buflist, space_id);
 	}
 
-	inline kv_result iter_readall_aio(kv_iter_context *iter_ctx, std::list<std::pair<malloc_unique_ptr<char>, int> > &buflist, int space_id)
+	inline kv_result iter_readall_aio(kv_iter_context *iter_ctx, buflist_t &buflist, int space_id)
 	{
 		return adi.iter_readall_aio(iter_ctx, buflist, space_id);
 	}

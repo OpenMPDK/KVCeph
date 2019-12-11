@@ -11,8 +11,10 @@
 bptree_pool::bptree_pool(KADI *adi_, int ksid_skp_, uint32_t prefix_, bptree_param *param_):
 adi(adi_), ksid_skp(ksid_skp_), prefix(prefix_), param(param_)
 {
+    FTRACE
 	meta = _fetch_meta();
-	next_pgid = meta->get_last_pgid();
+	TR << "meta = " << meta << TREND;
+	//next_pgid = meta->get_last_pgid();
 }
 
 
@@ -70,30 +72,32 @@ void bptree_pool::flush(const bp_addr_t &newrootaddr) {
 }
 
 bptree_meta *bptree_pool::_fetch_meta() {
+    FTRACE
     TR << ">> 1. fetching metadata: prefix = " << prefix << TREND;
 
-	bptree_meta *n = 0;
 	bp_addr_t addr = create_metanode_addr(prefix);
+    bptree_meta *n = 0;
+    TR << ">> 2. addr = " << addr << TREND;
 
 	auto it = pool.find(addr);
 	if (it != pool.end()) {
 		return (bptree_meta*)it->second;
 	}
 
-	void *buffer = malloc(bptree_meta::META_SIZE);
-	int nread = read_page(addr, buffer, bptree_meta::META_SIZE);
+    n = new bptree_meta(addr);
+
+	int nread = read_page(addr, n->get_raw_buffer(), bptree_meta::META_SIZE);
 	if (nread == bptree_meta::META_SIZE) {
 		// load meta from data
 		TRITER << "metadata fetched " << desc(addr) << TREND;
-		n = new bptree_meta(addr, (char*)buffer);
 	} else {
 		// new meta
         TRITER << "create new metadata " << desc(addr) << TREND;
-		n = new bptree_meta(addr, prefix);
+        n->init(prefix);
 	}
 
 	pool[addr] = n;
-	free(buffer);
+
 	return n;
 }
 
@@ -111,7 +115,10 @@ kv_indexnode *bptree_pool::_fetch_node(const bp_addr_t &addr) {
 
 	// load from the disk
 	if (bpaddr_pageid(addr) < meta->get_last_pgid() && !meta->isnew) {
+
+        TR << "malloc large block " << param->datanode_block_size << TREND;
 		void *data = malloc(param->datanode_block_size);
+		TR << "done" << TREND;
 		int nread = read_page(addr, data, param->datanode_block_size);
 		if (nread > 0) {
 			kv_indexnode *n;

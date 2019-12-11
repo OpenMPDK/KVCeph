@@ -433,7 +433,7 @@ private:
 
     // TODO: check next_sequencer_id in Bluestore
 
-    ceph::mutex zombie_osr_lock = ceph::make_mutex("KvsStore::zombie_osr_lock");
+    std::mutex zombie_osr_lock; // = ceph::make_mutex("KvsStore::zombie_osr_lock");
     uint32_t next_sequencer_id = 0;
     std::map<coll_t,OpSequencerRef> zombie_osr_set;
 
@@ -456,11 +456,11 @@ private:
 
     //# Internal Thread --------------------------------------------
 
-    ceph::mutex kv_lock  = ceph::make_mutex("KvsStore::kv_lock");               ///< control kv threads
-    ceph::condition_variable kv_cond;
+    std::mutex kv_lock; //  = ceph::make_mutex("KvsStore::kv_lock");               ///< control kv threads
+    std::condition_variable kv_cond;
 
-    ceph::mutex kv_finalize_lock  = ceph::make_mutex("KvsStore::kv_finalize_lock");
-    ceph::condition_variable kv_finalize_cond;
+    std::mutex kv_finalize_lock; //  = ceph::make_mutex("KvsStore::kv_finalize_lock");
+    std::condition_variable kv_finalize_cond;
 
     std::atomic_bool kv_stop = { false };
     bool kv_index_stop = false;

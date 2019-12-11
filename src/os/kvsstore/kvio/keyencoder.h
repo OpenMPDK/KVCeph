@@ -225,6 +225,8 @@ inline uint8_t construct_object_key(CephContext* cct, const ghobject_t& oid, voi
     	std::cerr << "name is too long" << std::endl;
         ceph_abort();
     }
+
+    TR << "construct object key: oid=" << oid << ", keybuffer = " << print_kvssd_key(keybuffer, total_keylength) << TREND;
     return total_keylength;
 }
 

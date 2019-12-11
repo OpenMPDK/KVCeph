@@ -243,6 +243,8 @@ int KADI::kv_retrieve_aio(uint8_t space_id, kv_key *key, kv_value *value, const 
 	aio_cmd_ctx *ioctx = cmd_ctx_mgr.get_cmd_ctx(cb);
 	memset((void*)&ioctx->cmd, 0, sizeof(struct nvme_passthru_kv_cmd));
 
+	TRIO << "ASYNC READ TRACE: key = " << print_kvssd_key(key->key, key->length) << ", value offset = " << value->offset << TREND;
+
     ioctx->cmd.opcode = nvme_cmd_kv_retrieve;
     ioctx->cmd.nsid = nsid;
     ioctx->cmd.cdw3 = space_id;
@@ -336,10 +338,10 @@ int KADI::kv_retrieve_sync(uint8_t space_id, kv_value *value, const std::functio
         keyptr = (void*)cmd.key_addr;
     }
     if (ret == 0) {
-        TRIO << "<READ> " << print_kvssd_key(std::string((const char*)keyptr, cmd.key_length))
+        TRIO << "<READ> " << print_kvssd_key((const char*)keyptr, cmd.key_length)
            << ", value = " << value->value << ", offset = " << value->offset<< ", value length = " << std::min(cmd.result, value->length) << " OK" << TREND;
     } else {
-        TRIO << "<READ> " << print_kvssd_key(std::string((const char*)keyptr, cmd.key_length))
+        TRIO << "<READ> " << print_kvssd_key((const char*)keyptr, cmd.key_length)
            << ", value = " << value->value << ", offset = " << value->offset << ", value length = " << value->length
            << ", retcode = " << ret << ", FAILED" << TREND;
     }
@@ -595,7 +597,7 @@ int KADI::iter_read(kv_iter_context *iter_handle, int space_id) {
     cmd.nsid = nsid;
     cmd.cdw3 = space_id;
     cmd.cdw5 = iter_handle->handle;
-    cmd.data_addr = (__u64)iter_handle->buf.get();
+    cmd.data_addr = (__u64)iter_handle->buf;
     cmd.data_length = iter_handle->buflen;
 
     int ret = ioctl(fd, NVME_IOCTL_IO_KV_CMD, &cmd);
@@ -698,7 +700,7 @@ int KADI::fill_oplog_info(const uint8_t spaceid, const uint32_t prefix, struct o
 			int optype;
 			void *key;
 			int length;
-			iterbuf_reader reader(nullptr, p.first.get(), p.second);
+			iterbuf_reader reader(nullptr, p.first, p.second);
 			while (reader.nextkey(&optype, &key, &length)) {
 				TRIO << "oplog page key: " <<  print_key((const char*)key, length) << TREND;
 				info.oplog_keys.emplace_back(key, length);
@@ -706,7 +708,7 @@ int KADI::fill_oplog_info(const uint8_t spaceid, const uint32_t prefix, struct o
 		}
         //TRIO << __func__ << "..3" << TREND;
 
-		if (info.oplog_keys.empty()) return 0;
+		if (info.oplog_keys.empty()) { r = 0; goto clear; }
 	}
 
    // TRIO << __func__ << "..4" << TREND;
@@ -739,19 +741,20 @@ int KADI::fill_oplog_info(const uint8_t spaceid, const uint32_t prefix, struct o
 				const auto  &oplogpair = *it;
 				const struct oplog_key *oplogkey = ((struct oplog_key*)oplogpair.first);
 
-
+                sub_read_ctx->buf = (char*)malloc(sub_read_ctx->buflength);
 				k.key    = oplogpair.first;
 				k.length = oplogpair.second;
-				v.value  = sub_read_ctx->buf.get();
+				v.value  = sub_read_ctx->buf;
 				v.length = sub_read_ctx->buflength;
+				v.offset = 0;
 				sub_read_ctx->groupid = oplogkey->groupid;
 				sub_read_ctx->sequence = oplogkey->sequenceid;
 
-               // TRIO << __func__ << "..7 - send read " <<  print_key((const char*)k.key, k.length) << TREND;
+                TRIO << __func__ << "..7 - send read " <<  print_key((const char*)k.key, k.length) << " offset = " << v.offset << TREND;
 				//cout << "issue oplog read = " << print_key((const char*)k.key, k.length) << ", groupid = " << sub_read_ctx->groupid << endl;
 
 				r = kv_retrieve_aio(ksid_oplog, &k, &v, { oplog_callback, sub_read_ctx });
-				if (r != 0) { std::cerr << "read error " << endl; goto error_exit; }
+				if (r != 0) { std::cerr << "read error " << endl; goto clear; }
 				sent++;
 				it++;
 			}
@@ -767,8 +770,8 @@ int KADI::fill_oplog_info(const uint8_t spaceid, const uint32_t prefix, struct o
 						cout << "read failed: retcode =" << sub_read_ctx->retcode << std::endl;
 					}
 					else if (sub_read_ctx->byteswritten > 0) {
-						info.oplog_list[sub_read_ctx->groupid].insert(std::make_pair(sub_read_ctx->sequence, std::make_pair(std::move(sub_read_ctx->buf), sub_read_ctx->byteswritten)));
-                        sub_read_ctx->buf = make_malloc_unique<char>(sub_read_ctx->buflength);
+						info.oplog_list[sub_read_ctx->groupid].insert(std::make_pair(sub_read_ctx->sequence, std::make_pair(sub_read_ctx->buf, sub_read_ctx->byteswritten)));
+                        sub_read_ctx->buf = 0;
 					}
 					iter_aioctx.return_free_context(sub_read_ctx);
 				}
@@ -785,7 +788,7 @@ int KADI::fill_oplog_info(const uint8_t spaceid, const uint32_t prefix, struct o
 
 	return 0;
 
-error_exit:
+clear:
 	info.oplog_list.clear();
 	info.oplog_keys.clear();
 	info.buflist.clear();
@@ -802,60 +805,66 @@ uint64_t KADI::list_oplog(const uint8_t spaceid, const uint32_t prefix, const st
 	void *key;
 	int length;
 	kv_key del_k;
-	struct oplog_info oplog;
-	uint64_t total_keys = 0;
-	TRIO << "list_oplog 1" << TREND;
-	fill_oplog_info(spaceid, prefix, oplog);
-	TRIO << "list_oplog 2" << TREND;
-	for (const auto &groups: oplog.oplog_list) {
-		const int groupid = groups.first;
-		for (const auto &sequences : groups.second) {
-			int cur = 0;
-			opbuf_reader reader(nullptr, groupid, sequences.second.first.get(), sequences.second.second);
-			while (reader.nextkey(&opcode, &key, &length)) {
-                TRIO << "oplog key " << print_kvssd_key(key, length) << TREND;
-				key_listener(opcode, groupid, sequences.first, (const char*)key, length);
-				cur++;
-			}
-			total_keys += reader.numkeys_ret();
-		}
-	}
-	TRIO << "list_oplog 3" << TREND;
-	uint64_t num_complete  = 0, qdepth  = 0;
-	uint64_t num_delete = oplog.oplog_keys.size();
-	std::atomic<int> completed(0);
+    uint64_t total_keys = 0;
 
-	auto it = oplog.oplog_keys.begin();
-	while (num_delete > num_complete) {
-		while (it != oplog.oplog_keys.end() && qdepth < 16) {
-			const auto &p = *it;
-			del_k.key = p.first;
-			del_k.length = p.second;
-			int ret = kv_delete_aio(ksid_oplog, &del_k, { oplog_delete_cb, &completed});
-			if (ret != 0) {
-				cerr << "oplog: cannot be deleted: " << ret << endl;
-				num_delete--;
-			}
-			else
-				qdepth++;
-			it++;
-		}
-		if (qdepth > 0) {
-			const int done = completed.exchange(0, std::memory_order_relaxed);
-			qdepth       -= done;
-			num_complete += done;
-			usleep(1);
-		}
-	}
+    struct oplog_info oplog;
+
+    TRIO << "list_oplog 1" << TREND;
+
+    fill_oplog_info(spaceid, prefix, oplog);
+
+    TRIO << "list_oplog 2" << TREND;
+    for (const auto &groups: oplog.oplog_list) {
+        const int groupid = groups.first;
+        for (const auto &sequences : groups.second) {
+            int cur = 0;
+            opbuf_reader reader(nullptr, groupid, sequences.second.first, sequences.second.second);
+            while (reader.nextkey(&opcode, &key, &length)) {
+                TRIO << "oplog key " << print_kvssd_key(key, length) << TREND;
+                key_listener(opcode, groupid, sequences.first, (const char*)key, length);
+                cur++;
+            }
+            total_keys += reader.numkeys_ret();
+        }
+    }
+
+    TRIO << "list_oplog 3" << TREND;
+    uint64_t num_complete  = 0, qdepth  = 0;
+    uint64_t num_delete = oplog.oplog_keys.size();
+    std::atomic<int> completed(0);
+
+    auto it = oplog.oplog_keys.begin();
+    while (num_delete > num_complete) {
+        while (it != oplog.oplog_keys.end() && qdepth < 16) {
+            const auto &p = *it;
+            del_k.key = p.first;
+            del_k.length = p.second;
+            int ret = kv_delete_aio(ksid_oplog, &del_k, { oplog_delete_cb, &completed});
+            if (ret != 0) {
+                cerr << "oplog: cannot be deleted: " << ret << endl;
+                num_delete--;
+            }
+            else
+                qdepth++;
+            it++;
+        }
+        if (qdepth > 0) {
+            const int done = completed.exchange(0, std::memory_order_relaxed);
+            qdepth       -= done;
+            num_complete += done;
+            usleep(1);
+        }
+    }
     TRIO << "list_oplog done  ..." << total_keys << TREND;
 
     return total_keys;
 }
 
 
-int KADI::iter_readall_aio(kv_iter_context *iter_ctx, std::list<std::pair<malloc_unique_ptr<char>, int> > &buflist, int space_id)
+int KADI::iter_readall_aio(kv_iter_context *iter_ctx, std::list<std::pair<char*, int> > &buflist, int space_id)
 {
     FTRACE
+
     //std::cerr << __func__ << ": 1" << std::endl;
 	int r = iter_open(iter_ctx, space_id);
 	if (r != 0) return r;
@@ -877,12 +886,12 @@ int KADI::iter_readall_aio(kv_iter_context *iter_ctx, std::list<std::pair<malloc
 				kv_iter_context *sub_iter_ctx = iter_aioctx.get_free_context();
 				if (sub_iter_ctx == 0) break;
 
-                //std::cerr << __func__ << ": 4"  << std::endl;
+                std::cerr << __func__ << ": 4"  << std::endl;
+                sub_iter_ctx->buf = (char*)malloc(ITER_BUFSIZE);
 
-
-                //std::cerr << __func__ << ": 5"  << std::endl;
+                std::cerr << __func__ << ": 5"  << std::endl;
 				r = iter_read_aio(space_id, iter_ctx->handle,
-							sub_iter_ctx->buf.get(), ITER_BUFSIZE,
+							sub_iter_ctx->buf, ITER_BUFSIZE,
 							{ iter_callback, sub_iter_ctx } );
                 //std::cerr << __func__ << ": 6 r = " << r  << std::endl;
 				if (r != 0) { goto error_exit; }
@@ -901,9 +910,8 @@ int KADI::iter_readall_aio(kv_iter_context *iter_ctx, std::list<std::pair<malloc
 		for (kv_iter_context *sub_iter_ctx: ctxs) {
             if (sub_iter_ctx->byteswritten > 0) {
 				//printf("buffer list: %d bytes\n",  sub_iter_ctx->byteswritten);
-				buflist.push_back(std::make_pair(
-						std::move(sub_iter_ctx->buf), sub_iter_ctx->byteswritten));
-                sub_iter_ctx->buf = make_malloc_unique<char>(ITER_BUFSIZE);
+				buflist.push_back(std::make_pair(sub_iter_ctx->buf, sub_iter_ctx->byteswritten));
+                sub_iter_ctx->buf = 0;
 			}
 
 			finished |= sub_iter_ctx->end;
@@ -924,16 +932,14 @@ error_exit:
 }
 
 
-kv_result KADI::iter_readall(kv_iter_context *iter_ctx, std::list<std::pair<malloc_unique_ptr<char>, int> > &buflist, int space_id)
+kv_result KADI::iter_readall(kv_iter_context *iter_ctx, buflist_t &buflist, int space_id)
 {
     kv_result r = iter_open(iter_ctx, space_id);
     if (r != 0) return r;
 
-    const auto start = kadi_now();
-
     while (!iter_ctx->end) {
         iter_ctx->byteswritten = 0;
-        iter_ctx->buf = make_malloc_unique<char>(ITER_BUFSIZE); //= malloc(iter_ctx->buflen);
+        iter_ctx->buf = (char*)malloc(ITER_BUFSIZE); //= malloc(iter_ctx->buflen);
         int ret = iter_read(iter_ctx, space_id);
         if (ret) {
 
@@ -947,12 +953,10 @@ kv_result KADI::iter_readall(kv_iter_context *iter_ctx, std::list<std::pair<mall
         }
 
         if (iter_ctx->byteswritten > 0) {
-            buflist.push_back(std::make_pair(std::move(iter_ctx->buf), iter_ctx->byteswritten));
+            buflist.push_back(std::make_pair(iter_ctx->buf, iter_ctx->byteswritten));
         }
 
     }
-
-    iter_ctx->elapsed_us = kadi_timediffus(kadi_now(), start);
 
 exit:
     r = iter_close(iter_ctx, space_id);

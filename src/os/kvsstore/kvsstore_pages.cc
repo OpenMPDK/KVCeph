@@ -4,18 +4,26 @@
 template<typename Functor>
 int KvsStoreDataObject::read(uint64_t offset, uint64_t len, bufferlist& bl, Functor &&page_loader)
 {
+    FTRACE
   const auto start = offset;
   const auto end = offset + len;
   auto remaining = len;
+
+  TR << "prepare range" << TREND;
 
   KvsPageSet::page_vector tls_pages;
   bool suc = data.get_range(offset, len, tls_pages, page_loader);
   if (!suc) {tls_pages.clear(); return -1;}
 
+  TR << "range is ready" << TREND;
+
   // allocate a buffer for the data
   buffer::ptr buf(len);
 
-  auto p = tls_pages.begin();
+  TR << "length = " << len << TREND;
+
+
+    auto p = tls_pages.begin();
   while (remaining) {
     // no more pages in range
     if (p == tls_pages.end() || (*p)->offset >= end) {
@@ -39,7 +47,10 @@ int KvsStoreDataObject::read(uint64_t offset, uint64_t len, bufferlist& bl, Func
 
   tls_pages.clear(); // drop page refs
 
+
+
   bl.append(std::move(buf));
+    TR << "bl length = " << bl.length() << TREND;
   return len;
 }
 
@@ -75,7 +86,7 @@ template<typename Functor>
 void KvsStoreDataObject::remove_object(uint64_t size, Functor &&page_remover)
 {
 	KvsPageSet::page_vector tls_pages;
-	data.alloc_range(0, size, tls_pages, [&] (char *, int)->int {
+	data.alloc_range(0, size, tls_pages, [&] (char *, int, uint32_t &)->int {
 		return 0;
 	});
 
@@ -108,6 +119,7 @@ int KvsStoreDataObject::write(uint64_t offset, bufferlist &src, Functor &&page_l
     if (count == pageoff)
       ++page;
   }
+
   if (data_len < offset)
     data_len = offset;
   tls_pages.clear(); // drop page refs

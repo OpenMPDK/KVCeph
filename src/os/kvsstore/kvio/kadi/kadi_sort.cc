@@ -32,6 +32,7 @@ inline kv_value *create_skp_value(int valuesize = 28*1024) {
 	kv_value *k = new kv_value();
 	k->length = valuesize;
 	k->value  = malloc(k->length);
+	k->offset = 0;
 	return k;
 }
 
@@ -572,6 +573,7 @@ class BTreeSet final {
 			kv_value *k = new kv_value();
 			k->length = valuesize;
 			k->value  = malloc(k->length);
+			k->offset = 0;
 			return k;
 		}
 

@@ -13,6 +13,8 @@
 #include <mutex>
 #include <fstream>
 #include <iostream>
+#include <memory.h>
+#include <gperftools/heap-checker.h>
 //#include "common/BackTrace.h"
 // function traces: records enter and exit events
 // ----------------------------------------------
@@ -48,10 +50,33 @@ extern FtraceFile kvs_ff;
 struct FtraceObject {
 
     std::string func;
-
+    //HeapLeakChecker heap_checker;, heap_checker(f)
     FtraceObject(const char *f, int line) : func(f) {
         std::ofstream &fp = kvs_ff.get_fp();
-        fp << pthread_self() << " [ENTR] " << func << "\n";
+        fp << pthread_self() << " [ENTR] " << func << ", memcheck= " ;
+        fp.flush();
+        {
+            std::vector<void *> malloc_p;
+            for (int i = 0; i < 100; i++) {
+                void *v = malloc(2 * 1024*1024);
+                malloc_p.push_back(v);
+            }
+            for (void *p : malloc_p) {
+                free(p);
+            }
+            fp << "malloc OK ";
+        }
+        fp.flush();
+        {
+            //fp << __FILE__ << "," << __LINE__ << ": MEMORY CORRUPTION TEST CODE" << "\n";
+            uint64_t long_keyaddr = (uint64_t)malloc(8192);
+            std::string str((char *)long_keyaddr, 50);
+            if (str.length() == 0)
+                fp << "test1 = " << (void *) &str << "\n";
+            free((void*)long_keyaddr);
+            fp << "access OK";
+        }
+        fp << "\n";
         fp.flush();
         kvs_ff.return_fp();
     }
@@ -59,16 +84,38 @@ struct FtraceObject {
 
     ~FtraceObject() {
         std::ofstream &fp = kvs_ff.get_fp();
-        fp << pthread_self() << " [EXIT] " << func << "\n";
+        fp << pthread_self() << " [EXIT] " << func << " ";
         fp.flush();
+        {
+            std::vector<void *> malloc_p;
+            for (int i = 0; i < 100; i++) {
+                void *v = malloc(2 * 1024*1024);
+                malloc_p.push_back(v);
+            }
+            for (void *p : malloc_p) {
+                free(p);
+            }
+            fp << "malloc OK ";
+        }
+        fp.flush();
+        {
+            uint64_t long_keyaddr = (uint64_t)malloc(8192);
+            std::string str((char *)long_keyaddr, 50);
+            if (str.length() == 0)
+                fp << "test1 = " << (void *) &str << "\n";
+            free((void*)long_keyaddr);
+            fp << "access OK";
+        }
+        fp.flush();
+        fp << "\n"; //<< ", Global Leaks " << HeapLeakChecker::NoGlobalLeaks() << "\n"; //<< ", no leaks = " << heap_checker.NoLeaks() << ", bytes leaked " << heap_checker.BytesLeaked() << "\n";        fp.flush();
         kvs_ff.return_fp();
     }
 };
 
 #define FTRACE FtraceObject fobj(__FUNCTION__, __LINE__);
-#define TRIO kvs_ff.get_fp() << pthread_self() << "      "
-#define TRITER kvs_ff.get_fp() << pthread_self() << "      "
-#define TR kvs_ff.get_fp() << pthread_self() << "  "
+#define TRIO kvs_ff.get_fp() << pthread_self() << " " << __FUNCTION__ <<  ":      "
+#define TRITER kvs_ff.get_fp() << pthread_self() << " "  <<__FUNCTION__ << ":      "
+#define TR kvs_ff.get_fp() << " " << pthread_self() << "  "  << __FUNCTION__ << ": "
 //#define TR std::cout << pthread_self() << " "
 #define TREND "\n"; do { kvs_ff.return_fp(); } while(0)
 #else

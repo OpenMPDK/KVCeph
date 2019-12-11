@@ -258,6 +258,7 @@ public:
 		skpkey_body.prefix = prefix_;
 		value.value = buffer;
 		value.length = buf_length;
+		value.offset = 0;
 		buffer_offset = 0;
 		invalidkeys = 0;
 		lazy_init = false;

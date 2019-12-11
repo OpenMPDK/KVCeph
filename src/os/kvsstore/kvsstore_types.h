@@ -105,8 +105,8 @@ struct KvsOnode {
     std::atomic<int> flushing_count = {0};
     std::atomic<int> waiting_count = {0};
 
-    ceph::mutex flush_lock = ceph::make_mutex("KvsStore::flush_lock");  ///< protect flush_txns
-    ceph::condition_variable flush_cond;   ///< wait here for uncommitted txns
+    std::mutex flush_lock; // = ceph::make_mutex("KvsStore::flush_lock");  ///< protect flush_txns
+    std::condition_variable flush_cond;   ///< wait here for uncommitted txns
 
     KvsOnode(KvsCollection *c, const ghobject_t& o)
             : nref(0),
@@ -233,24 +233,27 @@ struct KvsJournal {
 	uint32_t* num_io_pos;
 	char *journal_buffer;
 	unsigned journal_buffer_pos;
+	bool created;
 
 	KvsJournal() {
+	    FTRACE
 		journal_buffer = (char*)malloc(MAX_JOURNAL_ENTRY_SIZE);
 		if (journal_buffer == 0) throw "failed to allocate a journal";
 		num_io_pos = (uint32_t*)journal_buffer;
 		*num_io_pos = 0;
 		journal_buffer_pos = 4;
+        created = true;
 	}
 
 	KvsJournal(char *buffer) {
 		journal_buffer = buffer;
 		num_io_pos = (uint32_t*)journal_buffer;
 		journal_buffer_pos = 4;
-		journal_buffer = 0;
+        created = false;
 	}
 
 	~KvsJournal() {
-		free(journal_buffer);
+		if (created) free(journal_buffer);
 	}
 
 	inline bool is_full(int length) {
@@ -289,11 +292,11 @@ struct KvsJournal {
 
 struct KvsIoContext {
 private:
-    ceph::mutex lock = ceph::make_mutex("KvsStore::iocontext_lock");
+    std::mutex lock; // = ceph::make_mutex("KvsStore::iocontext_lock");
     ceph::condition_variable cond;
 
 public:
-    ceph::mutex running_aio_lock  = ceph::make_mutex("KvsStore::running_aio_lock");
+    std::mutex running_aio_lock; //  = ceph::make_mutex("KvsStore::running_aio_lock");
     atomic_bool submitted = { false };
     CephContext* cct;
     void *priv;
@@ -327,10 +330,12 @@ public:
     std::list<IoRequest*> running_ios;    		    ///< not yet submitted
 
     explicit KvsIoContext(CephContext* _cct): cct(_cct), priv(0) {
+        FTRACE
     	create_new_journal();
     }
 
     inline void create_new_journal() {
+        FTRACE
     	cur_journal = new KvsJournal;
     	journal.push_back(cur_journal);
     }
@@ -503,6 +508,7 @@ struct KvsTransContext  {
                              list<Context *> *on_commits)
         : cct(_cct), ch(c), store(_store), osr(o), ioc(_cct)
     {
+        FTRACE
         if (on_commits)
         {
             oncommits.swap(*on_commits);
@@ -515,6 +521,7 @@ struct KvsTransContext  {
 
     void write_onode(OnodeRef &o) {
         //o->status = KVS_ONODE_VALID;
+        o->exists = true;
         onodes.insert(o);
     }
 
@@ -541,8 +548,8 @@ struct KvsTransContext  {
 
 class KvsOpSequencer : public RefCountedObject {
 public:
-    ceph::mutex qlock = ceph::make_mutex("KvspSequencer::qlock");
-    ceph::condition_variable qcond;
+    std::mutex qlock; // = ceph::make_mutex("KvspSequencer::qlock");
+    std::condition_variable qcond;
 
     typedef boost::intrusive::list<KvsTransContext, boost::intrusive::member_hook<KvsTransContext,boost::intrusive::list_member_hook<>,&KvsTransContext::sequencer_item> > q_list_t;
 
@@ -575,13 +582,13 @@ public:
 	}
 
     void drain() {
-      std::unique_lock<ceph::mutex> l(qlock);
+      std::unique_lock<std::mutex> l(qlock);
       while (!q.empty())
     	  qcond.wait(l);
     }
 
     void drain_preceding(KvsTransContext *txc) {
-      std::unique_lock<ceph::mutex> l(qlock);
+      std::unique_lock<std::mutex> l(qlock);
       while (&q.front() != txc)
     	  qcond.wait(l);
     }
@@ -598,7 +605,7 @@ public:
     }
 
     void flush() {
-      std::unique_lock<ceph::mutex> l(qlock);
+      std::unique_lock<std::mutex> l(qlock);
       while (true) {
 		// set flag before the check because the condition
 		// may become true outside qlock, and we need to make
@@ -629,7 +636,7 @@ public:
 
 
     void flush_all_but_last() {
-      std::unique_lock<ceph::mutex> l(qlock);
+      std::unique_lock<std::mutex> l(qlock);
       assert (q.size() >= 1);
       while (true) {
 		// set flag before the check because the condition
