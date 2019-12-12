@@ -403,15 +403,13 @@ int KvsStoreDB::aio_submit(KvsTransContext *txc)
 		else {
 			if (ior->data) {
 				set_kv_value(&value, ior->data);
-                TR << "ior->data_length = " << ior->data->length() << TREND;
 			} else {
 				set_kv_value(&value, ior->raw_data, ior->raw_data_length);
-                TR << "raw data_length = " << ior->raw_data_length << TREND;
 			}
 
 			res = kadi.kv_store_aio(ior->spaceid, ior->key, &value, { txc_data_callback, static_cast<void*>(txc) });
 
-            TR << "{SUBMIT} STORE " << print_kvssd_key(ior->key->key, ior->key->length) << ", value length = " << value.length << ", spaceid = " << ior->spaceid << ", retcode = " << res << TREND;
+            TR << "{SUBMIT} STORE " << print_kvssd_key(ior->key->key, ior->key->length) << ", value length = " << value.length << ", spaceid = " << (int)ior->spaceid << ", retcode = " << res << TREND;
 		}
         if (res != 0) return res;
 	}

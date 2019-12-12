@@ -334,6 +334,10 @@ public:
     	create_new_journal();
     }
 
+    ~KvsIoContext() {
+        FTRACE
+    }
+
     inline void create_new_journal() {
         FTRACE
     	cur_journal = new KvsJournal;
@@ -516,7 +520,7 @@ struct KvsTransContext  {
     }
 
     ~KvsTransContext() {
-
+        FTRACE
     }
 
     void write_onode(OnodeRef &o) {
@@ -662,6 +666,7 @@ public:
     KvsOpSequencer(KvsStore *store, uint32_t sequencer_id, const coll_t &c);
 
     ~KvsOpSequencer() {
+        FTRACE
     	ceph_assert(q.empty());
     }
 };

@@ -50,7 +50,7 @@ public:
     bool isnew;
 
     bptree_meta(const bp_addr_t &addr): kv_indexnode(addr), isnew(false) {
-        buffer = (char*)malloc(META_SIZE);
+        buffer = (char*)calloc(1, META_SIZE);
         buffer_size = META_SIZE;
     }
 

@@ -330,6 +330,11 @@ int KADI::kv_retrieve_sync(uint8_t space_id, kv_value *value, const std::functio
     fill(cmd);
 
     int ret= ioctl(fd, NVME_IOCTL_IO_KV_CMD, &cmd);
+    if (ret == 0) {
+        value->actual_value_size = cmd.result;
+        value->length = std::min(cmd.result, value->length);
+    }
+
 #ifdef ENABLE_IOTRACE
     void *keyptr = 0;
     if (cmd.key_length <= KVCMD_INLINE_KEY_MAX) {
@@ -346,11 +351,6 @@ int KADI::kv_retrieve_sync(uint8_t space_id, kv_value *value, const std::functio
            << ", retcode = " << ret << ", FAILED" << TREND;
     }
 #endif
-    if (ret == 0) {
-        value->actual_value_size = cmd.result;
-        value->length = std::min(cmd.result, value->length);
-        return 0;
-    }
 
 	return ret;
 }

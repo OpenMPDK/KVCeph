@@ -266,6 +266,7 @@ private:
 
 	int read_page(const bp_addr_t &addr, void *buffer, uint32_t buffersize) {
 	    FTRACE
+        //TRITER << "read_page: addr " << desc(addr)  << ", buffer " << buffer << ", buffersize = " << buffersize  << TREND;
 		kv_value page;
 		page.length = buffersize;
 		page.offset = 0;
@@ -274,7 +275,7 @@ private:
 		int ret = adi->kv_retrieve_sync(ksid_skp, &page, [&] (struct nvme_passthru_kv_cmd& cmd){
 		    cmd.key_length = fill_cmdkey_for_index_nodes(cmd.key, addr);
 
-			TRITER << "read_page: key = " << print_kvssd_key((char*)cmd.key, cmd.key_length) << ", " << desc(addr) << TREND;
+			//TRITER << "read_page: key = " << print_kvssd_key((char*)cmd.key, cmd.key_length) << ", " << desc(addr) << TREND;
 		});
 
 		if (ret == 0) {

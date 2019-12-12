@@ -598,24 +598,24 @@ void KvsStore::_txc_finish(KvsTransContext *txc) {
 	FTRACE
 	dout(20) << __func__ << " " << txc << " onodes " << txc->onodes << dendl;
 	assert(txc->state == KvsTransContext::STATE_FINISHING);
-TR << "1" << TREND;
+
 	while (!txc->removed_collections.empty()) {
 		_queue_reap_collection(txc->removed_collections.front());
 		txc->removed_collections.pop_front();
 	}
-    TR << "2" << TREND;
+
 	OpSequencerRef osr = txc->osr;
 	bool empty = false;
-    TR << "3" << TREND;
+
 	KvsOpSequencer::q_list_t releasing_txc;
 	{
 		std::lock_guard l(osr->qlock);
-        TR << "4" << TREND;
+
 		txc->state = KvsTransContext::STATE_DONE;
 		bool notify = false;
 		while (!osr->q.empty()) {
 			KvsTransContext *txc = &osr->q.front();
-            TR << "5" << TREND;
+
 			dout(20) << __func__ << "  txc " << txc << " "
 								<< txc->get_state_name() << dendl;
 			if (txc->state != KvsTransContext::STATE_DONE) {
@@ -627,43 +627,31 @@ TR << "1" << TREND;
 			notify = true;
 		}
 
-        TR << "6" << TREND;
 		if (osr->q.empty()) {
 			dout(20) << __func__ << " osr " << osr << " q now empty" << dendl;
 			empty = true;
 		}
-        TR << "7" << TREND;
 		if (notify || empty) {
 			osr->qcond.notify_all();
 		}
 	}
-    TR << "8" << TREND;
-	//db.compact();
 
 	while (!releasing_txc.empty()) {
-		// release to allocator only after all preceding txc's have also
-		// finished any deferred writes that potentially land in these
-		// blocks
 		auto txc = &releasing_txc.front();
-        TR << "9" << TREND;
+        releasing_txc.pop_front();
+
 		_txc_release_alloc(txc);
-		releasing_txc.pop_front();
-		delete txc;
-        TR << "10" << TREND;
+        delete txc;
 	}
 
-    TR << "11" << TREND;
 	if (empty && osr->zombie) {
-        TR << "12" << TREND;
 		std::lock_guard l(zombie_osr_lock);
-        TR << "13" << TREND;
 		if (zombie_osr_set.erase(osr->cid)) {
 			dout(10) << __func__ << " reaping empty zombie osr " << osr << dendl;
 		} else {
 			dout(10) << __func__ << " empty zombie osr " << osr << " already reaped" << dendl;
 		}
 	}
-    TR << "14" << TREND;
 }
 
 void KvsStore::_txc_release_alloc(KvsTransContext *txc) {

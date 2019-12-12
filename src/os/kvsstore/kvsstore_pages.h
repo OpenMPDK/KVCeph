@@ -52,10 +52,10 @@ struct KvsPage {
     }
   };
 
-  // place holder for futher read
+  /*// place holder for futher read
   static Ref create(uint64_t offset = 0) {
 	return new KvsPage(0, offset);
-  }
+  }*/
 
   static Ref create(size_t page_size, uint64_t offset = 0) {
       const auto align = alignof(KvsPage);
