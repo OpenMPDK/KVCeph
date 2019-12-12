@@ -69,6 +69,8 @@ int KvsStore::_journal_replay() {
 			entry_key.key = keypos;
 			entry_key.length = entry->key_length;
 
+			if (entry->key_length == 0) return;
+
 			if (entry->op_type == 1)
 			{
 				// delete
@@ -82,7 +84,7 @@ int KvsStore::_journal_replay() {
 				ret = kadi->sync_write(entry->spaceid, &entry_key, &entry_value);
 			}
 
-			if (ret != 0 || ret != 784) {
+			if (ret != 0 && ret != 784) {
 				derr << "journal recovery failed: ret = " << ret << dendl;
 			}
 		});
@@ -596,22 +598,24 @@ void KvsStore::_txc_finish(KvsTransContext *txc) {
 	FTRACE
 	dout(20) << __func__ << " " << txc << " onodes " << txc->onodes << dendl;
 	assert(txc->state == KvsTransContext::STATE_FINISHING);
-
+TR << "1" << TREND;
 	while (!txc->removed_collections.empty()) {
 		_queue_reap_collection(txc->removed_collections.front());
 		txc->removed_collections.pop_front();
 	}
-
+    TR << "2" << TREND;
 	OpSequencerRef osr = txc->osr;
 	bool empty = false;
-
+    TR << "3" << TREND;
 	KvsOpSequencer::q_list_t releasing_txc;
 	{
 		std::lock_guard l(osr->qlock);
+        TR << "4" << TREND;
 		txc->state = KvsTransContext::STATE_DONE;
 		bool notify = false;
 		while (!osr->q.empty()) {
 			KvsTransContext *txc = &osr->q.front();
+            TR << "5" << TREND;
 			dout(20) << __func__ << "  txc " << txc << " "
 								<< txc->get_state_name() << dendl;
 			if (txc->state != KvsTransContext::STATE_DONE) {
@@ -623,16 +627,17 @@ void KvsStore::_txc_finish(KvsTransContext *txc) {
 			notify = true;
 		}
 
+        TR << "6" << TREND;
 		if (osr->q.empty()) {
 			dout(20) << __func__ << " osr " << osr << " q now empty" << dendl;
 			empty = true;
 		}
-
+        TR << "7" << TREND;
 		if (notify || empty) {
 			osr->qcond.notify_all();
 		}
 	}
-
+    TR << "8" << TREND;
 	//db.compact();
 
 	while (!releasing_txc.empty()) {
@@ -640,19 +645,25 @@ void KvsStore::_txc_finish(KvsTransContext *txc) {
 		// finished any deferred writes that potentially land in these
 		// blocks
 		auto txc = &releasing_txc.front();
+        TR << "9" << TREND;
 		_txc_release_alloc(txc);
 		releasing_txc.pop_front();
 		delete txc;
+        TR << "10" << TREND;
 	}
 
+    TR << "11" << TREND;
 	if (empty && osr->zombie) {
+        TR << "12" << TREND;
 		std::lock_guard l(zombie_osr_lock);
+        TR << "13" << TREND;
 		if (zombie_osr_set.erase(osr->cid)) {
 			dout(10) << __func__ << " reaping empty zombie osr " << osr << dendl;
 		} else {
 			dout(10) << __func__ << " empty zombie osr " << osr << " already reaped" << dendl;
 		}
 	}
+    TR << "14" << TREND;
 }
 
 void KvsStore::_txc_release_alloc(KvsTransContext *txc) {
