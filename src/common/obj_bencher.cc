@@ -24,6 +24,14 @@
 const std::string BENCH_LASTRUN_METADATA = "benchmark_last_metadata";
 const std::string BENCH_PREFIX = "benchmark_data";
 const std::string BENCH_OBJ_NAME = BENCH_PREFIX + "_%s_%d_object%d";
+const std::string BENCH_OBJ_NAME_KV = BENCH_PREFIX + "_%c_%d_object%d";
+constexpr char specialchar_map[] = { '!', '"', '#', '$', '%', '&', '~', '(', ')', '*',
+                                     '+', ',', '-', '.', '/', 
+                                    '0', '1', '2', '3', '4', '5', '6', '7','8', '9',
+                                    ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C',
+                                    'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+                                    'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W',
+                                    };
 #define KV_OPTIMIZE 1
 
 static char cached_hostname[30] = {0};
@@ -53,14 +61,7 @@ static std::string generate_object_prefix(int pid = 0) {
 
 // this is 8x faster than previous impl based on chained, deduped functions call
 #if KV_OPTIMIZE
-const std::string BENCH_OBJ_NAME_KV = BENCH_PREFIX + "_%s_%d_object%d";
-constexpr char specialchar_map[] = { '!', '"', '#', '$', '%', '&', '~', '(', ')', '*',
-                                     '+', ',', '-', '.', '/', 
-                                    '0', '1', '2', '3', '4', '5', '6', '7','8', '9',
-                                    ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C',
-                                    'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
-                                    'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W',
-                                    };
+
 
 static std::string generate_object_name_fast(int objnum, int pid = 0)
 {
