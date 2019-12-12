@@ -202,6 +202,21 @@ int KvsStoreDB::read_block(const ghobject_t &oid, const int blockindex, char *da
 	return ret;
 }
 
+int KvsStoreDB::read_kvkey(kv_key *key, bufferlist &bl) {
+    bool ispartial;
+    if (key->length > KVCMD_INLINE_KEY_MAX) {
+        return _read_impl(KEYSPACE_COLLECTION, bl, [&] (struct nvme_passthru_kv_cmd &cmd) {
+            cmd.key_addr = (__u64)key->key;
+            cmd.key_length = key->length;
+        }, ispartial);
+    } else {
+        return _read_impl(KEYSPACE_COLLECTION, bl, [&] (struct nvme_passthru_kv_cmd &cmd) {
+            memcpy(cmd.key, key->key, key->length);
+            cmd.key_length = key->length;
+        }, ispartial);
+    }
+}
+
 int KvsStoreDB::read_coll(const char *name, const int namelen, bufferlist &bl) {
 	bool ispartial;
 	const int coll_keylength = calculate_collkey_length(namelen);

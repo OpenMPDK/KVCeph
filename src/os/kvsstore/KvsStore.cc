@@ -347,7 +347,7 @@ int KvsStore::_open_collections() {
                                                    cid);
 
             bufferlist bl;
-            db.read_coll(name.c_str(), name.length(), bl);
+            db.read_kvkey(&collkey, bl);
 
             auto p = bl.cbegin();
             try {
@@ -3119,8 +3119,8 @@ int KvsStore::_read_data(KvsTransContext *txc, const ghobject_t &oid, uint64_t o
 	});
     TR << "result = " << r  << TREND;
 
-	if (r == 0) {
-		return r;
+	if (r > 0) {
+		return 0;
 	} else
 		return -ENOENT;
 

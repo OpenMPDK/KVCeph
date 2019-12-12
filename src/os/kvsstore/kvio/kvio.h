@@ -182,9 +182,10 @@ public:
 
 	// Helpers
 
-	kv_result sync_write(const std::tuple<uint8_t, kv_key *, kv_value *> &&pair);
+	/*kv_result sync_write(const std::tuple<uint8_t, kv_key *, kv_value *> &&pair);
 	kv_result sync_read (const std::tuple<uint8_t, kv_key *, kv_value *> &&pair, uint64_t offset, size_t length, bufferlist &bl, bool &ispartial);
 	kv_result sync_read (const std::tuple<uint8_t, kv_key *, kv_value *> &&pair, bufferlist &bl);
+	 */
 
 
 };

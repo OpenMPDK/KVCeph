@@ -43,7 +43,7 @@ public:
 	int read_data(const ghobject_t &oid, int offset, int length, bufferlist &bl, bool&ispartial);
 	int read_coll(const char *name, const int namelen, bufferlist &bl);
 	int read_omap(const ghobject_t& oid, const uint64_t index, const std::string &strkey, bufferlist &bl);
-
+    int read_kvkey(kv_key *key, bufferlist &bl);
 	int write_sb(bufferlist &bl);
 
     void add_coll(KvsIoContext *ctx, const coll_t &cid, bufferlist &bl);
