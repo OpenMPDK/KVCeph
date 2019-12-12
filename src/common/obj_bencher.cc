@@ -24,6 +24,7 @@
 const std::string BENCH_LASTRUN_METADATA = "benchmark_last_metadata";
 const std::string BENCH_PREFIX = "benchmark_data";
 const std::string BENCH_OBJ_NAME = BENCH_PREFIX + "_%s_%d_object%d";
+#define KV_OPTIMIZE 1
 
 static char cached_hostname[30] = {0};
 int cached_pid = 0;
@@ -51,6 +52,36 @@ static std::string generate_object_prefix(int pid = 0) {
 }
 
 // this is 8x faster than previous impl based on chained, deduped functions call
+#if KV_OPTIMIZE
+const std::string BENCH_OBJ_NAME_KV = BENCH_PREFIX + "_%s_%d_object%d";
+constexpr char specialchar_map[] = { '!', '"', '#', '$', '%', '&', '~', '(', ')', '*',
+                                     '+', ',', '-', '.', '/', 
+                                    '0', '1', '2', '3', '4', '5', '6', '7','8', '9',
+                                    ':', ';', '<', '=', '>', '?', '@', 'A', 'B', 'C',
+                                    'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+                                    'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W',
+                                    };
+
+static std::string generate_object_name_fast(int objnum, int pid = 0)
+{
+  if (cached_hostname[0] == 0) {
+  gethostname(cached_hostname, sizeof(cached_hostname)-1);
+  cached_hostname[sizeof(cached_hostname)-1] = 0;
+  }
+
+  if (pid)
+  cached_pid = pid;
+  else if (!cached_pid)
+  cached_pid = getpid();
+
+  //char name[512];
+  char name[200]; // for kvsstore as we support upto 255 key size // benchmark generates 26 byte user key
+  int n = snprintf(&name[0], sizeof(name),  BENCH_OBJ_NAME_KV.c_str(), specialchar_map[objnum%55], cached_pid, objnum);
+  ceph_assert(n > 0 && n < (int)sizeof(name));
+  return std::string(&name[0], (size_t)n);
+}
+
+# else
 static std::string generate_object_name_fast(int objnum, int pid = 0)
 {
   if (cached_hostname[0] == 0) {
@@ -63,13 +94,14 @@ static std::string generate_object_name_fast(int objnum, int pid = 0)
   else if (!cached_pid)
 	cached_pid = getpid();
 
-  //char name[512];
-  char name[210]; // for kvsstore as we support upto 255 key size
+  char name[512];
+  //char name[210]; // for kvsstore as we support upto 255 key size
   int n = snprintf(&name[0], sizeof(name),  BENCH_OBJ_NAME.c_str(), cached_hostname, cached_pid, objnum);
   ceph_assert(n > 0 && n < (int)sizeof(name));
   return std::string(&name[0], (size_t)n);
 }
 
+#endif
 static void sanitize_object_contents (bench_data *data, size_t length) {
   memset(data->object_contents, 'z', length);
 }
