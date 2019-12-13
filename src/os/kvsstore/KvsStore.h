@@ -257,7 +257,7 @@ public:
 			const string &first, const string &last);
 
 
-private:
+public:
 
     /// =========================================================
 	/// Utility Functions
@@ -276,14 +276,14 @@ private:
 
     int get_predefinedID(const std::string& key);
 
-private:
+public:
     // OP Sequencer
     void _osr_attach(KvsCollection *c);
     void _osr_register_zombie(KvsOpSequencer *osr);
     void _osr_drain(KvsOpSequencer *osr);
     void _osr_drain_all();
 
-private:
+public:
     /// =========================================================
 	/// Internal Threads for KvsStore
 	/// =========================================================
@@ -327,7 +327,7 @@ public:
 
     void txc_aio_finish(kv_io_context *op, KvsTransContext *txc);
 
-private:
+public:
     /// =========================================================
 	/// Implementation of ObjectStore Interface
 	/// =========================================================
@@ -409,7 +409,7 @@ private:
 	int _kvs_replay_journal(kvs_journal_key *j);
 	void _delete_journal();
 	void _init_perf_logger(CephContext *cct);
-private:
+public:
     /// =========================================================
 	/// Member Variables
 	/// =========================================================
