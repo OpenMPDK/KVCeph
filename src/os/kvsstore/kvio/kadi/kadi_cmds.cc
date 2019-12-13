@@ -115,10 +115,11 @@ int KADI::kv_store_sync(uint8_t space_id, kv_value *value, const std::function< 
     } else {
         keyptr = (void*)cmd.key_addr;
     }
-
+    std::string itermsg = (cmd.cdw4 == OPTION_NOLOGGING)? "NOAOL":"AOL";
     if (ret == 0) {
+
         TRIO << "<STORE> " << print_kvssd_key(std::string((const char*)keyptr, cmd.key_length))
-           << ", value = " << value->value << ", value length = " << value->length << " OK" << TREND;
+           << ", value = " << value->value << ", value length = " << value->length << ", LOG?" << itermsg << " OK" << TREND;
     } else {
         TRIO << "<STORE> " << print_kvssd_key(std::string((const char*)keyptr, cmd.key_length))
            << ", value = " << value->value << ", value length = " << value->length
@@ -155,10 +156,23 @@ int KADI::kv_store_aio(uint8_t space_id, kv_value *value, const kv_cb& cb, const
 	ioctx->value.length = value->length;
 	ioctx->value.offset = value->offset;
 
+
     if (ioctl(fd, NVME_IOCTL_AIO_CMD, &ioctx->cmd) < 0) {
     	cmd_ctx_mgr.release_cmd_ctx(ioctx);
         return -1;
     }
+
+#ifdef ENABLE_IOTRACE
+    void *keyptr = 0;
+    if (ioctx->cmd.key_length <= KVCMD_INLINE_KEY_MAX) {
+        keyptr = (void*)ioctx->cmd.key;
+    } else {
+        keyptr = (void*)ioctx->cmd.key_addr;
+    }
+    std::string itermsg = (ioctx->cmd.cdw4 == OPTION_NOLOGGING)? "NOAOL":"AOL";
+    TRIO << "{SUBMIT-STORE} " << print_kvssd_key(std::string((const char*)keyptr, ioctx->cmd.key_length))
+         << ", value = " << value->value << ", value length = " << value->length << ", LOG? " << itermsg << " OK" << TREND;
+#endif
     return 0;
 }
 
@@ -194,6 +208,18 @@ int KADI::kv_store_aio(uint8_t space_id, kv_key *key, kv_value *value, const kv_
     	cmd_ctx_mgr.release_cmd_ctx(ioctx);
         return -1;
     }
+
+#ifdef ENABLE_IOTRACE
+    void *keyptr = 0;
+    if (ioctx->cmd.key_length <= KVCMD_INLINE_KEY_MAX) {
+        keyptr = (void*)ioctx->cmd.key;
+    } else {
+        keyptr = (void*)ioctx->cmd.key_addr;
+    }
+    std::string itermsg = (ioctx->cmd.cdw4 == OPTION_NOLOGGING)? "NOAOL":"AOL";
+    TRIO << "{SUBMIT-STORE} " << print_kvssd_key(std::string((const char*)keyptr, ioctx->cmd.key_length))
+         << ", value = " << value->value << ", value length = " << value->length << ", LOG? " << itermsg << " OK" << TREND;
+#endif
     return 0;
 }
 
@@ -221,9 +247,10 @@ int KADI::kv_store_sync(uint8_t space_id, kv_key *key, kv_value *value) {
 
     int ret =ioctl(fd, NVME_IOCTL_IO_KV_CMD, &cmd);
 #ifdef ENABLE_IOTRACE
+    std::string itermsg = (cmd.cdw4 == OPTION_NOLOGGING)? "NOAOL":"AOL";
     if (ret == 0) {
         TRIO << "<STORE> " << print_kvssd_key(std::string((const char*)key->key, key->length))
-           << ", value = " << value->value << ", value length = " << value->length << " OK" << TREND;
+           << ", value = " << value->value << ", value length = " << value->length << ", LOG? " << itermsg << " OK" << TREND;
     } else {
         TRIO << "<STORE> " << print_kvssd_key(std::string((const char*)key->key, key->length))
            << ", value = " << value->value << ", value length = " << value->length
@@ -686,8 +713,7 @@ int KADI::fill_oplog_info(const uint8_t spaceid, const uint32_t prefix, struct o
 	static const int oplog_pagesize = 28*1024;
 	int r = 0;
 	info.spaceid = spaceid;
-//std::cerr << __func__ << "..1" << std::endl;
-    TRIO << __func__ << "..1" << TREND;
+
 	{ // step 1. read oplog key list
 		kv_iter_context ctx;
 		ctx.prefix = prefix;
@@ -695,23 +721,18 @@ int KADI::fill_oplog_info(const uint8_t spaceid, const uint32_t prefix, struct o
 		int ret = iter_readall_aio(&ctx, info.buflist, info.spaceid);	// async
 		if (ret != 0) return ret;
 
-		TRIO << __func__ << "..oplog pages = " << info.buflist.size() << TREND;
 		for (const auto &p: info.buflist) {
 			int optype;
 			void *key;
 			int length;
 			iterbuf_reader reader(nullptr, p.first, p.second);
 			while (reader.nextkey(&optype, &key, &length)) {
-				TRIO << "oplog page key: " <<  print_key((const char*)key, length) << TREND;
 				info.oplog_keys.emplace_back(key, length);
 			}
 		}
-        //TRIO << __func__ << "..3" << TREND;
 
 		if (info.oplog_keys.empty()) { r = 0; goto clear; }
 	}
-
-   // TRIO << __func__ << "..4" << TREND;
 
 	{ // step 2. read oplog pages asynchronously
 		kv_key k;
@@ -750,7 +771,6 @@ int KADI::fill_oplog_info(const uint8_t spaceid, const uint32_t prefix, struct o
 				sub_read_ctx->groupid = oplogkey->groupid;
 				sub_read_ctx->sequence = oplogkey->sequenceid;
 
-                TRIO << __func__ << "..7 - send read " <<  print_key((const char*)k.key, k.length) << " offset = " << v.offset << TREND;
 				//cout << "issue oplog read = " << print_key((const char*)k.key, k.length) << ", groupid = " << sub_read_ctx->groupid << endl;
 
 				r = kv_retrieve_aio(ksid_oplog, &k, &v, { oplog_callback, sub_read_ctx });
@@ -762,7 +782,6 @@ int KADI::fill_oplog_info(const uint8_t spaceid, const uint32_t prefix, struct o
 			iter_aioctx.get_events(ctxs);
 
 			if (ctxs.size() > 0) {
-                //std::cerr << __func__ << "..8 read " << ctxs.size() << std::endl;
 				sent -= ctxs.size();
 
 				for (kv_read_context *sub_read_ctx: ctxs) {
@@ -778,9 +797,8 @@ int KADI::fill_oplog_info(const uint8_t spaceid, const uint32_t prefix, struct o
 			}
 
 			ctxs.clear();
-            //std::cerr << __func__ << "..9" << std::endl;
+
 		} while (it != end || sent != 0);
-        //std::cerr << __func__ << "..10" << std::endl;
 	}
 
 	info.spaceid = spaceid;
@@ -809,18 +827,17 @@ uint64_t KADI::list_oplog(const uint8_t spaceid, const uint32_t prefix, const st
 
     struct oplog_info oplog;
 
-    TRIO << "list_oplog 1" << TREND;
 
     fill_oplog_info(spaceid, prefix, oplog);
 
-    TRIO << "list_oplog 2" << TREND;
+
     for (const auto &groups: oplog.oplog_list) {
         const int groupid = groups.first;
         for (const auto &sequences : groups.second) {
             int cur = 0;
             opbuf_reader reader(nullptr, groupid, sequences.second.first, sequences.second.second);
             while (reader.nextkey(&opcode, &key, &length)) {
-                TRIO << "oplog key " << print_kvssd_key(key, length) << TREND;
+                //TRIO << "oplog key " << print_kvssd_key(key, length) << TREND;
                 key_listener(opcode, groupid, sequences.first, (const char*)key, length);
                 cur++;
             }
@@ -828,7 +845,7 @@ uint64_t KADI::list_oplog(const uint8_t spaceid, const uint32_t prefix, const st
         }
     }
 
-    TRIO << "list_oplog 3" << TREND;
+    //TRIO << "list_oplog 3" << TREND;
     uint64_t num_complete  = 0, qdepth  = 0;
     uint64_t num_delete = oplog.oplog_keys.size();
     std::atomic<int> completed(0);
@@ -855,7 +872,7 @@ uint64_t KADI::list_oplog(const uint8_t spaceid, const uint32_t prefix, const st
             usleep(1);
         }
     }
-    TRIO << "list_oplog done  ..." << total_keys << TREND;
+    //TRIO << "list_oplog done  ..." << total_keys << TREND;
 
     return total_keys;
 }
@@ -886,10 +903,8 @@ int KADI::iter_readall_aio(kv_iter_context *iter_ctx, std::list<std::pair<char*,
 				kv_iter_context *sub_iter_ctx = iter_aioctx.get_free_context();
 				if (sub_iter_ctx == 0) break;
 
-                std::cerr << __func__ << ": 4"  << std::endl;
                 sub_iter_ctx->buf = (char*)malloc(ITER_BUFSIZE);
 
-                std::cerr << __func__ << ": 5"  << std::endl;
 				r = iter_read_aio(space_id, iter_ctx->handle,
 							sub_iter_ctx->buf, ITER_BUFSIZE,
 							{ iter_callback, sub_iter_ctx } );

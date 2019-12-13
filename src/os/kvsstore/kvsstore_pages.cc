@@ -104,8 +104,9 @@ int KvsStoreDataObject::write(uint64_t offset, bufferlist &src, Functor &&page_l
 
   KvsPageSet::page_vector tls_pages;
   // make sure the page range is allocated
+    TR << "alloc_range" << TREND;
   data.alloc_range(offset, src.length(), tls_pages, page_loader);
-
+    TR << "alloc_range done" << TREND;
   auto page = tls_pages.begin();
 
   auto p = src.begin();

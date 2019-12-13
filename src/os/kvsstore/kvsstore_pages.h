@@ -155,8 +155,9 @@ class KvsPageSet {
             int ret = page_loader(page->data, page_offset / page_size, page->length);
             if (ret != 0) { return 0; }
 
-            if (last)
+            if (!last) {
                 assert(page->length == page_size);
+            }
             return page;
         } else {
             return it->second;
@@ -165,33 +166,41 @@ class KvsPageSet {
 
   template <typename Functor>
   void alloc_range(uint64_t offset, uint64_t length, page_vector &range, Functor &&page_loader) {
+      FTRACE
     if (length == 0) return;
 
     int pgid;
     const int num_pages = count_pages(offset, length);
     uint64_t page_offset = (offset + length - 1) & ~(page_size-1);
 
-    range.resize(num_pages);
+    TR << "num pages = " << num_pages << TREND;
+    range.reserve(num_pages);
 
     std::lock_guard<lock_type> lock(mutex);
 
     for (pgid = 0; pgid < num_pages -1 ; pgid++) {
+        TR << "pgid " << pgid  << TREND;
         range[pgid] = prepare_page_for_write(offset, length, page_offset, page_loader, false);
         length      -= page_size;
         page_offset += page_size;
     }
+    TR << "last pgid " << pgid  << TREND;
 
     // last page
     range[pgid] = prepare_page_for_write(offset, length, page_offset, page_loader, true);
+
   }
 
   // return all allocated pages that intersect the range [offset,length)
   bool get_range(uint64_t offset, uint64_t length, page_vector &range, const std::function< int (char *, int, uint32_t&) > &page_loader) {
+      FTRACE
       if (length == 0) return true;
 
-      int pgid;
+      int pgid = 0;
       const int num_pages = count_pages(offset, length);
       uint64_t page_offset = (offset + length - 1) & ~(page_size-1);
+
+      range.reserve(num_pages);
 
       std::lock_guard<lock_type> lock(mutex);
 

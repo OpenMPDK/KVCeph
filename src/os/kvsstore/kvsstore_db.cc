@@ -426,14 +426,13 @@ KvsIterator *KvsStoreDB::get_iterator(uint32_t prefix)
 }
 
 uint64_t KvsStoreDB::compact() {
-	//FTRACE
+	FTRACE
 	uint64_t processed_keys = 0;
 
 	bptree onode_tree(&kadi.adi, 6, GROUP_PREFIX_ONODE);
 	bptree  coll_tree(&kadi.adi, 6, GROUP_PREFIX_COLL);
 	bptree *tree;
 
-	//derr << "compact 1" << dendl;
 	processed_keys = list_oplog(KEYSPACE_ONODE, 0xffffffff,
 			[&] (int opcode, int groupid, uint64_t sequence, const char* key, int length) {
 
@@ -449,7 +448,7 @@ uint64_t KvsStoreDB::compact() {
 				return;
 			}
 
-            TR  << "opcode = " << opcode << ", key = " << print_key((const char*)key, length) << ", length = " << length << TREND;
+            //TR  << "opcode = " << opcode << ", key = " << print_key((const char*)key, length) << ", length = " << length << TREND;
 
 			if (opcode == nvme_cmd_kv_store) {
                 TR << "tree-insert " << treename << ", key: " << print_kvssd_key(std::string((char*)key,length)) << TREND;
@@ -459,18 +458,15 @@ uint64_t KvsStoreDB::compact() {
                 tree->remove((char*)key, length);
 			}
 
-			TR  << "DONE adding one key" << TREND;
-
 			//cout << "read: group"  << groupid << ", seq " << sequence << ", " << print_key((const char*)key, length) << ", length = " << length << endl;
 	});
+    TR << "1. found and read " << processed_keys << " oplog pages" << TREND;
 
-    TRITER << "flush onode tree" << TREND;
     onode_tree.flush();
 
-    TRITER  << "flush coll tree" << TREND;
     coll_tree.flush();
 
-    TR  << "DONE - processed keys = " <<   processed_keys << TREND;
+    TR << "2. updated the index structure " << TREND;
 
 	return processed_keys;
 }

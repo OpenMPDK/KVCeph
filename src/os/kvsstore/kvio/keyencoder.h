@@ -145,6 +145,7 @@ inline uint8_t calculate_collkey_length(const int namelen)
 inline uint8_t construct_collkey_impl(void *buffer, const char *name, const int namelen)
 {
     FTRACE
+
     struct kvs_coll_key *collkey = (struct kvs_coll_key *)buffer;
 TR << "1 buffer = " << buffer << TREND;
     collkey->prefix = GROUP_PREFIX_COLL;	// for list_collections

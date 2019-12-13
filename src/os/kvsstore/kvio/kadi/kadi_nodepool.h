@@ -138,17 +138,14 @@ public:
 
 	kv_indexnode(const bp_addr_t &addr_, char *buffer_, int buffer_size_):
 		addr(addr_), buffer(buffer_), buffer_size(buffer_size_) {
-        TRITER << "node created: addr = " << desc(addr) << TREND;
 	}
 
 	void set_dirty() {
 		op = NODE_OP_WRITE;
-		TRITER << "set dirty: op = " << op << ", addr = " << addr << TREND;
 	}
 
 	void set_invalid() {
 		op = NODE_OP_DELETE;
-		TRITER << "set invalid: op = " << op << ", addr = " << addr << TREND;
 	}
 
 	virtual ~kv_indexnode() {
@@ -285,7 +282,6 @@ private:
 	}
 
 	inline int fill_cmdkey_for_index_nodes(void *key, const bp_addr_t &addr) {
-	    FTRACE
         kvs_page_key* k = (kvs_page_key*)key;
         k->prefix = bpaddr_slotid(addr);
         k->pageid = bpaddr_pageid(addr);

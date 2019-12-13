@@ -53,8 +53,10 @@ struct FtraceObject {
     //HeapLeakChecker heap_checker;, heap_checker(f)
     FtraceObject(const char *f, int line) : func(f) {
         std::ofstream &fp = kvs_ff.get_fp();
-        fp << pthread_self() << " [ENTR] " << func << ", memcheck= " ;
+        fp << pthread_self() << " [ENTR] " << func << " ";
+        /*
         fp.flush();
+        fp << ", memcheck= " ;
         {
             std::vector<void *> malloc_p;
             for (int i = 0; i < 100; i++) {
@@ -75,7 +77,7 @@ struct FtraceObject {
                 fp << "test1 = " << (void *) &str << "\n";
             free((void*)long_keyaddr);
             fp << "access OK";
-        }
+        }*/
         fp << "\n";
         fp.flush();
         kvs_ff.return_fp();
@@ -85,7 +87,7 @@ struct FtraceObject {
     ~FtraceObject() {
         std::ofstream &fp = kvs_ff.get_fp();
         fp << pthread_self() << " [EXIT] " << func << " ";
-        fp.flush();
+        /*fp.flush();
         {
             std::vector<void *> malloc_p;
             for (int i = 0; i < 100; i++) {
@@ -105,7 +107,7 @@ struct FtraceObject {
                 fp << "test1 = " << (void *) &str << "\n";
             free((void*)long_keyaddr);
             fp << "access OK";
-        }
+        }*/
         fp.flush();
         fp << "\n"; //<< ", Global Leaks " << HeapLeakChecker::NoGlobalLeaks() << "\n"; //<< ", no leaks = " << heap_checker.NoLeaks() << ", bytes leaked " << heap_checker.BytesLeaked() << "\n";        fp.flush();
         kvs_ff.return_fp();

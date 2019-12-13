@@ -73,11 +73,9 @@ void bptree_pool::flush(const bp_addr_t &newrootaddr) {
 
 bptree_meta *bptree_pool::_fetch_meta() {
     FTRACE
-    TR << ">> 1. fetching metadata: prefix = " << prefix << TREND;
 
 	bp_addr_t addr = create_metanode_addr(prefix);
     bptree_meta *n = 0;
-    TR << ">> 2. addr = " << addr << TREND;
 
 	auto it = pool.find(addr);
 	if (it != pool.end()) {
@@ -86,13 +84,9 @@ bptree_meta *bptree_pool::_fetch_meta() {
 
     n = new bptree_meta(addr);
 
-	int nread = read_page(addr, n->get_raw_buffer(), bptree_meta::META_SIZE);
-	if (nread == bptree_meta::META_SIZE) {
-		// load meta from data
-		TRITER << "metadata fetched " << desc(addr) << TREND;
-	} else {
+	if (read_page(addr, n->get_raw_buffer(), bptree_meta::META_SIZE) != bptree_meta::META_SIZE){
 		// new meta
-        TRITER << "create new metadata " << desc(addr) << TREND;
+        //TRITER << "create new metadata " << desc(addr) << TREND;
         n->init(prefix);
 	}
 

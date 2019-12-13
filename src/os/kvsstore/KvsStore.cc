@@ -86,6 +86,7 @@ int KvsStore::_journal_replay() {
 
 			if (ret != 0 && ret != 784) {
 				derr << "journal recovery failed: ret = " << ret << dendl;
+				ceph_abort("jorunal replay failed");
 			}
 		});
 
@@ -1674,7 +1675,6 @@ void KvsStore::set_cache_shards(unsigned num) {
 int KvsStore::mount() {
 	FTRACE
 
-    derr <<  "Mount ----------------------------------------  " << dendl;
     TR   <<  "Mount ----------------------------------------  " << TREND;
 	int r = _open_path();
 	if (r < 0)
@@ -1718,11 +1718,13 @@ int KvsStore::mount() {
 
 
 	derr <<  "Mounted " << dendl;
-	TR << "Mounted" << TREND;
+    TR   <<  "Mounted ----------------------------------------  " << TREND;
 
 	return 0;
 
-	out_db: _close_db();
+    TR   <<  "Mount failed ----------------------------------------  " << TREND;
+
+    out_db: _close_db();
 	out_fsid: _close_fsid();
 	out_path: _close_path();
 
@@ -2940,12 +2942,12 @@ int KvsStore::_write(KvsTransContext *txc, CollectionRef &c, OnodeRef &o,
 	int r = 0;
     TR << "STORE _write oid = " << o->oid << ", offset " << offset << ", length " << length << TREND;
 	const uint64_t enddata_off = offset + length;
-    TR << "1" << TREND;
+
 	KvsStoreDataObject &datao = txc->databuffers[o->oid];
 	datao.data_len = o->onode.size;
 
 	if (bl) {
-
+        TR << "1" << TREND;
 		r = datao.write(offset, *bl, [&] (char* data, int pageid, uint32_t &nread)->int {
 			return db.read_block(o->oid, pageid, data, nread);
 		});
