@@ -3327,8 +3327,9 @@ int OSD::init()
     r = -EINVAL;
     goto out;
   }
-
+derr << "1" << dendl;
   if (osd_compat.compare(superblock.compat_features) < 0) {
+      derr << "1.1" << dendl;
     derr << "The disk uses features unsupported by the executable." << dendl;
     derr << " ondisk features " << superblock.compat_features << dendl;
     derr << " daemon features " << osd_compat << dendl;
@@ -3346,7 +3347,7 @@ int OSD::init()
       goto out;
     }
   }
-
+    derr << "2" << dendl;
   assert_warn(whoami == superblock.whoami);
   if (whoami != superblock.whoami) {
     derr << "OSD::init: superblock says osd"
@@ -3354,7 +3355,7 @@ int OSD::init()
     r = -EINVAL;
     goto out;
   }
-
+    derr << "3" << dendl;
   startup_time = ceph::mono_clock::now();
 
   // load up "current" osdmap
@@ -3365,12 +3366,15 @@ int OSD::init()
     goto out;
   }
   osdmap = get_map(superblock.current_epoch);
-
+    derr << "4" << dendl;
   // make sure we don't have legacy pgs deleting
   {
     vector<coll_t> ls;
     int r = store->list_collections(ls);
+      derr << "5 r = " << r << dendl;
     ceph_assert(r >= 0);
+
+      derr << "list collections size = " << ls.size() << dendl;
     for (auto c : ls) {
       spg_t pgid;
       if (c.is_pg(&pgid) &&
@@ -3385,6 +3389,21 @@ int OSD::init()
 	}
       }
     }
+      derr << "6 "  << dendl;
+  }
+
+
+  // put this check before the snapmapper check
+  // make sure snap mapper object exists
+  if (!store->exists(service.meta_ch, OSD::make_snapmapper_oid())) {
+        derr << "8.1 "  << dendl;
+        dout(10) << "init creating/touching snapmapper object" << dendl;
+        ObjectStore::Transaction t;
+        t.touch(coll_t::meta(), OSD::make_snapmapper_oid());
+        r = store->queue_transaction(service.meta_ch, std::move(t));
+        derr << __LINE__ << ": r = " << r  << dendl;
+        if (r < 0)
+            goto out;
   }
 
   initial = get_osd_initial_compat_set();
@@ -3398,43 +3417,41 @@ int OSD::init()
       auto hoid = make_snapmapper_oid();
       unsigned max = cct->_conf->osd_target_transaction_size;
       r = SnapMapper::convert_legacy(cct, store, ch, hoid, max);
+        derr << __LINE__ << ": r = " << r  << dendl;
       if (r < 0)
-	goto out;
+	        goto out;
     }
     // We need to persist the new compat_set before we
     // do anything else
     dout(5) << "Upgrading superblock adding: " << diff << dendl;
+      derr << __LINE__ << ": write super"  << dendl;
     ObjectStore::Transaction t;
     write_superblock(t);
-    r = store->queue_transaction(service.meta_ch, std::move(t));
-    if (r < 0)
-      goto out;
-  }
 
-  // make sure snap mapper object exists
-  if (!store->exists(service.meta_ch, OSD::make_snapmapper_oid())) {
-    dout(10) << "init creating/touching snapmapper object" << dendl;
-    ObjectStore::Transaction t;
-    t.touch(coll_t::meta(), OSD::make_snapmapper_oid());
     r = store->queue_transaction(service.meta_ch, std::move(t));
     if (r < 0)
       goto out;
   }
+    derr << "8 "  << dendl;
+
   if (!store->exists(service.meta_ch, OSD::make_purged_snaps_oid())) {
     dout(10) << "init creating/touching purged_snaps object" << dendl;
     ObjectStore::Transaction t;
     t.touch(coll_t::meta(), OSD::make_purged_snaps_oid());
     r = store->queue_transaction(service.meta_ch, std::move(t));
+      derr << __LINE__ << ": r = " << r  << dendl;
     if (r < 0)
       goto out;
   }
 
   if (cct->_conf->osd_open_classes_on_start) {
     int r = ClassHandler::get_instance().open_all_classes();
+      derr << __LINE__ << ": r = " << r  << dendl;
     if (r)
       dout(1) << "warning: got an error loading one or more classes: " << cpp_strerror(r) << dendl;
   }
 
+    derr << __LINE__ << " 9"  << dendl;
   check_osdmap_features();
 
   create_recoverystate_perf();
@@ -3629,10 +3646,11 @@ int OSD::init()
   monc->renew_subs();
 
   start_boot();
-
+    derr << __LINE__ << "init succeeded!"  << dendl;
   return 0;
 
 out:
+    derr << "error out "  << dendl;
   enable_disable_fuse(true);
   store->umount();
   delete store;
