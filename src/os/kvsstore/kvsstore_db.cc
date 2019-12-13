@@ -317,6 +317,7 @@ void KvsStoreDB::rm_onode(KvsIoContext *ctx,const ghobject_t& oid){
 
 void KvsStoreDB::add_userdata(KvsIoContext *ctx,const ghobject_t& oid, char *page, int length, int pageid){
     FTRACE
+    TR << "add userdata: oid = " << oid << ", length = " << length << ", pageid " << pageid << TREND;
 	ctx->add_pending_data(KEYSPACE_DATA, page, length, [&] (void *buffer)->uint8_t {
 		return construct_object_key(cct, oid, buffer, pageid);
 	});
@@ -369,6 +370,7 @@ int KvsStoreDB::write_journal(KvsTransContext *txc) {
 		value.length = p->journal_buffer_pos;
 		value.value  = p->journal_buffer;
 
+		TR << "[JOURNAL] write : num entries " << *p->num_io_pos << ", length " << p->journal_buffer_pos << TREND;
 		ret = kadi.sync_write(KEYSPACE_JOURNAL, &value, [] (struct nvme_passthru_kv_cmd& cmd) {
 			const uint64_t id = KvsJournal::journal_index++;
 			cmd.key_length = construct_journalkey_impl(cmd.key, id);

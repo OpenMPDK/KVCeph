@@ -280,9 +280,21 @@ struct KvsJournal {
 			int datapos = journal_buffer_pos + sizeof(kvs_journal_entry);
 			int keypos  = datapos + align_4B(entry->length);
 			reader(entry, journal_buffer + keypos, (entry->length == 0)? 0:journal_buffer + datapos);
-			journal_buffer_pos = datapos + entry->length;
+			journal_buffer_pos = keypos + entry->key_length;
 		}
 	}
+    /*entrysize 8
+	journal_pos 148 + 12 + 87 = 16 + 87 = 103
+     entry length 21 156,
+	data_pos    12
+	key  pos    12+ data length  = 87-> 88 = 100
+
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0
+            ----------------- d--------------- k---------------
+
+	header (kvs_journal_entry)
+	data
+	key*/
 };
 
 

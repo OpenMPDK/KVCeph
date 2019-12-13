@@ -94,6 +94,8 @@ int KADI::kv_store_sync(uint8_t space_id, kv_value *value, const std::function< 
     struct nvme_passthru_kv_cmd cmd;
     memset((void*)&cmd, 0, sizeof(struct nvme_passthru_kv_cmd));
 
+    TRIO << "<TEST1> value = " << value->value << ", offset = " << value->offset << ", value length = " << value->length << TREND;
+
     cmd.opcode = nvme_cmd_kv_store;
     cmd.nsid = nsid;
     cmd.cdw3 = space_id;
@@ -107,6 +109,9 @@ int KADI::kv_store_sync(uint8_t space_id, kv_value *value, const std::function< 
     cmd.data_length = value->length;
     cmd.cdw10 = (value->length >>  2);
 
+    TRIO << "<TEST2> value = " << value->value << ", offset = " << value->offset << ", value length = " << value->length << TREND;
+
+
     int ret = ioctl(fd, NVME_IOCTL_IO_KV_CMD, &cmd);
 #ifdef ENABLE_IOTRACE
     void *keyptr = 0;
@@ -119,7 +124,24 @@ int KADI::kv_store_sync(uint8_t space_id, kv_value *value, const std::function< 
     if (ret == 0) {
 
         TRIO << "<STORE> " << print_kvssd_key(std::string((const char*)keyptr, cmd.key_length))
-           << ", value = " << value->value << ", value length = " << value->length << ", LOG?" << itermsg << " OK" << TREND;
+           << ", value = " << value->value << ", offset = " << value->offset << ", value length = " << value->length << ", LOG?" << itermsg << " OK" << TREND;
+
+        if (true) {
+            kv_key k;
+            k.key = keyptr;
+            k.length = cmd.key_length;
+            kv_value value2;
+            value2.offset =0 ;
+            value2.value = malloc(8192);
+            value2.length = 8192;
+            TR << "INTEGRITY CHECK original length = " << value->length  << TREND;
+            int r = kv_retrieve_sync(space_id, &k, &value2);
+            assert_equals(r, 0, "read failed");
+            TR << "INTEGRITY CHECK new length = " << value2.length  << TREND;
+            assert_equals((int)value2.length, (int)value->length, "value length is not 850");
+            TR << "DATA INTEGRITY on WRITE CHECKED" << TREND;
+            free(value2.value);
+        }
     } else {
         TRIO << "<STORE> " << print_kvssd_key(std::string((const char*)keyptr, cmd.key_length))
            << ", value = " << value->value << ", value length = " << value->length
@@ -251,6 +273,17 @@ int KADI::kv_store_sync(uint8_t space_id, kv_key *key, kv_value *value) {
     if (ret == 0) {
         TRIO << "<STORE> " << print_kvssd_key(std::string((const char*)key->key, key->length))
            << ", value = " << value->value << ", value length = " << value->length << ", LOG? " << itermsg << " OK" << TREND;
+        if (value->length == 850) {
+            kv_value value;
+            value.offset =0 ;
+            value.value = malloc(8192);
+            value.length = 8192;
+            int r = kv_retrieve_sync(space_id, key, &value);
+            assert_equals(r, 0, "read failed");
+            assert_equals((int)value.length, 850, "value length is not 850");
+            TR << "DATA INTEGRITY on READ CHECKED" << TREND;
+            free(value.value);
+        }
     } else {
         TRIO << "<STORE> " << print_kvssd_key(std::string((const char*)key->key, key->length))
            << ", value = " << value->value << ", value length = " << value->length
@@ -304,7 +337,7 @@ int KADI::kv_retrieve_aio(uint8_t space_id, kv_key *key, kv_value *value, const 
 int KADI::kv_retrieve_sync(uint8_t space_id, kv_key *key, kv_value *value) {
     struct nvme_passthru_kv_cmd cmd;
     memset((void*)&cmd, 0, sizeof(struct nvme_passthru_kv_cmd));
-
+    TR << "kv retrieve sync: key = " << print_kvssd_key(key->key, key->length) << ", buffer  length = " << value->length << ", buffer offset =  " << value->offset << ", buffer = " << value->value << TREND;
     cmd.opcode = nvme_cmd_kv_retrieve;
     cmd.nsid = nsid;
     cmd.cdw3 = space_id;

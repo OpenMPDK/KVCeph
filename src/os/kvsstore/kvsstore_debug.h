@@ -54,7 +54,6 @@ struct FtraceObject {
     FtraceObject(const char *f, int line) : func(f) {
         std::ofstream &fp = kvs_ff.get_fp();
         fp << pthread_self() << " [ENTR] " << func << " ";
-        /*
         fp.flush();
         fp << ", memcheck= " ;
         {
@@ -77,7 +76,7 @@ struct FtraceObject {
                 fp << "test1 = " << (void *) &str << "\n";
             free((void*)long_keyaddr);
             fp << "access OK";
-        }*/
+        }
         fp << "\n";
         fp.flush();
         kvs_ff.return_fp();
@@ -87,7 +86,7 @@ struct FtraceObject {
     ~FtraceObject() {
         std::ofstream &fp = kvs_ff.get_fp();
         fp << pthread_self() << " [EXIT] " << func << " ";
-        /*fp.flush();
+        fp.flush();
         {
             std::vector<void *> malloc_p;
             for (int i = 0; i < 100; i++) {
@@ -107,17 +106,17 @@ struct FtraceObject {
                 fp << "test1 = " << (void *) &str << "\n";
             free((void*)long_keyaddr);
             fp << "access OK";
-        }*/
+        }
         fp.flush();
         fp << "\n"; //<< ", Global Leaks " << HeapLeakChecker::NoGlobalLeaks() << "\n"; //<< ", no leaks = " << heap_checker.NoLeaks() << ", bytes leaked " << heap_checker.BytesLeaked() << "\n";        fp.flush();
         kvs_ff.return_fp();
     }
 };
 
-#define FTRACE FtraceObject fobj(__FUNCTION__, __LINE__);
-#define TRIO kvs_ff.get_fp() << pthread_self() << " " << __FUNCTION__ <<  ":      "
-#define TRITER kvs_ff.get_fp() << pthread_self() << " "  <<__FUNCTION__ << ":      "
-#define TR kvs_ff.get_fp() << " " << pthread_self() << "  "  << __FUNCTION__ << ": "
+#define FTRACE FtraceObject fobj(__PRETTY_FUNCTION__, __LINE__);
+#define TRIO kvs_ff.get_fp() << pthread_self() << " [" << __PRETTY_FUNCTION__ <<  "]:      "
+#define TRITER kvs_ff.get_fp() << pthread_self() << " ["  <<__PRETTY_FUNCTION__ << "]:      "
+#define TR kvs_ff.get_fp() << " " << pthread_self() << "  ["  << __PRETTY_FUNCTION__ << "]: "
 //#define TR std::cout << pthread_self() << " "
 #define TREND "\n"; do { kvs_ff.return_fp(); } while(0)
 #else
@@ -128,6 +127,14 @@ struct FtraceObject {
 
 // key traces: prints keys
 // ----------------------------------------------------
+template<typename T>
+inline void assert_equals(const T &t1, const T &t2, const std::string &msg) {
+    if (t1 != t2) {
+        TR << "ASSERT FAILURE: " << msg << TREND;
+        TR << "NOT EQUAL: " << t1 << " != " << t2 << TREND;
+        exit(1);
+    }
+}
 
 template <typename T>
 inline std::string print_kvssd_key(T* in_, unsigned length)

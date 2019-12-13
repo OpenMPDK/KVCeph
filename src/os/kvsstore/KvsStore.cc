@@ -60,6 +60,8 @@ int KvsStore::_journal_replay() {
 	int i=0, ret;
 
 	while (true) {
+        value.offset = 0;
+        value.length = 2*1024*1024;
 		if (!db.read_journal(i++, &value)) break;
 		derr << "read journal  " << dendl;
 		KvsJournal journal ((char*)value.value);
@@ -657,29 +659,36 @@ void KvsStore::_txc_finish(KvsTransContext *txc) {
 
 void KvsStore::_txc_release_alloc(KvsTransContext *txc) {
 	FTRACE
+	TR << "1" << TREND;
 	KvsIoContext *ioc = &txc->ioc;
 	{
+        TR << "2" << TREND;
 		std::unique_lock<std::mutex> lk ( ioc->running_aio_lock );
+        TR << "3" << TREND;
 		// release memory
 		for (const auto ior : ioc->running_ios) {
-
+            TR << "4" << TREND;
 			if (ior->data != 0) {
 				delete ior->data;
 			}
-
+            TR << "5" << TREND;
 			if (ior->raw_data != 0) {
 				free(ior->raw_data);
 			}
-
+            TR << "6" << TREND;
 			if (ior->key) {
 				free(ior->key->key);
 				delete ior->key;
 			}
-
+            TR << "7" << TREND;
 			delete ior;
+            TR << "8" << TREND;
 		}
+        TR << "9" << TREND;
 	}
+    TR << "10" << TREND;
 	txc->onodes.clear();
+    TR << "11" << TREND;
 }
 
 
@@ -2327,7 +2336,7 @@ void KvsStore::_osr_drain_all() {
 
 
 int KvsStore::statfs(struct store_statfs_t *buf, osd_alert_list_t *alerts) {
-	FTRACE
+
 	buf->reset();
 
 	uint64_t bytesused, capacity;
@@ -2336,6 +2345,8 @@ int KvsStore::statfs(struct store_statfs_t *buf, osd_alert_list_t *alerts) {
 	this->db.get_freespace(bytesused, capacity, utilization);
 	buf->total = capacity;
 	buf->available = capacity - bytesused;
+
+	//TR << "total = " << buf->total << ", available " << buf->available << TREND;
 	return 0;
 }
 
@@ -2461,10 +2472,12 @@ int KvsStore::read(CollectionHandle &c_, const ghobject_t &oid, uint64_t offset,
 		size_t length, bufferlist &bl, uint32_t op_flags) {
 	FTRACE
 	KvsCollection *c = static_cast<KvsCollection*>(c_.get());
+	TR << "1 read: oid " << oid << ", offset " << offset << ", length " << length << TREND;
 	const coll_t &cid = c->get_cid();
 	dout(15) << __func__ << " " << cid << " " << oid << " 0x" << std::hex
 						<< offset << "~" << length << std::dec << dendl;
 
+    TR << "2 cid = " << cid << TREND;
 	if (!c->exists)
 		return -ENOENT;
 
@@ -2478,12 +2491,17 @@ int KvsStore::read(CollectionHandle &c_, const ghobject_t &oid, uint64_t offset,
             return -ENOENT;
         }
 
+        TR << "3 onode: oid = " << o->oid << ", size = " << o->onode.size << TREND;
+
         if (offset == length && offset == 0) {
             length = o->onode.size;
             TR << "read length = " << length << TREND;
         }
 
-        return _read_data(0, oid, offset, length, bl);
+
+        int ret =  _read_data(0, oid, offset, length, bl);
+        TR << "4 read data : oid = " << oid << " offset " << offset << ", length " << length << ", result = " << ret << TREND;
+        return ret;
     }
 
 }
@@ -3118,10 +3136,10 @@ int KvsStore::_read_data(KvsTransContext *txc, const ghobject_t &oid, uint64_t o
 	int r = datao->read(offset, length, bl, [&] (char* data, int pageid, uint32_t &nread)->int  {
         return db.read_block(oid, pageid, data, nread);
 	});
-    TR << "result = " << r  << TREND;
+    TR << "bytes read = " << r  << TREND;
 
-	if (r > 0) {
-		return 0;
+	if (r >= 0) {
+		return r;
 	} else
 		return -ENOENT;
 
