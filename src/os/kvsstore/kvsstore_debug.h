@@ -50,11 +50,12 @@ extern FtraceFile kvs_osd;
 struct FtraceObject {
 
     std::string func;
+    int line;
     //HeapLeakChecker heap_checker;, heap_checker(f)
-    FtraceObject(const char *f, int line) : func(f) {
-#if 0
+    FtraceObject(const char *f, int line_) : func(f), line(line_) {
+#if 1
         std::ofstream &fp = kvs_ff.get_fp();
-        fp << pthread_self() << " [ENTR] " << func << " ";
+        fp << pthread_self() << "[ETR][" << func << ":" << line <<  "] ";
         fp.flush();
         fp << ", memcheck= " ;
         {
@@ -86,9 +87,9 @@ struct FtraceObject {
 
 
     ~FtraceObject() {
-#if 0
+#if 1
         std::ofstream &fp = kvs_ff.get_fp();
-        fp << pthread_self() << " [EXIT] " << func << " ";
+        fp << pthread_self() << "[EXT][" << func << ":" << line <<  "] ";
         fp.flush();
         {
             std::vector<void *> malloc_p;

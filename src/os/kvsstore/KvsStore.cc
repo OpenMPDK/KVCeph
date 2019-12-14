@@ -660,23 +660,37 @@ void KvsStore::_txc_finish(KvsTransContext *txc) {
 void KvsStore::_txc_release_alloc(KvsTransContext *txc) {
 	FTRACE
 	KvsIoContext *ioc = &txc->ioc;
+    TR << "1" << TREND;
 	{
 		std::unique_lock<std::mutex> lk ( ioc->running_aio_lock );
 		// release memory
-		for (const auto ior : ioc->running_ios) {
-			if (ior->data != 0) {
-				delete ior->data;
-			}
-			if (ior->raw_data != 0) {
-				free(ior->raw_data);
-			}
-			if (ior->key) {
-				free(ior->key->key);
-				delete ior->key;
-			}
-			delete ior;
-		}
-	}
+        auto it = ioc->running_ios.cbegin();
+        while (it != ioc->running_ios.end()) {
+            auto ior = (*it);
+
+            TR << "data" << TREND;
+            if (ior->data != 0) {
+                delete ior->data;
+            }
+            /*TR << "raw data" << TREND;
+            if (ior->raw_data != 0) {
+                free(ior->raw_data);
+            }*/
+            TR << "key" << TREND;
+            if (ior->key) {
+                TR << "free key->key" << TREND;
+                free(ior->key->key);
+                TR << "delete key" << TREND;
+                delete ior->key;
+            }
+            TR << "delete ior" << TREND;
+            delete ior;
+
+            it++;
+        }
+
+    }
+    TR << "2" << TREND;
 	txc->onodes.clear();
 }
 
@@ -2945,7 +2959,7 @@ int KvsStore::collection_list(CollectionHandle &c_, const ghobject_t &start,
 int KvsStore::_write(KvsTransContext *txc, CollectionRef &c, OnodeRef &o,
 		uint64_t offset, size_t length, bufferlist *bl, /* write zero if null */
 		uint32_t fadvise_flags) {
-	//FTRACE
+	FTRACE
 
 	int r = 0;
 	if (bl) {

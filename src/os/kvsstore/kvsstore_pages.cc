@@ -71,7 +71,7 @@ if (p == tls_pages.end()) {
 
 
   bl.append(std::move(buf));
-    TR << "bl = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", bl length = " << buf.length() << TREND;
+    TR << "bl = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", bl length = " << bl.length() << TREND;
   return len;
 }
 

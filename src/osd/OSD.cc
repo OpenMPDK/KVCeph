@@ -4374,7 +4374,7 @@ void OSD::write_superblock(ObjectStore::Transaction& t)
 {
   LOGOSD << "write superblock" << LOGEND;
   LOGOSD << "write superblock contents: "  << superblock << LOGEND;
-  { ostringstream oss; oss << BackTrace(1); LOGOSD << oss.str() << LOGEND; }
+  //{ ostringstream oss; oss << BackTrace(1); LOGOSD << oss.str() << LOGEND; }
 
   dout(10) << "write_superblock " << superblock << dendl;
 
