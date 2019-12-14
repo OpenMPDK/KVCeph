@@ -23,10 +23,9 @@
 #ifdef ENABLE_FTRACE
 
 struct FtraceFile {
-    const char *name = "ftrace.txt";
     std::mutex lock;
     std::ofstream fp;
-    FtraceFile() {
+    FtraceFile(const std::string &name) {
         fp.open(name, std::ofstream::out | std::ofstream::app);
     }
 
@@ -46,6 +45,7 @@ struct FtraceFile {
 };
 
 extern FtraceFile kvs_ff;
+extern FtraceFile kvs_osd;
 
 struct FtraceObject {
 
@@ -116,11 +116,15 @@ struct FtraceObject {
 #endif
     }
 };
+#define LOGOSD std::cerr
+#define LOGEND std::endl
+//#define LOGOSD kvs_ff.get_fp() << pthread_self() << "[OSD][" << __FUNCTION__ << ":" << __LINE__ <<  "] "
+//#define LOGEND "\n"; do { kvs_osd.return_fp(); } while(0)
 
 #define FTRACE FtraceObject fobj(__FUNCTION__, __LINE__);
-#define TRIO kvs_ff.get_fp() << pthread_self() << "[" << __FUNCTION__ << ":" << __LINE__ <<  "]:      "
-#define TRITER kvs_ff.get_fp() << pthread_self() << "[" << __FUNCTION__ << ":" <<__LINE__<< "]:      "
-#define TR kvs_ff.get_fp() << " " << pthread_self() << "[" << __FUNCTION__ << ":"  << __LINE__ << "]: "
+#define TRIO kvs_ff.get_fp() << pthread_self() << "[KIO][" << __FUNCTION__ << ":" << __LINE__ <<  "] "
+#define TRITER kvs_ff.get_fp() << pthread_self() << "[KIT][" << __FUNCTION__ << ":" <<__LINE__<< "] "
+#define TR kvs_ff.get_fp() << " " << pthread_self() << "[KVS][" << __FUNCTION__ << ":"  << __LINE__ << "] "
 //#define TR std::cout << pthread_self() << " "
 #define TREND "\n"; do { kvs_ff.return_fp(); } while(0)
 #else
@@ -170,6 +174,7 @@ inline std::string print_kvssd_key(const std::string &str)
 // -----------------------------------------------------------
 
 #define BACKTRACE(cct) ({ ostringstream oss; oss << BackTrace(1); lderr(cct) << oss.str() << dendl; })
+//#define BACKTRACE ({ ostringstream oss; oss << BackTrace(1); lderr(cct) << oss.str() << dendl; })
 
 
 #define NOTSUPPORTED_EXIT do { std::string msg = std::string(__func__ ) + " is not implemented yet";  /* BACKTRACE(msg); */ derr << msg << dendl; return 0; } while (0)

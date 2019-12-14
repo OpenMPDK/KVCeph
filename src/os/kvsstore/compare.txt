@@ -1,0 +1,77 @@
+ /disk1/ywkang/kvceph-nautilus-oct/build/bin/ceph-osd  -f -i 0 -c /disk1/ywkang/kvceph-nautilus-oct/build/ceph.conf --mkfs --key AQDpMfVdoCLqKRAAg/oRu39Fc4i0z1JZCefvDw== --osd-uuid 3ff0eaab-079c-472b-bf2d-31efa4e2254b
+CEPH_OSD STARTED -------------------------------------------
+CEPH_OSD STORE TYPE: kvsstore
+CEPH_OSD ObjectStore CREATED
+2019-12-14T11:03:06.552-0800 7f63aace3d40 -1 [kvsstore] KvsStore Cache: max_shard_onodes: 786432 max_shard_buffer: 1073741824
+CEPH_OSD MKFS STARTED
+mkfs: started
+mkfs: store->mkfs
+2019-12-14T11:03:06.552-0800 7f63aace3d40 -1 [kvsstore] _read_fsid unparsable uuid
+>> KVSSD is opened: /dev/nvme3n1, ctx id = 637
+2019-12-14T11:03:06.564-0800 7f63aace3d40 -1 [kvsstore] kv_finalize
+2019-12-14T11:03:06.568-0800 7f63a4517700 -1 [kvsstore] index thread...
+2019-12-14T11:03:06.568-0800 7f63aace3d40 -1 [kvsstore] kv_index_thread
+2019-12-14T11:03:07.568-0800 7f63a4517700 -1 [kvsstore] index thread...done
+2019-12-14T11:03:07.568-0800 7f63aace3d40 -1 [kvsstore] finisher
+2019-12-14T11:03:07.568-0800 7f63aace3d40 -1 [kvsstore] kv_callback_thread
+2019-12-14T11:03:07.568-0800 7f63aace3d40 -1 [kvsstore] db_close
+>> KV device is closed: fd 14
+mkfs done
+mkfs: store->mount
+>> KVSSD is opened: /dev/nvme3n1, ctx id = 638
+2019-12-14T11:03:07.600-0800 7f63aace3d40 -1 [kvsstore] read superblock, ret = 0
+2019-12-14T11:03:07.600-0800 7f63aace3d40 -1 [kvsstore] journal, ret = 0
+2019-12-14T11:03:07.600-0800 7f63a4517700 -1 [kvsstore] index thread...
+2019-12-14T11:03:07.600-0800 7f63aace3d40 -1 [kvsstore] mount new KVSB superblock is written, ret = 0
+mkfs- open collection: meta
+2019-12-14T11:03:07.616-0800 7f63aace3d40 -1 [kvsstore] mount _open_collections, ret = 0
+
+mkfs- create a new superblock
+
+2019-12-14T11:03:07.616-0800 7f63aace3d40 -1 [kvsstore] Mounted
+mkfs- superblock contents
+mkfs- create a new meta collection
+mkfs- write superblock
+mkfs-queue transaction
+mkfs-write meta
+mkfs-success
+2019-12-14T11:03:07.620-0800 7f63aace3d40 -1 [kvsstore] kv_finalize
+2019-12-14T11:03:07.620-0800 7f63aace3d40 -1 [kvsstore] kv_index_thread
+2019-12-14T11:03:08.600-0800 7f63a4517700 -1 [kvsstore] index thread...done
+2019-12-14T11:03:08.600-0800 7f63aace3d40 -1 [kvsstore] finisher
+2019-12-14T11:03:08.600-0800 7f63aace3d40 -1 [kvsstore] kv_callback_thread
+2019-12-14T11:03:08.600-0800 7f63aace3d40 -1 [kvsstore] db_close
+>> KV device is closed: fd 14
+mkfs-finished with ret = 0
+CEPH_OSD MKFS FINISHED: /disk1/ywkang/kvceph-nautilus-oct/build/dev/osd0 for osd.0 fsid 946befeb-cd85-41d5-bb79-302e7dcc3baf
+start osd.0
+/disk1/ywkang/kvceph-nautilus-oct/build/bin/ceph-osd -i 0 -c /disk1/ywkang/kvceph-nautilus-oct/build/ceph.conf
+CEPH_OSD STARTED -------------------------------------------
+CEPH_OSD STORE TYPE: kvsstore
+CEPH_OSD ObjectStore CREATED
+CEPH_OSD PEAK META
+2019-12-14T11:03:08.756-0800 7fc132662d40 -1 [kvsstore] KvsStore Cache: max_shard_onodes: 786432 max_shard_buffer: 1073741824
+CEPH_OSD STARTING...
+2019-12-14T11:03:08.764-0800 7fc132662d40 -1 Falling back to public interface
+CEPH_OSD OSD CREATED
+CEPH_OSD PREINIT DONE
+CEPH_OSD INIT
+read meta
+meta: val = , last_require_osd_release = unknown
+set cache shards
+mount
+>> KVSSD is opened: /dev/nvme3n1, ctx id = 639
+2019-12-14T11:03:08.820-0800 7fc125629700 -1 [kvsstore] index thread...
+2019-12-14T11:03:08.820-0800 7fc132662d40 -1 [kvsstore] read superblock, ret = 0
+2019-12-14T11:03:08.820-0800 7fc132662d40 -1 [kvsstore] journal, ret = 0
+2019-12-14T11:03:08.820-0800 7fc132662d40 -1 [kvsstore] mount new KVSB superblock is written, ret = 0
+mount done: r = 0
+journal_is_rotational? 0
+open_collection(coll_t::meta())
+2019-12-14T11:03:08.836-0800 7fc132662d40 -1 [kvsstore] mount _open_collections, ret = 0
+service.meta_ch = meta
+2019-12-14T11:03:08.836-0800 7fc132662d40 -1 [kvsstore] Mounted
+read_superblock
+superblock read done: r = 563, bl length = 563
+superblock contents: sb(00000000-0000-0000-0000-000000000000 osd.0 00000000-0000-0000-0000-000000000000 e0 [0,0] lci=[0,0])
+read_superblock done: r = 0

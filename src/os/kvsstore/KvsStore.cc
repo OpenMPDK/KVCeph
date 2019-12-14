@@ -1703,12 +1703,12 @@ int KvsStore::mount() {
 	// to update superblock
 	this->kvsb.is_uptodate = 0;
 	r = _write_sb();
-	derr << __func__ << "new superblock is written, ret = " << r << dendl;
+	derr << __func__ << " new KVSB superblock is written, ret = " << r << dendl;
 	if (r < 0)
 		goto out_db;
 
 	r = _open_collections();
-	derr << __func__ << "_open_collections, ret = " << r << dendl;
+	derr << __func__ << " _open_collections, ret = " << r << dendl;
 	if (r < 0)
 		goto out_db;
 
@@ -2489,7 +2489,7 @@ int KvsStore::read(CollectionHandle &c_, const ghobject_t &oid, uint64_t offset,
 
 
         int ret =  _read_data(0, oid, offset, length, bl);
-        TR << "4 read data : oid = " << oid << " offset " << offset << ", length " << length << ", result = " << ret << TREND;
+        TR << "4 read data : oid = " << oid << " offset " << offset << ", length " << length << ", hash = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", result = " << ret << TREND;
         return ret;
     }
 
@@ -2949,7 +2949,7 @@ int KvsStore::_write(KvsTransContext *txc, CollectionRef &c, OnodeRef &o,
 
 	int r = 0;
 	if (bl) {
-        TR << "CHECK STORE _write oid = " << o->oid << ", offset " << offset << ", length " << length << ", hash " << ceph_str_hash_linux(bl->c_str(), bl->length()) << TREND;
+        TR << "_write oid = " << o->oid << ", offset " << offset << ", length " << length << ", hash " << ceph_str_hash_linux(bl->c_str(), bl->length()) << TREND;
     }
 	const uint64_t enddata_off = offset + length;
 

@@ -1,0 +1,106 @@
+ /disk1/ywkang/kvceph-nautilus-oct/build/bin/ceph-osd  -i 0 -c /disk1/ywkang/kvceph-nautilus-oct/build/ceph.conf --mkfs --key AQCfM/VdE/wSMxAAzWHdVNEcq7prGoWc3j/nWQ== --osd-uuid 832c06f3-2b70-47c8-b06e-602534b9cfed
+CEPH_OSD STARTED -------------------------------------------
+CEPH_OSD STORE TYPE: bluestore
+CEPH_OSD ObjectStore CREATED
+CEPH_OSD MKFS STARTED
+mkfs: started
+mkfs: store->mkfs
+2019-12-14T11:10:24.624-0800 7ff8f0a84d40 -1 bluestore(/disk1/ywkang/kvceph-nautilus-oct/build/dev/osd0/block) _read_bdev_label failed to open /disk1/ywkang/kvceph-nautilus-oct/build/dev/osd0/block: (2) No such file or directory
+2019-12-14T11:10:24.624-0800 7ff8f0a84d40 -1 bluestore(/disk1/ywkang/kvceph-nautilus-oct/build/dev/osd0/block) _read_bdev_label failed to open /disk1/ywkang/kvceph-nautilus-oct/build/dev/osd0/block: (2) No such file or directory
+2019-12-14T11:10:24.624-0800 7ff8f0a84d40 -1 bluestore(/disk1/ywkang/kvceph-nautilus-oct/build/dev/osd0/block) _read_bdev_label failed to open /disk1/ywkang/kvceph-nautilus-oct/build/dev/osd0/block: (2) No such file or directory
+2019-12-14T11:10:24.624-0800 7ff8f0a84d40 -1 bluestore(/disk1/ywkang/kvceph-nautilus-oct/build/dev/osd0) _read_fsid unparsable uuid
+mkfs done
+mkfs: store->mount
+mkfs- open collection: meta
+mkfs- create a new superblock
+mkfs- superblock contents sb(131e5097-f626-4539-90be-ef78bc303f6b osd.0 832c06f3-2b70-47c8-b06e-602534b9cfed e0 [0,0] lci=[0,0])
+mkfs- superblock hash 1020738283, length = 563
+mkfs- create a new meta collection
+mkfs- write superblock
+mkfs-queue transaction
+mkfs-write meta
+mkfs-success
+mkfs-finished with ret = 0
+CEPH_OSD MKFS FINISHED: /disk1/ywkang/kvceph-nautilus-oct/build/dev/osd0 for osd.0 fsid 131e5097-f626-4539-90be-ef78bc303f6b
+start osd.0
+/disk1/ywkang/kvceph-nautilus-oct/build/bin/ceph-osd -i 0 -c /disk1/ywkang/kvceph-nautilus-oct/build/ceph.conf
+CEPH_OSD STARTED -------------------------------------------
+CEPH_OSD STORE TYPE: bluestore
+CEPH_OSD ObjectStore CREATED
+CEPH_OSD PEAK META
+CEPH_OSD STARTING...
+2019-12-14T11:10:39.972-0800 7f192c87fd40 -1 Falling back to public interface
+CEPH_OSD OSD CREATED
+CEPH_OSD PREINIT DONE
+CEPH_OSD INIT
+read meta
+meta: val = , last_require_osd_release = unknown
+set cache shards
+mount
+mount done: r = 0
+journal_is_rotational? 0
+open_collection(coll_t::meta())
+service.meta_ch = meta
+read_superblock
+superblock read done: r = 563, bl length = 563
+superblock contents: sb(131e5097-f626-4539-90be-ef78bc303f6b osd.0 832c06f3-2b70-47c8-b06e-602534b9cfed e0 [0,0] lci=[0,0])
+read_superblock done: r = 0
+2019-12-14T11:10:47.012-0800 7f192c87fd40 -1 osd.0 0 2
+2019-12-14T11:10:47.012-0800 7f192c87fd40 -1 osd.0 0 3
+2019-12-14T11:10:47.012-0800 7f192c87fd40 -1 osd.0 0 try_get_map : 1
+2019-12-14T11:10:47.012-0800 7f192c87fd40 -1 osd.0 0 try_get_map : 2 retval = 0
+2019-12-14T11:10:47.012-0800 7f192c87fd40 -1 osd.0 0 try_get_map : 3
+2019-12-14T11:10:47.012-0800 7f192c87fd40 -1 osd.0 0 try_get_map : 4
+2019-12-14T11:10:47.012-0800 7f192c87fd40 -1 osd.0 0 try_get_map : 8
+2019-12-14T11:10:47.012-0800 7f192c87fd40 -1 osd.0 0 4
+2019-12-14T11:10:47.012-0800 7f192c87fd40 -1 osd.0 0 5 r = 0
+2019-12-14T11:10:47.012-0800 7f192c87fd40 -1 osd.0 0 list collections size = 1
+2019-12-14T11:10:47.012-0800 7f192c87fd40 -1 osd.0 0 6
+2019-12-14T11:10:47.012-0800 7f192c87fd40 -1 osd.0 0 8
+2019-12-14T11:10:47.012-0800 7f192c87fd40 -1 osd.0 0 8.1
+2019-12-14T11:10:47.012-0800 7f192c87fd40 -1 osd.0 0 3475: r = 0
+2019-12-14T11:10:47.012-0800 7f192c87fd40 -1 osd.0 0 3484: r = 0
+2019-12-14T11:10:47.060-0800 7f192c87fd40 -1 osd.0 0 3491: r = 0
+2019-12-14T11:10:47.060-0800 7f192c87fd40 -1 osd.0 0 3496 9
+write superblock
+write superblock contents: sb(131e5097-f626-4539-90be-ef78bc303f6b osd.0 832c06f3-2b70-47c8-b06e-602534b9cfed e0 [0,0] lci=[0,0])
+ ceph version v2.0-21-g1a42280 (1a42280dc8b0f0b10e24e314cc71e3e21309d30b) octopus (dev)
+ 1: (OSD::write_superblock(ceph::os::Transaction&)+0xc2) [0x55fecb791222]
+ 2: (OSD::check_osdmap_features()+0x8ea) [0x55fecb7c0aee]
+ 3: (OSD::init()+0x3e51) [0x55fecb788e15]
+ 4: (main()+0x537e) [0x55fecb74a5a8]
+ 5: (__libc_start_main()+0xf0) [0x7f19299c8830]
+ 6: (_start()+0x29) [0x55fecb72c039]
+
+write superblock encoded length: 590
+2019-12-14T11:10:47.068-0800 7f192c87fd40 -1 osd.0 0 pg num history decode: r = -2, bl.length = 0
+2019-12-14T11:10:47.068-0800 7f192c87fd40 -1 osd.0 0 pg num history decode done
+2019-12-14T11:10:47.068-0800 7f192c87fd40 -1 osd.0 0 list collections
+2019-12-14T11:10:47.068-0800 7f192c87fd40 -1 osd.0 0 list collections -> result = 1
+2019-12-14T11:10:47.068-0800 7f192c87fd40 -1 osd.0 0 list collection loop
+2019-12-14T11:10:47.068-0800 7f192c87fd40 -1 osd.0 0 OSD 1
+2019-12-14T11:10:47.068-0800 7f192c87fd40 -1 osd.0 0 log_to_monitors {default=true}
+write superblock
+write superblock contents: sb(131e5097-f626-4539-90be-ef78bc303f6b osd.0 832c06f3-2b70-47c8-b06e-602534b9cfed e0 [0,0] lci=[0,0])
+ ceph version v2.0-21-g1a42280 (1a42280dc8b0f0b10e24e314cc71e3e21309d30b) octopus (dev)
+ 1: (OSD::write_superblock(ceph::os::Transaction&)+0xc2) [0x55fecb791222]
+ 2: (OSD::scrub_purged_snaps()+0xc93) [0x55fecb7b03df]
+ 3: (OSD::tick()+0x6d3) [0x55fecb7a3d09]
+ 4: (OSD::C_Tick::finish(int)+0x1f) [0x55fecb8090b3]
+ 5: (Context::complete(int)+0x27) [0x55fecb7e6e9d]
+ 6: (SafeTimer::timer_thread()+0x38f) [0x55fecc2a62ab]
+ 7: (SafeTimerThread::entry()+0x1c) [0x55fecc2a78a0]
+ 8: (Thread::entry_wrapper()+0x78) [0x55fecc29aa64]
+ 9: (Thread::_entry_func(void*)+0x18) [0x55fecc29a9e2]
+ 10: (()+0x76ba) [0x7f192aaad6ba]
+ 11: (clone()+0x6d) [0x7f1929aaf41d]
+
+write superblock encoded length: 590
+2019-12-14T11:10:48.652-0800 7f192c87fd40 -1 osd.0 0 3691init succeeded!
+CEPH_OSD INIT DONE
+started.  stop.sh to stop.  see out/* (e.g. 'tail -f out/????') for debug output.
+
+dashboard urls: https://40.1.1.30:41083
+  w/ user/pass: admin / admin
+restful urls: https://40.1.1.30:42083
+  w/ user/pass: admin / 9fc99815-57a0-4fa7-8779-834bd53d859a

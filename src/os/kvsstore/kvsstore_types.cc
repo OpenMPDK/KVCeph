@@ -23,7 +23,9 @@
 #undef dout_prefix
 #define dout_prefix *_dout << "[kvsstore] "
 
-FtraceFile kvs_ff;
+FtraceFile kvs_ff("ftrace.txt");
+FtraceFile kvs_osd("osdtrace.txt");
+
 std::atomic<uint64_t> KvsJournal::journal_index = {0};
 
 

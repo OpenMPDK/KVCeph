@@ -200,9 +200,7 @@ public:
 
 	~bptree_pool() {
 		for (auto &p : pool) {
-		    TRITER << "freeing " << (void*)p.second << TREND;
 			delete p.second;
-            TRITER << "freeing done" << TREND;
 		}
 		pool.clear();
 	}

@@ -200,15 +200,13 @@ class KvsPageSet {
       const int num_pages = count_pages(offset, length);
       uint64_t page_offset = (offset + length - 1) & ~(page_size-1);
 
-      range.reserve(num_pages);
-
       std::lock_guard<lock_type> lock(mutex);
 
       for (pgid = 0; pgid < num_pages -1 ; pgid++) {
           KvsPage *p = load_page(offset, page_offset, page_loader, false);
           if (p == 0) { range.clear(); return false; }
 
-          range[pgid]  = p;
+          range.push_back(p);
           length      -= page_size;
           page_offset += page_size;
       }
@@ -217,7 +215,10 @@ class KvsPageSet {
       KvsPage *p = load_page(offset, page_offset, page_loader, true);
       if (p == 0) { range.clear(); return false; }
 
-      range[pgid] = p;
+      TR << "last page: length = " << p->length << ", offset = " << p->offset << ", hash = " << ceph_str_hash_linux(p->data, p->length) << TREND;
+      range.push_back(p);
+      TR << "last page: length = " << range[pgid]->length << ", offset = " << range[pgid]->offset << ", hash = " << ceph_str_hash_linux(range[pgid]->data, range[pgid]->length) << TREND;
+      TR << "range = " << range.size() << TREND;
       return true;
 
   }

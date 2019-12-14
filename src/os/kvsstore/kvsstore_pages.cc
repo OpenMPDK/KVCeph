@@ -13,20 +13,33 @@ int KvsStoreDataObject::read(uint64_t offset, uint64_t len, bufferlist& bl, Func
 
   KvsPageSet::page_vector tls_pages;
   bool suc = data.get_range(offset, len, tls_pages, page_loader);
-  if (!suc) {tls_pages.clear(); return -1;}
+  TR << "tls pages = " << tls_pages.size() << TREND;
+  if (!suc) {
+      TR << "tls pages clear" << TREND;
+      tls_pages.clear(); return -1;
+  }
 
-  TR << "range is ready" << TREND;
+  TR << "range is ready: " << tls_pages.size() << TREND;
 
   // allocate a buffer for the data
   buffer::ptr buf(len);
 
-  TR << "length = " << len << TREND;
+  TR << "tls pages = " << tls_pages.size() << TREND;
 
 
-    auto p = tls_pages.begin();
+  auto p = tls_pages.begin();
   while (remaining) {
+      TR << "remaining  = " << remaining << ", end = " << end  << TREND;
+if (p == tls_pages.end()) {
+    TR << "no more pages " << TREND;
+} else {
+    TR << "page offset = " << (*p)->offset << TREND;
+}
+
+
     // no more pages in range
     if (p == tls_pages.end() || (*p)->offset >= end) {
+        TR << "no more pages in the range" << TREND;
       buf.zero(offset - start, remaining);
       break;
     }
@@ -35,9 +48,15 @@ int KvsStoreDataObject::read(uint64_t offset, uint64_t len, bufferlist& bl, Func
 
     // read from page
     const auto page_offset = offset - page->offset;
-    const auto count = std::min(remaining, data.get_page_size() - page_offset);
+
+      TR << "page_offset = " << page_offset  << TREND;
+    const auto count = std::min(remaining, /*data.get_page_size()*/ (uint64_t)page->length);
+
+      TR << "count = " << count  << TREND;
 
     buf.copy_in(offset - start, count, page->data + page_offset);
+
+      TR << "copy in: to offset " <<offset - start << ", length " << count << TREND;
 
     remaining -= count;
     offset += count;
@@ -47,10 +66,12 @@ int KvsStoreDataObject::read(uint64_t offset, uint64_t len, bufferlist& bl, Func
 
   tls_pages.clear(); // drop page refs
 
+  TR << "buf = " << ceph_str_hash_linux(buf.c_str(), buf.length()) << ", length = " << buf.length() << TREND;
+
 
 
   bl.append(std::move(buf));
-    TR << "bl length = " << bl.length() << TREND;
+    TR << "bl = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", bl length = " << buf.length() << TREND;
   return len;
 }
 
