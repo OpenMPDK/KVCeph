@@ -174,20 +174,19 @@ class KvsPageSet {
     uint64_t page_offset = (offset + length - 1) & ~(page_size-1);
 
     TR << "num pages = " << num_pages << TREND;
-    range.reserve(num_pages);
 
     std::lock_guard<lock_type> lock(mutex);
 
     for (pgid = 0; pgid < num_pages -1 ; pgid++) {
         TR << "pgid " << pgid  << TREND;
-        range[pgid] = prepare_page_for_write(offset, length, page_offset, page_loader, false);
+        range.push_back(prepare_page_for_write(offset, length, page_offset, page_loader, false));
         length      -= page_size;
         page_offset += page_size;
     }
     TR << "last pgid " << pgid  << TREND;
 
     // last page
-    range[pgid] = prepare_page_for_write(offset, length, page_offset, page_loader, true);
+      range.push_back(prepare_page_for_write(offset, length, page_offset, page_loader, true));
 
   }
 
