@@ -52,6 +52,7 @@ struct FtraceObject {
     std::string func;
     //HeapLeakChecker heap_checker;, heap_checker(f)
     FtraceObject(const char *f, int line) : func(f) {
+#if 0
         std::ofstream &fp = kvs_ff.get_fp();
         fp << pthread_self() << " [ENTR] " << func << " ";
         fp.flush();
@@ -80,10 +81,12 @@ struct FtraceObject {
         fp << "\n";
         fp.flush();
         kvs_ff.return_fp();
+#endif
     }
 
 
     ~FtraceObject() {
+#if 0
         std::ofstream &fp = kvs_ff.get_fp();
         fp << pthread_self() << " [EXIT] " << func << " ";
         fp.flush();
@@ -110,13 +113,14 @@ struct FtraceObject {
         fp.flush();
         fp << "\n"; //<< ", Global Leaks " << HeapLeakChecker::NoGlobalLeaks() << "\n"; //<< ", no leaks = " << heap_checker.NoLeaks() << ", bytes leaked " << heap_checker.BytesLeaked() << "\n";        fp.flush();
         kvs_ff.return_fp();
+#endif
     }
 };
 
-#define FTRACE FtraceObject fobj(__PRETTY_FUNCTION__, __LINE__);
-#define TRIO kvs_ff.get_fp() << pthread_self() << " [" << __PRETTY_FUNCTION__ <<  "]:      "
-#define TRITER kvs_ff.get_fp() << pthread_self() << " ["  <<__PRETTY_FUNCTION__ << "]:      "
-#define TR kvs_ff.get_fp() << " " << pthread_self() << "  ["  << __PRETTY_FUNCTION__ << "]: "
+#define FTRACE FtraceObject fobj(__FUNCTION__, __LINE__);
+#define TRIO kvs_ff.get_fp() << pthread_self() << "[" << __FUNCTION__ << ":" << __LINE__ <<  "]:      "
+#define TRITER kvs_ff.get_fp() << pthread_self() << "[" << __FUNCTION__ << ":" <<__LINE__<< "]:      "
+#define TR kvs_ff.get_fp() << " " << pthread_self() << "[" << __FUNCTION__ << ":"  << __LINE__ << "]: "
 //#define TR std::cout << pthread_self() << " "
 #define TREND "\n"; do { kvs_ff.return_fp(); } while(0)
 #else

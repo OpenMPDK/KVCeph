@@ -659,36 +659,25 @@ void KvsStore::_txc_finish(KvsTransContext *txc) {
 
 void KvsStore::_txc_release_alloc(KvsTransContext *txc) {
 	FTRACE
-	TR << "1" << TREND;
 	KvsIoContext *ioc = &txc->ioc;
 	{
-        TR << "2" << TREND;
 		std::unique_lock<std::mutex> lk ( ioc->running_aio_lock );
-        TR << "3" << TREND;
 		// release memory
 		for (const auto ior : ioc->running_ios) {
-            TR << "4" << TREND;
 			if (ior->data != 0) {
 				delete ior->data;
 			}
-            TR << "5" << TREND;
 			if (ior->raw_data != 0) {
 				free(ior->raw_data);
 			}
-            TR << "6" << TREND;
 			if (ior->key) {
 				free(ior->key->key);
 				delete ior->key;
 			}
-            TR << "7" << TREND;
 			delete ior;
-            TR << "8" << TREND;
 		}
-        TR << "9" << TREND;
 	}
-    TR << "10" << TREND;
 	txc->onodes.clear();
-    TR << "11" << TREND;
 }
 
 
@@ -2935,6 +2924,7 @@ int KvsStore::collection_list(CollectionHandle &c_, const ghobject_t &start,
 	{
 		std::shared_lock l(c->lock);
 		r = _collection_list(c, start, end, max, ls, pnext);
+		TR << "collection list result = " << ls->size() << TREND;
 	}
 
 	dout(15) << __func__ << "-DONE: " << c->cid << " start " << start
@@ -2958,7 +2948,9 @@ int KvsStore::_write(KvsTransContext *txc, CollectionRef &c, OnodeRef &o,
 	//FTRACE
 
 	int r = 0;
-    TR << "STORE _write oid = " << o->oid << ", offset " << offset << ", length " << length << TREND;
+	if (bl) {
+        TR << "CHECK STORE _write oid = " << o->oid << ", offset " << offset << ", length " << length << ", hash " << ceph_str_hash_linux(bl->c_str(), bl->length()) << TREND;
+    }
 	const uint64_t enddata_off = offset + length;
 
 	KvsStoreDataObject &datao = txc->databuffers[o->oid];
@@ -2969,9 +2961,7 @@ int KvsStore::_write(KvsTransContext *txc, CollectionRef &c, OnodeRef &o,
 		r = datao.write(offset, *bl, [&] (char* data, int pageid, uint32_t &nread)->int {
 			return db.read_block(o->oid, pageid, data, nread);
 		});
-        TR << "STORE datalength = " << bl->length() << ", dao length = " << datao.data_len << TREND;
-        if (bl->length() == 0)
-            ceph_abort_msg("STORE bl->length == 0");
+
 	} else { // fill zero
         TR << "3" << TREND;
 		r = datao.zero(offset, length, [&] (char* data, int pageid, uint32_t &nread)->int  {
@@ -3136,12 +3126,16 @@ int KvsStore::_read_data(KvsTransContext *txc, const ghobject_t &oid, uint64_t o
 	int r = datao->read(offset, length, bl, [&] (char* data, int pageid, uint32_t &nread)->int  {
         return db.read_block(oid, pageid, data, nread);
 	});
+
     TR << "bytes read = " << r  << TREND;
 
 	if (r >= 0) {
+        assert_equals(r, (int)bl.length(), "bl length != r");
 		return r;
-	} else
-		return -ENOENT;
+	} else {
+	    bl.clear();
+        return -ENOENT;
+    }
 
 }
 
