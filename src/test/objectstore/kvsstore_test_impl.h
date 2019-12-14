@@ -23,6 +23,7 @@
 #include "common/errno.h"
 #include "include/stringify.h"
 #include "include/coredumpctl.h"
+#include "include/ceph_hash.h"
 
 #include "include/unordered_map.h"
 #include "store_test_fixture.h"
