@@ -24,6 +24,7 @@
 #include <sys/stat.h>
 #include <signal.h>
 #include <time.h>
+#include <sstream>
 #include <boost/scoped_ptr.hpp>
 #include <boost/range/adaptor/reversed.hpp>
 
@@ -180,6 +181,7 @@
 #undef dout_prefix
 #define dout_prefix _prefix(_dout, whoami, get_osdmap_epoch())
 
+#include "os/kvsstore/kvsstore_debug.h"
 
 static ostream& _prefix(std::ostream* _dout, int whoami, epoch_t epoch) {
   return *_dout << "osd." << whoami << " " << epoch << " ";
@@ -1559,8 +1561,10 @@ OSDMapRef OSDService::_add_map(OSDMap *o)
 
 OSDMapRef OSDService::try_get_map(epoch_t epoch)
 {
+    derr << "try_get_map : 1" << dendl;
   std::lock_guard l(map_cache_lock);
   OSDMapRef retval = map_cache.lookup(epoch);
+    derr << "try_get_map : 2 retval = " << retval << dendl;
   if (retval) {
     dout(30) << "get_map " << epoch << " -cached" << dendl;
     if (logger) {
@@ -1568,6 +1572,8 @@ OSDMapRef OSDService::try_get_map(epoch_t epoch)
     }
     return retval;
   }
+
+    derr << "try_get_map : 3"<< dendl;
   if (logger) {
     logger->inc(l_osd_map_cache_miss);
     epoch_t lb = map_cache.cached_key_lower_bound();
@@ -1577,9 +1583,10 @@ OSDMapRef OSDService::try_get_map(epoch_t epoch)
       logger->inc(l_osd_map_cache_miss_low_avg, lb - epoch);
     }
   }
-
+    derr << "try_get_map : 4"<< dendl;
   OSDMap *map = new OSDMap;
   if (epoch > 0) {
+      derr << "try_get_map : 5"<< dendl;
     dout(20) << "get_map " << epoch << " - loading and decoding " << map << dendl;
     bufferlist bl;
     if (!_get_map_bl(epoch, bl) || bl.length() == 0) {
@@ -1587,10 +1594,14 @@ OSDMapRef OSDService::try_get_map(epoch_t epoch)
       delete map;
       return OSDMapRef();
     }
+      derr << "try_get_map : 6"<< dendl;
     map->decode(bl);
+      derr << "try_get_map : 7"<< dendl;
   } else {
+
     dout(20) << "get_map " << epoch << " - return initial " << map << dendl;
   }
+    derr << "try_get_map : 8"<< dendl;
   return _add_map(map);
 }
 
@@ -1916,7 +1927,7 @@ int heap(CephContext& cct, const cmdmap_t& cmdmap, Formatter& f, std::ostream& o
 int OSD::mkfs(CephContext *cct, ObjectStore *store, uuid_d fsid, int whoami)
 {
   int ret;
-
+  LOGOSD << "mkfs: started" << LOGEND;
   OSDSuperblock sb;
   bufferlist sbbl;
   ObjectStore::CollectionHandle ch;
@@ -1924,33 +1935,41 @@ int OSD::mkfs(CephContext *cct, ObjectStore *store, uuid_d fsid, int whoami)
   // if we are fed a uuid for this osd, use it.
   store->set_fsid(cct->_conf->osd_uuid);
 
+  LOGOSD << "mkfs: store->mkfs" << LOGEND;
   ret = store->mkfs();
   if (ret) {
     derr << "OSD::mkfs: ObjectStore::mkfs failed with error "
          << cpp_strerror(ret) << dendl;
     goto free_store;
   }
-
+  LOGOSD << "mkfs done" << LOGEND;
   store->set_cache_shards(1);  // doesn't matter for mkfs!
 
+  LOGOSD << "mkfs: store->mount" << LOGEND;
   ret = store->mount();
   if (ret) {
     derr << "OSD::mkfs: couldn't mount ObjectStore: error "
          << cpp_strerror(ret) << dendl;
     goto free_store;
   }
-
+  LOGOSD << "mkfs- open collection: " << coll_t::meta() << LOGEND;
   ch = store->open_collection(coll_t::meta());
+
   if (ch) {
+    LOGOSD << "mkfs- read superblock " << LOGEND;
     ret = store->read(ch, OSD_SUPERBLOCK_GOBJECT, 0, 0, sbbl);
     if (ret < 0) {
+      LOGOSD << "mkfs- ERR have meta collection but no superblock " << LOGEND;
       derr << "OSD::mkfs: have meta collection but no superblock" << dendl;
       goto free_store;
     }
+    LOGOSD << "mkfs- found superblock " << LOGEND;
     /* if we already have superblock, check content of superblock */
     dout(0) << " have superblock" << dendl;
     auto p = sbbl.cbegin();
     decode(sb, p);
+
+    LOGOSD << "mkfs- superblock contents: " << sb << LOGEND;
     if (whoami != sb.whoami) {
       derr << "provided osd id " << whoami << " != superblock's " << sb.whoami
 	   << dendl;
@@ -1964,35 +1983,44 @@ int OSD::mkfs(CephContext *cct, ObjectStore *store, uuid_d fsid, int whoami)
       goto umount_store;
     }
   } else {
+    LOGOSD << "mkfs- create a new superblock " << LOGEND;
     // create superblock
     sb.cluster_fsid = fsid;
     sb.osd_fsid = store->get_fsid();
     sb.whoami = whoami;
     sb.compat_features = get_osd_initial_compat_set();
 
+    LOGOSD << "mkfs- superblock contents " << sb << LOGEND;
     bufferlist bl;
     encode(sb, bl);
+    LOGOSD << "mkfs- superblock hash " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", length = " << bl.length() << LOGEND;
 
+    LOGOSD << "mkfs- create a new meta collection" << LOGEND;
     ObjectStore::CollectionHandle ch = store->create_new_collection(
       coll_t::meta());
     ObjectStore::Transaction t;
     t.create_collection(coll_t::meta(), 0);
+    LOGOSD << "mkfs- write superblock" << LOGEND;
     t.write(coll_t::meta(), OSD_SUPERBLOCK_GOBJECT, 0, bl.length(), bl);
+
+    LOGOSD << "mkfs-queue transaction" << LOGEND;
     ret = store->queue_transaction(ch, std::move(t));
     if (ret) {
       derr << "OSD::mkfs: error while writing OSD_SUPERBLOCK_GOBJECT: "
 	   << "queue_transaction returned " << cpp_strerror(ret) << dendl;
       goto umount_store;
     }
+
   }
 
+  LOGOSD << "mkfs-write meta" << LOGEND;
   ret = write_meta(cct, store, sb.cluster_fsid, sb.osd_fsid, whoami);
   if (ret) {
     derr << "OSD::mkfs: failed to write fsid file: error "
          << cpp_strerror(ret) << dendl;
     goto umount_store;
   }
-
+  LOGOSD << "mkfs-success" << LOGEND;
 umount_store:
   if (ch) {
     ch.reset();
@@ -2000,6 +2028,7 @@ umount_store:
   store->umount();
 free_store:
   delete store;
+    LOGOSD << "mkfs-finished with ret = " << ret << LOGEND;
   return ret;
 }
 
@@ -3252,10 +3281,13 @@ int OSD::init()
 
   boot_finisher.start();
 
+  LOGOSD << "read meta "<< LOGEND;
+
   {
     string val;
     store->read_meta("require_osd_release", &val);
     last_require_osd_release = ceph_release_from_name(val);
+    LOGOSD << "meta: val = " << val << ", last_require_osd_release = " << last_require_osd_release << LOGEND;
   }
 
   // mount.
@@ -3265,22 +3297,29 @@ int OSD::init()
   dout(2) << "journal " << journal_path << dendl;
   ceph_assert(store);  // call pre_init() first!
 
+  LOGOSD << "set cache shards" << LOGEND;
   store->set_cache_shards(get_num_op_shards());
 
+  LOGOSD << "mount" << LOGEND;
   int r = store->mount();
   if (r < 0) {
     derr << "OSD:init: unable to mount object store" << dendl;
     return r;
   }
+  LOGOSD << "mount done: r = " << r << LOGEND;
   journal_is_rotational = store->is_journal_rotational();
   dout(2) << "journal looks like " << (journal_is_rotational ? "hdd" : "ssd")
           << dendl;
 
+  LOGOSD << "journal_is_rotational? " << journal_is_rotational << LOGEND;
   enable_disable_fuse(false);
 
   dout(2) << "boot" << dendl;
 
+  LOGOSD << "open_collection(coll_t::meta())" << LOGEND;
   service.meta_ch = store->open_collection(coll_t::meta());
+
+  LOGOSD << "service.meta_ch = " << service.meta_ch->cid << LOGEND;
 
   // initialize the daily loadavg with current 15min loadavg
   double loadavgs[3];
@@ -3320,6 +3359,7 @@ int OSD::init()
     }
   }
 
+  LOGOSD << "read_superblock" << LOGEND;
   // read superblock
   r = read_superblock();
   if (r < 0) {
@@ -3327,9 +3367,11 @@ int OSD::init()
     r = -EINVAL;
     goto out;
   }
-derr << "1" << dendl;
+
+  LOGOSD << "read_superblock done: r = " << r << LOGEND;
+
   if (osd_compat.compare(superblock.compat_features) < 0) {
-      derr << "1.1" << dendl;
+
     derr << "The disk uses features unsupported by the executable." << dendl;
     derr << " ondisk features " << superblock.compat_features << dendl;
     derr << " daemon features " << osd_compat << dendl;
@@ -3393,19 +3435,6 @@ derr << "1" << dendl;
   }
 
 
-  // put this check before the snapmapper check
-  // make sure snap mapper object exists
-  if (!store->exists(service.meta_ch, OSD::make_snapmapper_oid())) {
-        derr << "8.1 "  << dendl;
-        dout(10) << "init creating/touching snapmapper object" << dendl;
-        ObjectStore::Transaction t;
-        t.touch(coll_t::meta(), OSD::make_snapmapper_oid());
-        r = store->queue_transaction(service.meta_ch, std::move(t));
-        derr << __LINE__ << ": r = " << r  << dendl;
-        if (r < 0)
-            goto out;
-  }
-
   initial = get_osd_initial_compat_set();
   diff = superblock.compat_features.unsupported(initial);
   if (superblock.compat_features.merge(initial)) {
@@ -3434,6 +3463,19 @@ derr << "1" << dendl;
   }
     derr << "8 "  << dendl;
 
+
+    // put this check before the snapmapper check
+    // make sure snap mapper object exists
+    if (!store->exists(service.meta_ch, OSD::make_snapmapper_oid())) {
+        derr << "8.1 "  << dendl;
+        dout(10) << "init creating/touching snapmapper object" << dendl;
+        ObjectStore::Transaction t;
+        t.touch(coll_t::meta(), OSD::make_snapmapper_oid());
+        r = store->queue_transaction(service.meta_ch, std::move(t));
+        derr << __LINE__ << ": r = " << r  << dendl;
+        if (r < 0)
+            goto out;
+    }
   if (!store->exists(service.meta_ch, OSD::make_purged_snaps_oid())) {
     dout(10) << "init creating/touching purged_snaps object" << dendl;
     ObjectStore::Transaction t;
@@ -4330,6 +4372,10 @@ int OSD::update_crush_device_class()
 
 void OSD::write_superblock(ObjectStore::Transaction& t)
 {
+  LOGOSD << "write superblock" << LOGEND;
+  LOGOSD << "write superblock contents: "  << superblock << LOGEND;
+  { ostringstream oss; oss << BackTrace(1); LOGOSD << oss.str() << LOGEND; }
+
   dout(10) << "write_superblock " << superblock << dendl;
 
   //hack: at minimum it's using the baseline feature set
@@ -4338,6 +4384,8 @@ void OSD::write_superblock(ObjectStore::Transaction& t)
 
   bufferlist bl;
   encode(superblock, bl);
+
+  LOGOSD << "write superblock encoded length: "  << bl.length() << LOGEND;
   t.write(coll_t::meta(), OSD_SUPERBLOCK_GOBJECT, 0, bl.length(), bl);
 }
 
@@ -4348,8 +4396,11 @@ int OSD::read_superblock()
   if (r < 0)
     return r;
 
+  LOGOSD << "superblock read done: r = " << r << ", bl length = " << bl.length() << LOGEND;
   auto p = bl.cbegin();
   decode(superblock, p);
+
+  LOGOSD << "superblock contents: " << superblock << LOGEND;
 
   dout(10) << "read_superblock " << superblock << dendl;
 
@@ -4625,18 +4676,23 @@ void OSD::load_pgs()
   dout(0) << "load_pgs" << dendl;
 
   {
+
     auto pghist = make_pg_num_history_oid();
     bufferlist bl;
     int r = store->read(service.meta_ch, pghist, 0, 0, bl, 0);
+      derr << "pg num history decode: r = " << r << ", bl.length = " << bl.length()<< dendl;
     if (r >= 0 && bl.length() > 0) {
       auto p = bl.cbegin();
       decode(pg_num_history, p);
     }
+      derr << "pg num history decode done" << dendl;
     dout(20) << __func__ << " pg_num_history " << pg_num_history << dendl;
   }
 
+  derr << "list collections " << dendl;
   vector<coll_t> ls;
   int r = store->list_collections(ls);
+    derr << "list collections -> result = " << ls.size() << dendl;
   if (r < 0) {
     derr << "failed to list pgs: " << cpp_strerror(-r) << dendl;
   }
@@ -4645,20 +4701,24 @@ void OSD::load_pgs()
   for (vector<coll_t>::iterator it = ls.begin();
        it != ls.end();
        ++it) {
+      derr << "list collection loop " << dendl;
     spg_t pgid;
     if (it->is_temp(&pgid) ||
        (it->is_pg(&pgid) && PG::_has_removal_flag(store, pgid))) {
       dout(10) << "load_pgs " << *it
 	       << " removing, legacy or flagged for removal pg" << dendl;
+        derr << "load_pgs " << *it
+                 << " removing, legacy or flagged for removal pg" << dendl;
       recursive_remove_collection(cct, store, pgid, *it);
       continue;
     }
 
+    derr << "OSD 1" << dendl;
     if (!it->is_pg(&pgid)) {
       dout(10) << "load_pgs ignoring unrecognized " << *it << dendl;
       continue;
     }
-
+      derr << "pgid " << pgid << " coll " << coll_t(pgid) << dendl;
     dout(10) << "pgid " << pgid << " coll " << coll_t(pgid) << dendl;
     epoch_t map_epoch = 0;
     int r = PG::peek_map_epoch(store, pgid, &map_epoch);
@@ -4667,10 +4727,12 @@ void OSD::load_pgs()
 	   << dendl;
       continue;
     }
-
+      derr << "OSD 2" << dendl;
     PGRef pg;
     if (map_epoch > 0) {
+        derr << "OSD 3 map_epoch= " << map_epoch << dendl;
       OSDMapRef pgosdmap = service.try_get_map(map_epoch);
+        derr << "OSD 4" << dendl;
       if (!pgosdmap) {
 	if (!osdmap->have_pg_pool(pgid.pool())) {
 	  derr << __func__ << ": could not find map for epoch " << map_epoch
@@ -4686,43 +4748,52 @@ void OSD::load_pgs()
 	  ceph_abort_msg("Missing map in load_pgs");
 	}
       }
+        derr << "OSD 5" << dendl;
       pg = _make_pg(pgosdmap, pgid);
     } else {
+        derr << "OSD 6" << dendl;
       pg = _make_pg(osdmap, pgid);
     }
     if (!pg) {
+        derr << "OSD 7" << dendl;
       recursive_remove_collection(cct, store, pgid, *it);
       continue;
     }
 
     // there can be no waiters here, so we don't call _wake_pg_slot
-
+      derr << "OSD 8" << dendl;
     pg->lock();
+      derr << "OSD 9" << dendl;
     pg->ch = store->open_collection(pg->coll);
+      derr << "OSD 10" << dendl;
 
     // read pg state, log
     pg->read_state(store);
 
+      derr << "OSD 11" << dendl;
     if (pg->dne())  {
       dout(10) << "load_pgs " << *it << " deleting dne" << dendl;
       pg->ch = nullptr;
       pg->unlock();
+        derr << "OSD 12" << dendl;
       recursive_remove_collection(cct, store, pgid, *it);
       continue;
     }
     {
+        derr << "OSD 13" << dendl;
       uint32_t shard_index = pgid.hash_to_shard(shards.size());
       assert(NULL != shards[shard_index]);
       store->set_collection_commit_queue(pg->coll, &(shards[shard_index]->context_queue));
     }
-
+      derr << "OSD 14" << dendl;
     pg->reg_next_scrub();
 
     dout(10) << __func__ << " loaded " << *pg << dendl;
     pg->unlock();
-
+      derr << "OSD 15" << dendl;
     register_pg(pg);
     ++num;
+      derr << "OSD 16" << dendl;
   }
   dout(0) << __func__ << " opened " << num << " pgs" << dendl;
 }
@@ -7977,33 +8048,33 @@ void OSD::handle_osd_map(MOSDMap *m)
       }
     }
     ceph_assert(lastmap->get_epoch() + 1 == i.second->get_epoch());
-    for (auto& j : lastmap->get_pools()) {
-      if (!i.second->have_pg_pool(j.first)) {
-	pg_num_history.log_pool_delete(i.first, j.first);
-	dout(10) << __func__ << " recording final pg_pool_t for pool "
-		 << j.first << dendl;
-	// this information is needed by _make_pg() if have to restart before
-	// the pool is deleted and need to instantiate a new (zombie) PG[Pool].
-	ghobject_t obj = make_final_pool_info_oid(j.first);
-	bufferlist bl;
-	encode(j.second, bl, CEPH_FEATURES_ALL);
-	string name = lastmap->get_pool_name(j.first);
-	encode(name, bl);
-	map<string,string> profile;
-	if (lastmap->get_pg_pool(j.first)->is_erasure()) {
-	  profile = lastmap->get_erasure_code_profile(
-	    lastmap->get_pg_pool(j.first)->erasure_code_profile);
-	}
-	encode(profile, bl);
-	t.write(coll_t::meta(), obj, 0, bl.length(), bl);
-	service.store_deleted_pool_pg_num(j.first, j.second.get_pg_num());
-      } else if (unsigned new_pg_num = i.second->get_pg_num(j.first);
-		 new_pg_num != j.second.get_pg_num()) {
-	dout(10) << __func__ << " recording pool " << j.first << " pg_num "
-		 << j.second.get_pg_num() << " -> " << new_pg_num << dendl;
-	pg_num_history.log_pg_num_change(i.first, j.first, new_pg_num);
+      for (auto &j : lastmap->get_pools()) {
+          if (!i.second->have_pg_pool(j.first)) {
+              pg_num_history.log_pool_delete(i.first, j.first);
+              dout(10) << __func__ << " recording final pg_pool_t for pool "
+                       << j.first << dendl;
+              // this information is needed by _make_pg() if have to restart before
+              // the pool is deleted and need to instantiate a new (zombie) PG[Pool].
+              ghobject_t obj = make_final_pool_info_oid(j.first);
+              bufferlist bl;
+              encode(j.second, bl, CEPH_FEATURES_ALL);
+              string name = lastmap->get_pool_name(j.first);
+              encode(name, bl);
+              map<string, string> profile;
+              if (lastmap->get_pg_pool(j.first)->is_erasure()) {
+                  profile = lastmap->get_erasure_code_profile(
+                          lastmap->get_pg_pool(j.first)->erasure_code_profile);
+              }
+              encode(profile, bl);
+              t.write(coll_t::meta(), obj, 0, bl.length(), bl);
+              service.store_deleted_pool_pg_num(j.first, j.second.get_pg_num());
+          } else if (unsigned new_pg_num = i.second->get_pg_num(j.first);
+                  new_pg_num != j.second.get_pg_num()) {
+              dout(10) << __func__ << " recording pool " << j.first << " pg_num "
+                       << j.second.get_pg_num() << " -> " << new_pg_num << dendl;
+              pg_num_history.log_pg_num_change(i.first, j.first, new_pg_num);
+          }
       }
-    }
     for (auto& j : i.second->get_pools()) {
       if (!lastmap->have_pg_pool(j.first)) {
 	dout(10) << __func__ << " recording new pool " << j.first << " pg_num "
@@ -8018,7 +8089,35 @@ void OSD::handle_osd_map(MOSDMap *m)
   {
     bufferlist bl;
     ::encode(pg_num_history, bl);
+#if 0
+      {
+          std::stringstream ss;
+          JSONFormatter jf(true);
+          pg_num_history.dump(&jf);
+          jf.flush(ss);
+          derr << "DECODE CHECK bl contents: " << ss.str()  << dendl;
+      }
+      {
+          derr << "DECODE CHECK bl length " << bl.length() << dendl;
+          {
+              auto p = bl.cbegin();
+              __u32 len;
+              decode(len, p);
+              derr << "length = " << len << dendl;
+          }
+          bufferlist bl2;
+          if (bl.length() > 0) {
+              auto p = bl.cbegin();
+              decode(bl2, p);
+              derr << "decoding is done" << dendl;
+          }
+          derr << "DECODED " << ", hash = " << ceph_str_hash_linux(bl2.c_str(), bl2.length()) << dendl;
+      }
+#endif
+    derr << "DECODE oid = " << make_pg_num_history_oid() << ", bl length = " << bl.length() << ", hash = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << dendl;
     t.write(coll_t::meta(), make_pg_num_history_oid(), 0, bl.length(), bl);
+
+
     dout(20) << __func__ << " pg_num_history " << pg_num_history << dendl;
   }
 
@@ -8041,6 +8140,23 @@ void OSD::handle_osd_map(MOSDMap *m)
     service.meta_ch,
     std::move(t));
   service.publish_superblock(superblock);
+
+#if 0
+    {
+        sleep(10);
+        derr << "DECODE CHECK2 " << service.meta_ch << dendl;
+        bufferlist bl;
+        int r = store->read(service.meta_ch, make_pg_num_history_oid(), 0, 0, bl, 0);
+        if (r >= 0 && bl.length() > 0) {
+            auto p = bl.cbegin();
+            decode(pg_num_history, p);
+        }
+        derr << "DECODE CHECK2  done " << dendl;
+        exit(1);
+
+    }
+#endif
+
 }
 
 void OSD::_committed_osd_maps(epoch_t first, epoch_t last, MOSDMap *m)
