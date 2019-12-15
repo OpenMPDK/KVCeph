@@ -7,7 +7,6 @@ KvsBptreeIterator::KvsBptreeIterator(KADI *adi, int ksid_skp, uint32_t prefix):
 }
 
 int KvsBptreeIterator::begin() {
-    TR << "begin" << TREND;
 	iter->begin();
 	return 0;
 }
@@ -27,12 +26,10 @@ int KvsBptreeIterator::lower_bound(const kv_key &key) {
 }
 
 bool KvsBptreeIterator::valid() {
-    TR << "is valid " << (!iter->is_end()) << TREND;
 	return !iter->is_end();
 }
 
 int KvsBptreeIterator::next() {
-    TR << "next" << TREND;
 	iter->move_next(1);
 	return 0;
 }

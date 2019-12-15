@@ -286,12 +286,12 @@ private:
         return sizeof(kvs_page_key);
 	}
 
-	void _flush_dirtylist() {
+	bool _flush_dirtylist() {
 		int ret = 0;
 		kv_value value;
 		uint32_t qdepth  = 0, num_completed = 0;
 		struct flush_ctx flushctx;
-		const uint32_t num_ios = pool.size();
+		uint32_t num_ios = pool.size();
 		value.offset = 0;
 
 		auto it = pool.begin();
@@ -302,8 +302,7 @@ private:
 
                 switch (p->op) {
                     case NODE_OP_NOP:
-                        num_completed--;
-                        ret = 0;
+                        ret = 1;
                         break;
                     case NODE_OP_WRITE:
                         value.length = p->size();
@@ -322,11 +321,21 @@ private:
                                                      cmd.key_length = fill_cmdkey_for_index_nodes(cmd.key, p->addr);
                                                  });
                         break;
+                    default:
+                        TR << "ERR: wrong op code " << p->op << TREND;
+                        return false;
+
                 };
 
-                if (ret != 0) {
-                    break;
-                } else if (p->op != NODE_OP_NOP) {
+
+                if (ret != 0) { // I/O not issued
+                    num_ios--;
+                    if (p->op != NODE_OP_NOP) {
+                        TR << "ERR: I/O failed: op = "  << p->op << TREND;
+                        return false;
+                    }
+                }
+                else {
                     qdepth++;
                 }
 
@@ -339,6 +348,7 @@ private:
 				num_completed += done;
 			}
 		}
+		return true;
 	}
 
 

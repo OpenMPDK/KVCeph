@@ -125,7 +125,7 @@ struct FtraceObject {
 #define FTRACE FtraceObject fobj(__FUNCTION__, __LINE__);
 #define TRIO kvs_ff.get_fp() << pthread_self() << "[KIO][" << __FUNCTION__ << ":" << __LINE__ <<  "] "
 #define TRITER kvs_ff.get_fp() << pthread_self() << "[KIT][" << __FUNCTION__ << ":" <<__LINE__<< "] "
-#define TR kvs_ff.get_fp() << " " << pthread_self() << "[KVS][" << __FUNCTION__ << ":"  << __LINE__ << "] "
+#define TR kvs_ff.get_fp() << pthread_self() << "[KVS][" << __FUNCTION__ << ":"  << __LINE__ << "] "
 //#define TR std::cout << pthread_self() << " "
 #define TREND "\n"; do { kvs_ff.return_fp(); } while(0)
 #else

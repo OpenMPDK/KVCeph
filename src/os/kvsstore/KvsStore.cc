@@ -330,21 +330,18 @@ int KvsStore::_open_collections() {
 	if (lck.try_lock()) {
 		db.compact();
 	} else {
-        TR << "waiting for the lock" << TREND;
 		lck.lock();
 	}
 
-    TR << "begin iterator" << TREND;
     KvsIterator *it = db.get_iterator(GROUP_PREFIX_COLL);
     for (it->begin(); it->valid(); it->next()) {
-        TR << "next key" << TREND;
         coll_t cid;
         kv_key collkey = it->key();
-        TR << "returned key : " << print_kvssd_key(std::string((char *) collkey.key, collkey.length)) << TREND;
+        //TR << "returned key : " << print_kvssd_key(std::string((char *) collkey.key, collkey.length)) << TREND;
         std::string name((char *) collkey.key + sizeof(kvs_coll_key), collkey.length - sizeof(kvs_coll_key));
         TR << "found collection: " << name << TREND;
         if (cid.parse(name)) {
-            TR << "CID parse" << TREND;
+            //TR << "CID parse" << TREND;
             auto c = ceph::make_ref<KvsCollection>(this,
                                                    onode_cache_shards[cid.hash_to_shard(onode_cache_shards.size())],
                                                    buffer_cache_shards[cid.hash_to_shard(
@@ -436,19 +433,19 @@ void KvsStore::_txc_write_nodes(KvsTransContext *txc) {
 		size_t bound = 0;
 		denc(o->onode, bound);
 
-        TR << "ONODE WRITE oid " << o->oid << "bound = " << bound << TREND;
+        //TR << "ONODE WRITE oid " << o->oid << "bound = " << bound << TREND;
 
 		bufferlist bl;
         {
             auto p = bl.get_contiguous_appender(bound, true);
             char *old = p.get_pos();
-            TR << "ONODE WRITE oid " << o->oid << "initial pos = " << (void*)old << TREND;
+            //TR << "ONODE WRITE oid " << o->oid << "initial pos = " << (void*)old << TREND;
             denc(o->onode, p);
-            TR << "ONODE WRITE oid " << o->oid << "new pos = " << (void*)p.get_pos() << " bytes written = " << p.get_pos() - old<< TREND;
+            //TR << "ONODE WRITE oid " << o->oid << "new pos = " << (void*)p.get_pos() << " bytes written = " << p.get_pos() - old<< TREND;
         }
 
-        TR << "ONODE WRITE oid, contents = " << bl.c_str() << TREND;
-        TR << "ONODE WRITE oid " << o->oid << ", onode size = " << o->onode.size << ", bl length " << bl.length() << TREND;
+        //TR << "ONODE WRITE oid, contents = " << bl.c_str() << TREND;
+        //TR << "ONODE WRITE oid " << o->oid << ", onode size = " << o->onode.size << ", bl length " << bl.length() << TREND;
         if (bl.length() == 0) {
             ceph_abort_msg("bl length == 0");
         }
@@ -660,7 +657,6 @@ void KvsStore::_txc_finish(KvsTransContext *txc) {
 void KvsStore::_txc_release_alloc(KvsTransContext *txc) {
 	FTRACE
 	KvsIoContext *ioc = &txc->ioc;
-    TR << "1" << TREND;
 	{
 		std::unique_lock<std::mutex> lk ( ioc->running_aio_lock );
 		// release memory
@@ -668,7 +664,6 @@ void KvsStore::_txc_release_alloc(KvsTransContext *txc) {
         while (it != ioc->running_ios.end()) {
             auto ior = (*it);
 
-            TR << "data" << TREND;
             if (ior->data != 0) {
                 delete ior->data;
             }
@@ -676,21 +671,16 @@ void KvsStore::_txc_release_alloc(KvsTransContext *txc) {
             if (ior->raw_data != 0) {
                 free(ior->raw_data);
             }*/
-            TR << "key" << TREND;
             if (ior->key) {
-                TR << "free key->key" << TREND;
                 free(ior->key->key);
-                TR << "delete key" << TREND;
                 delete ior->key;
             }
-            TR << "delete ior" << TREND;
             delete ior;
 
             it++;
         }
 
     }
-    TR << "2" << TREND;
 	txc->onodes.clear();
 }
 
@@ -700,9 +690,7 @@ KvsTransContext* KvsStore::_txc_create(KvsCollection *c, KvsOpSequencer *osr,
 	FTRACE
 
     KvsTransContext *txc = new KvsTransContext(cct, c, this, osr, on_commits);
-    TR << "txc created" << TREND;
 	osr->queue_new(txc);
-    TR << "queuenew" << TREND;
 	dout(20) << __func__ << " osr " << osr << " = " << txc << " seq " << txc->seq << dendl;
 	return txc;
 }
@@ -716,37 +704,29 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
 	Transaction::iterator i = t->begin();
 
 	vector<CollectionRef> cvec(i.colls.size());
-    TR << "get collection " << TREND;
 
 	unsigned j = 0;
 	for (vector<coll_t>::iterator p = i.colls.begin(); p != i.colls.end();
 			++p, ++j) {
 		cvec[j] = _get_collection(*p);
 	}
-    TR << "get collection done " << TREND;
 
 
 
 	vector<OnodeRef> ovec(i.objects.size());
 
 	for (int pos = 0; i.have_op(); ++pos) {
-        TR << "DECODE  " << pos << TREND;
 		Transaction::Op *op = i.decode_op();
 		int r = 0;
 
-        TR << "TR op= " << op << TREND;
+        TR << "TR op= " << op << ", cid = " << op->cid << TREND;
 		// no coll or obj
 		if (op->op == Transaction::OP_NOP) {
-            TR << "NOP" << TREND;
             continue;
 		}
 
-        TR << "TR op = " << op << TREND;
-        TR << "TR op cid= " << op->cid << TREND;
 		// collection operations
 		CollectionRef &c = cvec[op->cid];
-
-        TR << "TR op = " << op->op << TREND;
 
 		switch (op->op) {
 		case Transaction::OP_RMCOLL: {
@@ -760,14 +740,11 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
 
 		case Transaction::OP_MKCOLL: {
 				const coll_t &cid = i.get_cid(op->cid);
-                TR << "before create_collection" << TREND;
 				r = _create_collection(txc, cid, op->split_bits, &c);
-                TR << "after crete_collection " << c->cid << TREND;
 				if (!r) {
-                    TR << "MKCOLL success" << TREND;
                     continue;
                 }
-                TR << "MKCOLL failed" << TREND;
+                TR << "ERR: mkcoll failed" << TREND;
 			}
 			break;
 
@@ -848,12 +825,8 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
 
 		if (!o) {
 			ghobject_t oid = i.get_oid(op->oid);
-            TR << "get onode " << oid << ", create? " << create  << TREND;
 
 			o = c->get_onode(oid, create, op->op == Transaction::OP_CREATE);
-			if (o) {
-                TR << "get onode, return " << o->oid << "," << o->exists  << TREND;
-            }
 		}
 
 		if (!create && (!o || !o->exists)) {
@@ -876,7 +849,7 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
 				uint32_t fadvise_flags = i.get_fadvise_flags();
 				bufferlist bl;
 				i.decode_bl(bl);
-                TR << "OPWRITE 5 o->oid " << o->oid << ", c->cid " << c->cid << TREND;
+                TR << "OP_WRITE 5 o->oid " << o->oid << ", c->cid " << c->cid << ", bl length " << bl.length() << TREND;
 				r = _write(txc, c, o, off, len, &bl, fadvise_flags);
 
 			}
@@ -1025,7 +998,6 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
 		}
 
 	endop:
-        TR << "ENDOP " << r << TREND;
 		if (r < 0) {
 			bool ok = false;
 

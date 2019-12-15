@@ -264,9 +264,7 @@ void KvsStoreDB::add_coll(KvsIoContext *ctx, const coll_t &cid, bufferlist &bl) 
 	assert_keylength(sizeof(kvs_coll_key) + cidkey_len );
 
 	auto keyfunc = [&] (void *buffer)->uint8_t {
-	    TR << "key func " << TREND;
 	    int l =  construct_collkey_impl(buffer, cidkey_str, cidkey_len);
-        TR << "l = " << l<< TREND;
 	    TR << "add_coll key = " << print_kvssd_key(std::string ((char*)buffer, l)) << TREND;
 		return l;
 	};
@@ -370,7 +368,7 @@ int KvsStoreDB::write_journal(KvsTransContext *txc) {
 		value.length = p->journal_buffer_pos;
 		value.value  = p->journal_buffer;
 
-		TR << "[JOURNAL] write : num entries " << *p->num_io_pos << ", length " << p->journal_buffer_pos << TREND;
+		//TR << "[JOURNAL] write : num entries " << *p->num_io_pos << ", length " << p->journal_buffer_pos << TREND;
 		ret = kadi.sync_write(KEYSPACE_JOURNAL, &value, [] (struct nvme_passthru_kv_cmd& cmd) {
 			const uint64_t id = KvsJournal::journal_index++;
 			cmd.key_length = construct_journalkey_impl(cmd.key, id);
@@ -462,13 +460,13 @@ uint64_t KvsStoreDB::compact() {
 
 			//cout << "read: group"  << groupid << ", seq " << sequence << ", " << print_key((const char*)key, length) << ", length = " << length << endl;
 	});
-    TR << "1. found and read " << processed_keys << " oplog pages" << TREND;
+    //TR << "1. found and read " << processed_keys << " oplog pages" << TREND;
 
     onode_tree.flush();
 
     coll_tree.flush();
 
-    TR << "2. updated the index structure " << TREND;
+    //TR << "2. updated the index structure " << TREND;
 
 	return processed_keys;
 }
