@@ -22,8 +22,9 @@
 // ----------------------------------------------
 
 #define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
-#define ENABLE_IOTRACE
+
 #define ENABLE_FTRACE
+
 #ifdef ENABLE_FTRACE
 
 class FtraceFile {
@@ -148,6 +149,8 @@ struct FtraceObject {
 #else
 #define FTRACE
 #define TR if (false) std::cout
+#define LOGOSD std::cout
+#define LOGEND std::endl
 #endif
 
 
