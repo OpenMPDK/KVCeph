@@ -95,7 +95,7 @@ int KADI::kv_store_sync(uint8_t space_id, kv_value *value, const std::function< 
     struct nvme_passthru_kv_cmd cmd;
     memset((void*)&cmd, 0, sizeof(struct nvme_passthru_kv_cmd));
 
-    TRIO << "<TEST> value = " << value->value << ", offset = " << value->offset << ", value length = " << value->length << TREND;
+    TR << "<TEST> value = " << value->value << ", offset = " << value->offset << ", value length = " << value->length ;
 
     cmd.opcode = nvme_cmd_kv_store;
     cmd.nsid = nsid;
@@ -122,8 +122,8 @@ int KADI::kv_store_sync(uint8_t space_id, kv_value *value, const std::function< 
     std::string itermsg = (cmd.cdw4 == OPTION_NOLOGGING)? "NOAOL":"AOL";
     if (ret == 0) {
 
-        TRIO << "<STORE> " << print_kvssd_key(std::string((const char*)keyptr, cmd.key_length))
-           << ", value = " << value->value << ", offset = " << value->offset << ", value length = " << value->length << ", LOG?" << itermsg << ", hash " << ceph_str_hash_linux((const char*)value->value, value->length) << " OK" << TREND;
+        TR << "<STORE> " << print_kvssd_key(std::string((const char*)keyptr, cmd.key_length))
+           << ", value = " << value->value << ", offset = " << value->offset << ", value length = " << value->length << ", LOG?" << itermsg << ", hash " << ceph_str_hash_linux((const char*)value->value, value->length) << " OK" ;
 
         if (true) {
             kv_key k;
@@ -139,9 +139,9 @@ int KADI::kv_store_sync(uint8_t space_id, kv_value *value, const std::function< 
             free(value2.value);
         }
     } else {
-        TRIO << "<STORE> " << print_kvssd_key(std::string((const char*)keyptr, cmd.key_length))
+        TR << "<STORE> " << print_kvssd_key(std::string((const char*)keyptr, cmd.key_length))
            << ", value = " << value->value << ", value length = " << value->length
-           << ", retcode = " << ret << ", FAILED" << TREND;
+           << ", retcode = " << ret << ", FAILED" ;
     }
 #endif
     if (ret < 0) {
@@ -188,8 +188,8 @@ int KADI::kv_store_aio(uint8_t space_id, kv_value *value, const kv_cb& cb, const
         keyptr = (void*)ioctx->cmd.key_addr;
     }
     std::string itermsg = (ioctx->cmd.cdw4 == OPTION_NOLOGGING)? "NOAOL":"AOL";
-    TRIO << "{SUBMIT-STORE} " << print_kvssd_key(std::string((const char*)keyptr, ioctx->cmd.key_length))
-         << ", value = " << value->value << ", value length = " << value->length << ", LOG? " << itermsg << ", hash " << ceph_str_hash_linux((const char*)value->value, value->length) << " OK" << TREND;
+    TR << "{SUBMIT-STORE} " << print_kvssd_key(std::string((const char*)keyptr, ioctx->cmd.key_length))
+         << ", value = " << value->value << ", value length = " << value->length << ", LOG? " << itermsg << ", hash " << ceph_str_hash_linux((const char*)value->value, value->length) << " OK" ;
 #endif
     return 0;
 }
@@ -235,8 +235,8 @@ int KADI::kv_store_aio(uint8_t space_id, kv_key *key, kv_value *value, const kv_
         keyptr = (void*)ioctx->cmd.key_addr;
     }
     std::string itermsg = (ioctx->cmd.cdw4 == OPTION_NOLOGGING)? "NOAOL":"AOL";
-    TRIO << "{SUBMIT-STORE} " << print_kvssd_key(std::string((const char*)keyptr, ioctx->cmd.key_length))
-         << ", value = " << value->value << ", value length = " << value->length << ", LOG? " << itermsg << ", hash " << ceph_str_hash_linux((const char*)value->value, value->length)<< " OK" << TREND;
+    TR << "{SUBMIT-STORE} " << print_kvssd_key(std::string((const char*)keyptr, ioctx->cmd.key_length))
+         << ", value = " << value->value << ", value length = " << value->length << ", LOG? " << itermsg << ", hash " << ceph_str_hash_linux((const char*)value->value, value->length)<< " OK" ;
 #endif
     return 0;
 }
@@ -267,13 +267,13 @@ int KADI::kv_store_sync(uint8_t space_id, kv_key *key, kv_value *value) {
 #ifdef ENABLE_IOTRACE
     std::string itermsg = (cmd.cdw4 == OPTION_NOLOGGING)? "NOAOL":"AOL";
     if (ret == 0) {
-        TRIO << "<STORE> " << print_kvssd_key(std::string((const char*)key->key, key->length))
-           << ", value = " << value->value << ", value length = " << value->length << ", LOG? " << itermsg << ", hash " << ceph_str_hash_linux((const char*)value->value, value->length) << " OK" << TREND;
+        TR << "<STORE> " << print_kvssd_key(std::string((const char*)key->key, key->length))
+           << ", value = " << value->value << ", value length = " << value->length << ", LOG? " << itermsg << ", hash " << ceph_str_hash_linux((const char*)value->value, value->length) << " OK" ;
 
     } else {
-        TRIO << "<STORE> " << print_kvssd_key(std::string((const char*)key->key, key->length))
+        TR << "<STORE> " << print_kvssd_key(std::string((const char*)key->key, key->length))
            << ", value = " << value->value << ", value length = " << value->length
-           << ", retcode = " << ret << ", FAILED" << TREND;
+           << ", retcode = " << ret << ", FAILED" ;
     }
 #endif
     if (ret < 0) {
@@ -289,7 +289,7 @@ int KADI::kv_retrieve_aio(uint8_t space_id, kv_key *key, kv_value *value, const 
 	aio_cmd_ctx *ioctx = cmd_ctx_mgr.get_cmd_ctx(cb);
 	memset((void*)&ioctx->cmd, 0, sizeof(struct nvme_passthru_kv_cmd));
 
-	TRIO << "ASYNC READ TRACE: key = " << print_kvssd_key(key->key, key->length) << ", value offset = " << value->offset << TREND;
+	TR << "ASYNC READ TRACE: key = " << print_kvssd_key(key->key, key->length) << ", value offset = " << value->offset ;
 
     ioctx->cmd.opcode = nvme_cmd_kv_retrieve;
     ioctx->cmd.nsid = nsid;
@@ -323,7 +323,7 @@ int KADI::kv_retrieve_aio(uint8_t space_id, kv_key *key, kv_value *value, const 
 int KADI::kv_retrieve_sync(uint8_t space_id, kv_key *key, kv_value *value) {
     struct nvme_passthru_kv_cmd cmd;
     memset((void*)&cmd, 0, sizeof(struct nvme_passthru_kv_cmd));
-    TR << "kv retrieve sync: key = " << print_kvssd_key(key->key, key->length) << ", buffer  length = " << value->length << ", buffer offset =  " << value->offset << ", buffer = " << value->value << TREND;
+    TR << "kv retrieve sync: key = " << print_kvssd_key(key->key, key->length) << ", buffer  length = " << value->length << ", buffer offset =  " << value->offset << ", buffer = " << value->value ;
     cmd.opcode = nvme_cmd_kv_retrieve;
     cmd.nsid = nsid;
     cmd.cdw3 = space_id;
@@ -342,12 +342,12 @@ int KADI::kv_retrieve_sync(uint8_t space_id, kv_key *key, kv_value *value) {
     int ret = ioctl(fd, NVME_IOCTL_IO_KV_CMD, &cmd);
 #ifdef ENABLE_IOTRACE
     if (ret == 0) {
-        TRIO << "<READ> " << print_kvssd_key(std::string((const char*)key->key, key->length))
-           << ", value = " << value->value << ", offset = " << value->offset << ", value length = " << std::min(cmd.result, value->length) << ", hash " << ceph_str_hash_linux((const char*)value->value, value->length)<< " OK" << TREND;
+        TR << "<READ> " << print_kvssd_key(std::string((const char*)key->key, key->length))
+           << ", value = " << value->value << ", offset = " << value->offset << ", value length = " << std::min(cmd.result, value->length) << ", hash " << ceph_str_hash_linux((const char*)value->value, value->length)<< " OK" ;
     } else {
-        TRIO << "<READ> " << print_kvssd_key(std::string((const char*)key->key, key->length))
+        TR << "<READ> " << print_kvssd_key(std::string((const char*)key->key, key->length))
            << ", value = " << value->value << ", offset = " << value->offset << ", value length = " << value->length
-           << ", retcode = " << ret << ", FAILED" << TREND;
+           << ", retcode = " << ret << ", FAILED" ;
     }
 #endif
     if (ret == 0) {
@@ -389,12 +389,12 @@ int KADI::kv_retrieve_sync(uint8_t space_id, kv_value *value, const std::functio
         keyptr = (void*)cmd.key_addr;
     }
     if (ret == 0) {
-        TRIO << "<READ> " << print_kvssd_key((const char*)keyptr, cmd.key_length)
-           << ", value = " << value->value << ", offset = " << value->offset<< ", value length = " << std::min(cmd.result, value->length) << ", hash " << ceph_str_hash_linux((const char*)value->value, value->length)<< " OK" << TREND;
+        TR << "<READ> " << print_kvssd_key((const char*)keyptr, cmd.key_length)
+           << ", value = " << value->value << ", offset = " << value->offset<< ", value length = " << std::min(cmd.result, value->length) << ", hash " << ceph_str_hash_linux((const char*)value->value, value->length)<< " OK" ;
     } else {
-        TRIO << "<READ> " << print_kvssd_key((const char*)keyptr, cmd.key_length)
+        TR << "<READ> " << print_kvssd_key((const char*)keyptr, cmd.key_length)
            << ", value = " << value->value << ", offset = " << value->offset << ", value length = " << value->length
-           << ", retcode = " << ret << ", FAILED" << TREND;
+           << ", retcode = " << ret << ", FAILED" ;
     }
 #endif
 
@@ -425,12 +425,12 @@ retry:
 	int ret = ioctl(fd, NVME_IOCTL_IO_KV_CMD, &cmd);
 #ifdef ENABLE_IOTRACE
     if (ret == 0) {
-        TRIO << "<READ> " << print_kvssd_key(std::string((const char*)key->key, key->length))
-           << ", value = " << value->value << ", offset = " << value->offset<< ", value length = " << std::min(cmd.result, value->length) << ", hash " << ceph_str_hash_linux((const char*)value->value, value->length)<< " OK" << TREND;
+        TR << "<READ> " << print_kvssd_key(std::string((const char*)key->key, key->length))
+           << ", value = " << value->value << ", offset = " << value->offset<< ", value length = " << std::min(cmd.result, value->length) << ", hash " << ceph_str_hash_linux((const char*)value->value, value->length)<< " OK" ;
     } else {
-        TRIO << "<READ> " << print_kvssd_key(std::string((const char*)key->key, key->length))
+        TR << "<READ> " << print_kvssd_key(std::string((const char*)key->key, key->length))
            << ", value = " << value->value << ", offset = " << value->offset<< ", value length = " << value->length
-           << ", retcode = " << ret << ", FAILED" << TREND;
+           << ", retcode = " << ret << ", FAILED" ;
     }
 #endif
     if (ret == 0) {
@@ -466,9 +466,9 @@ int KADI::kv_delete_sync(uint8_t space_id, const std::function< void (struct nvm
 	int ret = ioctl(fd, NVME_IOCTL_IO_KV_CMD, &cmd);
 #ifdef ENABLE_IOTRACE
     if (ret == 0) {
-        TRIO << "<DELETE>  OK" << TREND;
+        TR << "<DELETE>  OK" ;
     } else {
-        TRIO << "<DELETE> , retcode = " << ret << ", FAILED" << TREND;
+        TR << "<DELETE> , retcode = " << ret << ", FAILED" ;
     }
 #endif
 	if (ret < 0) {
@@ -531,11 +531,11 @@ int KADI::kv_delete_sync(uint8_t space_id, kv_key *key) {
     int ret = ioctl(fd, NVME_IOCTL_IO_KV_CMD, &cmd);
 #ifdef ENABLE_IOTRACE
     if (ret == 0) {
-        TRIO << "<DELETE> " << print_kvssd_key(std::string((const char*)key->key, key->length))
-           << " OK" << TREND;
+        TR << "<DELETE> " << print_kvssd_key(std::string((const char*)key->key, key->length))
+           << " OK" ;
     } else {
-        TRIO << "<DELETE> " << print_kvssd_key(std::string((const char*)key->key, key->length))
-           << ", retcode = " << ret << ", FAILED" << TREND;
+        TR << "<DELETE> " << print_kvssd_key(std::string((const char*)key->key, key->length))
+           << ", retcode = " << ret << ", FAILED" ;
     }
 #endif
     if (ret < 0) {
@@ -596,9 +596,9 @@ int KADI::iter_open(kv_iter_context *iter_handle, int space_id)
     int ret = ioctl(fd, NVME_IOCTL_IO_KV_CMD, &cmd);
 #ifdef ENABLE_IOTRACE
     if (ret == 0) {
-        TRIO << "<ITER_OPEN>  OK" << TREND;
+        TR << "<ITER_OPEN>  OK" ;
     } else {
-        TRIO << "<ITER_OPEN> , retcode = " << ret << ", FAILED" << TREND;
+        TR << "<ITER_OPEN> , retcode = " << ret << ", FAILED" ;
     }
 #endif
     if (ret < 0) {
@@ -624,9 +624,9 @@ int KADI::iter_close(kv_iter_context *iter_handle, int space_id) {
     int ret = ioctl(fd, NVME_IOCTL_IO_KV_CMD, &cmd);
 #ifdef ENABLE_IOTRACE
     if (ret == 0) {
-        TRIO << "<ITER_CLOSE>  OK" << TREND;
+        TR << "<ITER_CLOSE>  OK" ;
     } else {
-        TRIO << "<ITER_CLOSE> , retcode = " << ret << ", FAILED" << TREND;
+        TR << "<ITER_CLOSE> , retcode = " << ret << ", FAILED" ;
     }
 #endif
     if (ret < 0) {
@@ -649,9 +649,9 @@ int KADI::iter_read(kv_iter_context *iter_handle, int space_id) {
     int ret = ioctl(fd, NVME_IOCTL_IO_KV_CMD, &cmd);
 #ifdef ENABLE_IOTRACE
     if (ret == 0) {
-        TRIO << "<ITER_READ> , length = " << iter_handle->byteswritten << ", OK" << TREND;
+        TR << "<ITER_READ> , length = " << iter_handle->byteswritten << ", OK" ;
     } else {
-        TRIO << "<ITER_READ> , retcode = " << ret << ", FAILED" << TREND;
+        TR << "<ITER_READ> , retcode = " << ret << ", FAILED" ;
     }
 #endif
     if (ret < 0) { return -1; }
@@ -696,7 +696,13 @@ int KADI::iter_read_aio(int space_id, unsigned char handle, void *buf, uint32_t 
         derr << "fail to send aio command ret = " << ret << dendl;
         return -1;
     }
-
+#ifdef ENABLE_IOTRACE
+    if (ret == 0) {
+        TR << "{SUBMIT-ITER_READ} OK" ;
+    } else {
+        TR << "{SUBMIT-ITER_READ} , retcode = " << ret << ", FAILED" ;
+    }
+#endif
     return 0;
 }
 
@@ -711,7 +717,7 @@ void iter_callback(kv_io_context &op, void* private_data)
 	ctx->retcode = op.retcode;
 	ctx->byteswritten = op.hiter.byteswritten;
 	if (ctx->parent) {
-        //TRIO << "call fireevent " << ctx << TREND;
+        //TR << "call fireevent " << ctx ;
         ((KvsAioContext<kv_iter_context> *) ctx->parent)->fire_event(ctx);
     }
 }
@@ -769,7 +775,7 @@ int KADI::fill_oplog_info(const uint8_t spaceid, const uint32_t prefix, struct o
 
 		auto it  = info.oplog_keys.begin();
 		auto end = info.oplog_keys.end();
-       // TRIO << __func__ << "..5" << TREND;
+       // TR << __func__ << "..5" ;
 		do {
 			for (size_t i =0 ; i < max && it != end; i++) {
 				if (info.oplog_keys.empty()) { break; }
@@ -777,7 +783,7 @@ int KADI::fill_oplog_info(const uint8_t spaceid, const uint32_t prefix, struct o
 				kv_read_context *sub_read_ctx = iter_aioctx.get_free_context();
 				if (sub_read_ctx == 0) {  break; }
 
-               // TRIO << __func__ << "..6" << TREND;
+               // TR << __func__ << "..6" ;
 				const auto  &oplogpair = *it;
 				const struct oplog_key *oplogkey = ((struct oplog_key*)oplogpair.first);
 
@@ -856,7 +862,7 @@ uint64_t KADI::list_oplog(const uint8_t spaceid, const uint32_t prefix, const st
             int cur = 0;
             opbuf_reader reader(nullptr, groupid, sequences.second.first, sequences.second.second);
             while (reader.nextkey(&opcode, &key, &length)) {
-                //TRIO << "oplog key " << print_kvssd_key(key, length) << TREND;
+                //TR << "oplog key " << print_kvssd_key(key, length) ;
                 key_listener(opcode, groupid, sequences.first, (const char*)key, length);
                 cur++;
             }
@@ -864,7 +870,7 @@ uint64_t KADI::list_oplog(const uint8_t spaceid, const uint32_t prefix, const st
         }
     }
 
-    //TRIO << "list_oplog 3" << TREND;
+    //TR << "list_oplog 3" ;
     uint64_t num_complete  = 0, qdepth  = 0;
     uint64_t num_delete = oplog.oplog_keys.size();
     std::atomic<int> completed(0);
@@ -891,7 +897,7 @@ uint64_t KADI::list_oplog(const uint8_t spaceid, const uint32_t prefix, const st
             usleep(1);
         }
     }
-    //TRIO << "list_oplog done  ..." << total_keys << TREND;
+    //TR << "list_oplog done  ..." << total_keys ;
 
     return total_keys;
 }
@@ -958,7 +964,7 @@ int KADI::iter_readall_aio(kv_iter_context *iter_ctx, std::list<std::pair<char*,
 	return r;
 
 error_exit:
-    TRIO << __func__ << ": ERROR" << TREND;
+    TR << __func__ << ": ERROR" ;
 	buflist.clear();
 	if (iter_ctx) iter_close(iter_ctx, space_id);
 	return r;
@@ -1170,22 +1176,22 @@ kv_result KADI::fill_ioresult(const aio_cmd_ctx &ioctx, const struct nvme_aioeve
     {
         case nvme_cmd_kv_store:
             if (ioresult.retcode == 0) {
-                TRIO << "{STORE} " << print_kvssd_key(std::string((const char*)ioresult.key.key, ioresult.key.length))
+                TR << "{STORE} " << print_kvssd_key(std::string((const char*)ioresult.key.key, ioresult.key.length))
                    << ", value length = " << ioctx.value.length
                    << ", hash " << ceph_str_hash_linux((const char*)ioresult.value.value, ioresult.value.length)
-                   << " OK" << TREND;
+                   << " OK" ;
             } else {
-                TRIO << "{STORE} " << print_kvssd_key(std::string((const char*)ioresult.key.key, ioresult.key.length))
-                   << ", retcode = " << ioresult.retcode << ", FAILED" << TREND;
+                TR << "{STORE} " << print_kvssd_key(std::string((const char*)ioresult.key.key, ioresult.key.length))
+                   << ", retcode = " << ioresult.retcode << ", FAILED" ;
             }
             break;
         case nvme_cmd_kv_retrieve:
             if (ioresult.retcode == 0) {
-                    TRIO << "{READ} " << print_kvssd_key(std::string((const char*)ioresult.key.key, ioresult.key.length))
-                    << ", value = " << std::min(event.result, ioctx.value.length) << ", actual = " << (event.result & 0xffff) << ", hash " << ceph_str_hash_linux((const char*)ioresult.value.value, ioresult.value.length)<< TREND;
+                    TR << "{READ} " << print_kvssd_key(std::string((const char*)ioresult.key.key, ioresult.key.length))
+                    << ", value = " << std::min(event.result, ioctx.value.length) << ", actual = " << (event.result & 0xffff) << ", hash " << ceph_str_hash_linux((const char*)ioresult.value.value, ioresult.value.length);
             } else {
-                TRIO << "{READ} " << print_kvssd_key(std::string((const char*)ioresult.key.key, ioresult.key.length))
-                   << ", retcode = " << ioresult.retcode << ", FAILED" << TREND;
+                TR << "{READ} " << print_kvssd_key(std::string((const char*)ioresult.key.key, ioresult.key.length))
+                   << ", retcode = " << ioresult.retcode << ", FAILED" ;
             }
             break;
 
@@ -1196,27 +1202,27 @@ kv_result KADI::fill_ioresult(const aio_cmd_ctx &ioctx, const struct nvme_aioeve
                     type = "ITER_OPEN";
                 }
                 if (ioresult.retcode == 0) {
-                    TRIO << "{" << type << "} id = " <<  (event.result & 0x000000FF) << TREND;
+                    TR << "{" << type << "} id = " <<  (event.result & 0x000000FF) ;
                 } else {
-                    TRIO << "{" << type << "} retcode = " << ioresult.retcode << ", FAILED" << TREND;
+                    TR << "{" << type << "} retcode = " << ioresult.retcode << ", FAILED" ;
                 }
             }
             break;
 
         case nvme_cmd_kv_iter_read:
             if (ioresult.retcode == 0) {
-                TRIO << "{ITERREAD} bytesread = " <<  (event.result & 0xffff) << TREND;
+                TR << "{ITERREAD} bytesread = " <<  (event.result & 0xffff) ;
             } else {
-                TRIO << "{ITERREAD} retcode = " << ioresult.retcode << ", FAILED" << TREND;
+                TR << "{ITERREAD} retcode = " << ioresult.retcode << ", FAILED" ;
             }
 
             break;
         case nvme_cmd_kv_batch:
         {
             if (ioresult.retcode == 0) {
-                TRIO << "{BATCH} OK " << TREND;
+                TR << "{BATCH} OK " ;
             } else {
-                TRIO << "{BATCH} retcode = " << ioresult.retcode << ", FAILED" << TREND;
+                TR << "{BATCH} retcode = " << ioresult.retcode << ", FAILED" ;
             }
 
         }

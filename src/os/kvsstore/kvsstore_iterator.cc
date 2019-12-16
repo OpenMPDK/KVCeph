@@ -43,10 +43,10 @@ kv_key KvsBptreeIterator::key() {
 	int   len = 0;
 	if (!iter->get_key((char**)&key, len)) {
 	    end();
-        TR << "current key not found" << TREND;
+        //TR << "current key not found" ;
 	    return { 0, 0 };
 	};
-    TR << print_kvssd_key(key, len) << TREND;
+    //TR << print_kvssd_key(key, len) ;
 	return { key, (uint8_t)len };
 }
 

@@ -70,7 +70,7 @@ public:
 	KvsIterator *get_iterator(uint32_t prefix);
 
 	// >=
-	inline bool is_key_le(const kv_key &key1, const kv_key &key2) {
+	inline bool is_key_ge(const kv_key &key1, const kv_key &key2) {
 		char *k1 = (char *)key1.key;
 		char *k2 = (char *)key2.key;
 		const int k1_length = key1.length;

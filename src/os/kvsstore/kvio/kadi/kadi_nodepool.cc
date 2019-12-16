@@ -13,7 +13,7 @@ adi(adi_), ksid_skp(ksid_skp_), prefix(prefix_), param(param_)
 {
     FTRACE
 	meta = _fetch_meta();
-	TR << "meta = " << meta << TREND;
+	TR << "meta = " << meta ;
 	//next_pgid = meta->get_last_pgid();
 }
 
@@ -62,12 +62,12 @@ void bptree_pool::flush(const bp_addr_t &newrootaddr) {
 
 	meta->set_next_pgid(next_pgid);
 	meta->set_root_addr(newrootaddr);
-    TRITER << "FLUSH meta root->addr = " << desc(meta->get_root_addr()) << " next pgid  = " << next_pgid << TREND;
+    TR << "FLUSH meta root->addr = " << desc(meta->get_root_addr()) << " next pgid  = " << next_pgid ;
 
 	meta->set_dirty();
 
 
-    TRITER << "Nodepool Flush - set meta - rootaddr = " << newrootaddr << ", get_root_addr = " << meta->get_root_addr() << ", meta addr = " << meta->addr<< TREND;
+    TR << "Nodepool Flush - set meta - rootaddr = " << newrootaddr << ", get_root_addr = " << meta->get_root_addr() << ", meta addr = " << meta->addr;
 	_flush_dirtylist();
 }
 
@@ -86,7 +86,7 @@ bptree_meta *bptree_pool::_fetch_meta() {
 
 	if (read_page(addr, n->get_raw_buffer(), bptree_meta::META_SIZE) != bptree_meta::META_SIZE){
 		// new meta
-        //TRITER << "create new metadata " << desc(addr) << TREND;
+        //TR << "create new metadata " << desc(addr) ;
         n->init(prefix);
 	}
 
@@ -100,7 +100,6 @@ kv_indexnode *bptree_pool::_fetch_node(const bp_addr_t &addr) {
 	// search the cache
 	if (addr == invalid_key_addr) return 0;
 
-	TRITER << "fetch node " << TREND;
 	auto it = pool.find(addr);
 	if (it != pool.end()) {
 		if (it->second->is_invalid()) return 0; // deleted
@@ -110,26 +109,15 @@ kv_indexnode *bptree_pool::_fetch_node(const bp_addr_t &addr) {
 	// load from the disk
 	if (bpaddr_pageid(addr) < meta->get_last_pgid() && !meta->isnew) {
 
-        TR << "malloc large block " << param->datanode_block_size << TREND;
 		void *data = malloc(param->datanode_block_size);
-		TR << "done" << TREND;
 		int nread = read_page(addr, data, param->datanode_block_size);
 		if (nread > 0) {
 			kv_indexnode *n;
 			const int off = bpaddr_slotid(addr);
 			if (off == NODE_TYPE_TREE) {
-			    TR << "fetch bptree node " << TREND;
 				n = new bptree_node(addr, (char*)data, param->treenode_block_size, false, true, param->max_order, param->max_entries);
-                if (((bptree_node*)n)->header()->self == 0) {
-                    TR << "self addr == 0 " << TREND;
-                }
-                if (((bptree_node*)n)->header()->next == 0) {
-                    TR << "next addr == 0 " << TREND;
-                }
-
             }
 			else if (off == NODE_TYPE_DATA){
-                TR << "fetch data node " << TREND;
                 n = new KvsSlottedPage(addr, (char *) data, param->datanode_block_size, false);
             } else {
 			    free(data);

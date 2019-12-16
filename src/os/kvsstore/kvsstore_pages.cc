@@ -9,37 +9,37 @@ int KvsStoreDataObject::read(uint64_t offset, uint64_t len, bufferlist& bl, Func
   const auto end = offset + len;
   auto remaining = len;
 
-  TR << "prepare range" << TREND;
+  TR << "prepare range" ;
 
   KvsPageSet::page_vector tls_pages;
   bool suc = data.get_range(offset, len, tls_pages, page_loader);
-  TR << "tls pages = " << tls_pages.size() << TREND;
+  TR << "tls pages = " << tls_pages.size() ;
   if (!suc) {
-      TR << "tls pages clear" << TREND;
+      TR << "tls pages clear" ;
       tls_pages.clear(); return -1;
   }
 
-  TR << "range is ready: " << tls_pages.size() << TREND;
+  TR << "range is ready: " << tls_pages.size() ;
 
   // allocate a buffer for the data
   buffer::ptr buf(len);
 
-  TR << "tls pages = " << tls_pages.size() << TREND;
+  TR << "tls pages = " << tls_pages.size() ;
 
 
   auto p = tls_pages.begin();
   while (remaining) {
-      TR << "remaining  = " << remaining << ", end = " << end  << TREND;
+      TR << "remaining  = " << remaining << ", end = " << end  ;
 if (p == tls_pages.end()) {
-    TR << "no more pages " << TREND;
+    TR << "no more pages " ;
 } else {
-    TR << "page offset = " << (*p)->offset << TREND;
+    TR << "page offset = " << (*p)->offset ;
 }
 
 
     // no more pages in range
     if (p == tls_pages.end() || (*p)->offset >= end) {
-        TR << "no more pages in the range" << TREND;
+        TR << "no more pages in the range" ;
       buf.zero(offset - start, remaining);
       break;
     }
@@ -49,14 +49,14 @@ if (p == tls_pages.end()) {
     // read from page
     const auto page_offset = offset - page->offset;
 
-      TR << "page_offset = " << page_offset  << TREND;
+      TR << "page_offset = " << page_offset  ;
     const auto count = std::min(remaining, /*data.get_page_size()*/ (uint64_t)page->length);
 
-      TR << "count = " << count  << TREND;
+      TR << "count = " << count  ;
 
     buf.copy_in(offset - start, count, page->data + page_offset);
 
-      TR << "copy in: to offset " <<offset - start << ", length " << count << TREND;
+      TR << "copy in: to offset " <<offset - start << ", length " << count ;
 
     remaining -= count;
     offset += count;
@@ -66,12 +66,12 @@ if (p == tls_pages.end()) {
 
   tls_pages.clear(); // drop page refs
 
-  TR << "buf = " << ceph_str_hash_linux(buf.c_str(), buf.length()) << ", length = " << buf.length() << TREND;
+  TR << "buf = " << ceph_str_hash_linux(buf.c_str(), buf.length()) << ", length = " << buf.length() ;
 
 
 
   bl.append(std::move(buf));
-    TR << "bl = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", bl length = " << bl.length() << TREND;
+    TR << "bl = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", bl length = " << bl.length() ;
   return len;
 }
 
@@ -125,9 +125,9 @@ int KvsStoreDataObject::write(uint64_t offset, bufferlist &src, Functor &&page_l
 
   KvsPageSet::page_vector tls_pages;
   // make sure the page range is allocated
-    TR << "alloc_range" << TREND;
+    TR << "alloc_range" ;
   data.alloc_range(offset, src.length(), tls_pages, page_loader);
-    TR << "alloc_range done" << TREND;
+    TR << "alloc_range done" ;
   auto page = tls_pages.begin();
 
   auto p = src.begin();

@@ -23,8 +23,10 @@
 #undef dout_prefix
 #define dout_prefix *_dout << "[kvsstore] "
 
-FtraceFile kvs_ff("ftrace.txt");
-FtraceFile kvs_osd("osdtrace.txt");
+FtraceFile FLOG;
+std::mutex FtraceFile::mutex;
+std::ofstream FtraceFile::fp;
+
 
 std::atomic<uint64_t> KvsJournal::journal_index = {0};
 
@@ -179,7 +181,7 @@ OnodeRef KvsCollection::get_onode(const ghobject_t &oid, bool create,
 		bool is_createop) {
 
 	ceph_assert(create ? ceph_mutex_is_wlocked(lock) : ceph_mutex_is_locked(lock));
-    TR << __func__ << " oid = " << oid << TREND;
+    TR << __func__ << " oid = " << oid ;
 	spg_t pgid;
 	if (cid.is_pg(&pgid)) {
 		if (!oid.match(cnode.bits, pgid.ps())) {
@@ -215,7 +217,7 @@ OnodeRef KvsCollection::get_onode(const ghobject_t &oid, bool create,
 		lderr(store->cct) << __func__ << "I/O Error: ret = " << ret << dendl;
 		ceph_abort_msg("Failed to read an onode due to an I/O error");
 	}
-    TR << __func__ << "oid is loaded " << on->oid << TREND;
+    TR << __func__ << "oid is loaded " << on->oid ;
 	o.reset(on);
 	return onode_map.add(oid, o);
 }

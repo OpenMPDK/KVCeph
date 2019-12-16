@@ -12,52 +12,81 @@
 #include <string>
 #include <mutex>
 #include <fstream>
+#include <sstream>
 #include <iostream>
 #include <memory.h>
+#include <string.h>
 #include <gperftools/heap-checker.h>
 //#include "common/BackTrace.h"
 // function traces: records enter and exit events
 // ----------------------------------------------
+
+#define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define ENABLE_IOTRACE
 #define ENABLE_FTRACE
 #ifdef ENABLE_FTRACE
 
-struct FtraceFile {
-    std::mutex lock;
-    std::ofstream fp;
-    FtraceFile(const std::string &name) {
-        fp.open(name, std::ofstream::out | std::ofstream::app);
-    }
-
-    ~FtraceFile() {
-        fp.close();
-    }
-
-    std::ofstream &get_fp() {
-        lock.lock();
-        return fp;
-    }
-
-    void return_fp() {
+class FtraceFile {
+public:
+    template <typename T>
+    static void log(T& message)
+    {
+        mutex.lock();
+        if (!fp.is_open()) {
+            fp.open("ftrace.txt", std::ofstream::out | std::ofstream::app);
+        }
+        fp << message.str() << "\n";
         fp.flush();
-        lock.unlock();
+        mutex.unlock();
+    }
+private:
+    static std::mutex mutex;
+    static std::ofstream fp;
+};
+
+extern FtraceFile FLOG;
+
+struct SimpleLoggerBuffer{
+    std::stringstream ss;
+
+    SimpleLoggerBuffer() = default;
+    SimpleLoggerBuffer(const SimpleLoggerBuffer&) = delete;
+    SimpleLoggerBuffer& operator=(const SimpleLoggerBuffer&) = delete;
+    SimpleLoggerBuffer& operator=(SimpleLoggerBuffer&&) = delete;
+    SimpleLoggerBuffer(SimpleLoggerBuffer&& buf): ss(move(buf.ss)) {
+    }
+    template <typename T>
+    SimpleLoggerBuffer& operator<<(T&& message)
+    {
+        ss << std::forward<T>(message);
+        return *this;
+    }
+
+    ~SimpleLoggerBuffer() {
+        FLOG.log(ss);
     }
 };
 
-extern FtraceFile kvs_ff;
-extern FtraceFile kvs_osd;
 
+
+template <typename T>
+SimpleLoggerBuffer operator<<(FtraceFile &simpleLogger, T&& message)
+{
+    SimpleLoggerBuffer buf;
+    buf.ss << std::forward<T>(message);
+    return buf;
+}
+
+#define MEMCHECK 0
 struct FtraceObject {
 
     std::string func;
     int line;
     //HeapLeakChecker heap_checker;, heap_checker(f)
     FtraceObject(const char *f, int line_) : func(f), line(line_) {
-#if 1
-        std::ofstream &fp = kvs_ff.get_fp();
-        fp << pthread_self() << "[ETR][" << func << ":" << line <<  "] ";
-        fp.flush();
-        fp << ", memcheck= " ;
+#if MEMCHECK
+        FLOG << pthread_self() << "[ETR][" << func << ":" << line <<  "] ";
+        FLOG << ", memcheck= " ;
         {
             std::vector<void *> malloc_p;
             for (int i = 0; i < 100; i++) {
@@ -67,30 +96,25 @@ struct FtraceObject {
             for (void *p : malloc_p) {
                 free(p);
             }
-            fp << "malloc OK ";
+            FLOG << "malloc OK ";
         }
-        fp.flush();
         {
             //fp << __FILE__ << "," << __LINE__ << ": MEMORY CORRUPTION TEST CODE" << "\n";
             uint64_t long_keyaddr = (uint64_t)malloc(8192);
             std::string str((char *)long_keyaddr, 50);
             if (str.length() == 0)
-                fp << "test1 = " << (void *) &str << "\n";
+                FLOG << "test1 = " << (void *) &str << "\n";
             free((void*)long_keyaddr);
-            fp << "access OK";
+            FLOG << "access OK";
         }
-        fp << "\n";
-        fp.flush();
-        kvs_ff.return_fp();
+        FLOG << "\n";
 #endif
     }
 
 
     ~FtraceObject() {
-#if 1
-        std::ofstream &fp = kvs_ff.get_fp();
-        fp << pthread_self() << "[EXT][" << func << ":" << line <<  "] ";
-        fp.flush();
+#if MEMCHECK
+        FLOG << pthread_self() << "[EXT][" << func << ":" << line <<  "] ";
         {
             std::vector<void *> malloc_p;
             for (int i = 0; i < 100; i++) {
@@ -100,37 +124,30 @@ struct FtraceObject {
             for (void *p : malloc_p) {
                 free(p);
             }
-            fp << "malloc OK ";
+            FLOG << "malloc OK ";
         }
-        fp.flush();
         {
             uint64_t long_keyaddr = (uint64_t)malloc(8192);
             std::string str((char *)long_keyaddr, 50);
             if (str.length() == 0)
-                fp << "test1 = " << (void *) &str << "\n";
+                FLOG << "test1 = " << (void *) &str << "\n";
             free((void*)long_keyaddr);
-            fp << "access OK";
+            FLOG << "access OK";
         }
-        fp.flush();
-        fp << "\n"; //<< ", Global Leaks " << HeapLeakChecker::NoGlobalLeaks() << "\n"; //<< ", no leaks = " << heap_checker.NoLeaks() << ", bytes leaked " << heap_checker.BytesLeaked() << "\n";        fp.flush();
-        kvs_ff.return_fp();
+
 #endif
     }
 };
-#define LOGOSD std::cerr
-#define LOGEND std::endl
-//#define LOGOSD kvs_ff.get_fp() << pthread_self() << "[OSD][" << __FUNCTION__ << ":" << __LINE__ <<  "] "
-//#define LOGEND "\n"; do { kvs_osd.return_fp(); } while(0)
 
-#define FTRACE FtraceObject fobj(__FUNCTION__, __LINE__);
-#define TRIO kvs_ff.get_fp() << pthread_self() << "[KIO][" << __FUNCTION__ << ":" << __LINE__ <<  "] "
-#define TRITER kvs_ff.get_fp() << pthread_self() << "[KIT][" << __FUNCTION__ << ":" <<__LINE__<< "] "
-#define TR kvs_ff.get_fp() << pthread_self() << "[KVS][" << __FUNCTION__ << ":"  << __LINE__ << "] "
-//#define TR std::cout << pthread_self() << " "
-#define TREND "\n"; do { kvs_ff.return_fp(); } while(0)
+#define LOGOSD FLOG
+#define LOGEND ""
+
+#define FTRACE FtraceObject fobj(__FILENAME__, __LINE__);
+#define TR FLOG << pthread_self() << "[" << __FILENAME__ << ":"  << __LINE__ << "] "
+
 #else
 #define FTRACE
-#define TR
+#define TR if (false) std::cout
 #endif
 
 
@@ -139,8 +156,8 @@ struct FtraceObject {
 template<typename T>
 inline void assert_equals(const T &t1, const T &t2, const std::string &msg) {
     if (t1 != t2) {
-        TR << "ASSERT FAILURE: " << msg << TREND;
-        TR << "NOT EQUAL: " << t1 << " != " << t2 << TREND;
+        TR << "ASSERT FAILURE: " << msg ;
+        TR << "NOT EQUAL: " << t1 << " != " << t2 ;
         exit(1);
     }
 }

@@ -44,7 +44,7 @@ static inline void set_dirty(kv_indexnode *sub_node) {
 class bptree_meta: public kv_indexnode {
 public:
     virtual void dump() {
-        TR << "bpmeta" << TREND;
+        TR << "bpmeta" ;
     }
 	const static int META_SIZE = 16;
     bool isnew;
@@ -62,8 +62,8 @@ public:
         set_root_addr( create_metanode_addr(treeid) );
         set_next_pgid(2);
         isnew = true;
-        //TRITER << "  new meta: root addr = " << desc(get_root_addr())  << TREND;
-        //TRITER << "  new meta: last pgid = " << get_last_pgid() << TREND;
+        //TR << "  new meta: root addr = " << desc(get_root_addr())  ;
+        //TR << "  new meta: last pgid = " << get_last_pgid() ;
 	}
 
 	inline uint64_t get_last_pgid() {
@@ -74,7 +74,7 @@ public:
 	inline void set_next_pgid(uint64_t pgid) {
 		uint64_t* values = (uint64_t*)buffer;
 		values[0] = pgid;
-        //TRITER << "updated buffer = " << print_kvssd_key(buffer, META_SIZE) << ", 0th " << values[0] << ", 1th" << values[1] << ", next pageid =" << pgid << TREND;
+        //TR << "updated buffer = " << print_kvssd_key(buffer, META_SIZE) << ", 0th " << values[0] << ", 1th" << values[1] << ", next pageid =" << pgid ;
 	}
 
 	inline bp_addr_t get_root_addr() {
@@ -85,7 +85,7 @@ public:
 	inline void set_root_addr(bp_addr_t addr) {
 		bp_addr_t* values = (bp_addr_t*)buffer;
 		values[1] = addr;
-        //TRITER << "updated buffer = " << print_kvssd_key(buffer, META_SIZE) << ", 0th " << values[0] << ", 1th" << values[1] << ", root addr =" << addr << ", get root addr = " << get_root_addr() << TREND;
+        //TR << "updated buffer = " << print_kvssd_key(buffer, META_SIZE) << ", 0th " << values[0] << ", 1th" << values[1] << ", root addr =" << addr << ", get root addr = " << get_root_addr() ;
 
 	}
 };
@@ -204,7 +204,7 @@ public:
 		kv_indexnode(addr, buffer, buffer_size), max_order(max_order_), max_entries(max_entries_) {
 
 	    if (addr == 0) {
-	        TR << "---------------WRONG ADDRESS -------------" << TREND;
+	        TR << "---------------WRONG ADDRESS -------------" ;
 	    }
 		if (isnew) {
 			header()->type = (leaf)? BPLUS_TREE_LEAF:BPLUS_TREE_NON_LEAF;
@@ -231,10 +231,10 @@ public:
 	inline bp_addr_t* sub()  { return (bp_addr_t*)(offset_ptr() + ((max_order -1) * sizeof(bp_addr_t))); }
 
 	void dump() {
-        TR << "NODE ADDR = " << addr << TREND;
+        TR << "NODE ADDR = " << addr ;
         auto keys = key();
         for (int i = 0; i < get_children(); i++) {
-            TR << i << "th key addr = " << keys[i] << TREND;
+            TR << i << "th key addr = " << keys[i] ;
         }
     }
 };
@@ -254,7 +254,7 @@ public:
 		param(block_size), pool(adi, ksid_skp, prefix, &param), level(0), dirty(false)
 	{
 	    FTRACE
-	    TR << ">> 2. constructing B+ tree for prefix " << prefix << TREND;
+	    TR << ">> 2. constructing B+ tree for prefix " << prefix ;
 
 		// create or fetch root node
 		meta = pool.get_meta();
@@ -275,7 +275,7 @@ public:
 			bp_addr_t keyaddr = datanode->insert(key, length);
 			if (keyaddr != invalid_key_addr) {
                 datanode->set_dirty();
-                TRITER << "DN insert: DN ADDR " << desc(datanode->addr) << ", KEY ADDR " << desc(keyaddr) << TREND;
+                TR << "DN insert: DN ADDR " << desc(datanode->addr) << ", KEY ADDR " << desc(keyaddr) ;
 				return keyaddr;
 			}
 		}
@@ -284,7 +284,7 @@ public:
 		datanode_cache.push_back(dn);
         bp_addr_t keyaddr = dn->insert(key, length);
         dn->set_dirty();
-        TRITER << "DN insert: DN ADDR " << desc(dn->addr) << ", KEY ADDR " << desc(keyaddr) << TREND;
+        TR << "DN insert: DN ADDR " << desc(dn->addr) << ", KEY ADDR " << desc(keyaddr) ;
 		return keyaddr;
 	}
 
@@ -334,7 +334,7 @@ public:
 		set_dirty(root);
 		this->level = 1;
         this->dirty = true;
-        TRITER << "root node created: addr = " << desc(root->addr) << TREND;
+        TR << "root node created: addr = " << desc(root->addr) ;
 		return 0;
 	}
 
@@ -390,7 +390,7 @@ private:
 		bp_addr_t key = insert_key_to_datanode(userkey, keylength);
 		insert = -insert - 1;
 
-		TR << "tree insert key = " << key << TREND;
+		TR << "tree insert key = " << key ;
 		/* leaf is full */
 	  	if (leaf->get_children() == param.max_entries) {
 				bp_addr_t split_key;
@@ -1218,14 +1218,14 @@ private:
 		bptree_iterator_impl(bptree *tree_, int keyindex_ = 0, bp_addr_t nodeaddr_ = 0):
 			bptree_iterator(tree_, keyindex_, nodeaddr_)
 		{
-		    TR << "bptree iterator: index = " << keyindex << ", nodeaddr == " << nodeaddr << TREND;
+		    //TR << "bptree iterator: index = " << keyindex << ", nodeaddr == " << nodeaddr ;
 		    if (nodeaddr == 0) {
 		        end();
 		    }
 		}
 
 		virtual void move_next(const long int movement) {
-            TR << "MOVE NEXT " << TREND;
+            //TR << "MOVE NEXT " ;
 			if (tree == 0) {
                 end();
                 return;
@@ -1233,22 +1233,22 @@ private:
 
 			bptree_node *node = tree->pool.fetch_tree_node(nodeaddr);
 			if (!node) {
-				std::cout << "nodeaddr " << nodeaddr << ", not found\n";
+				//std::cout << "nodeaddr " << nodeaddr << ", not found\n";
 				end();
 				return;
 			}
 
-            TR << "MOVE NEXT - index+1" << TREND;
+            //TR << "MOVE NEXT - index+1" ;
 			this->keyindex++;
 
 			if (this->keyindex >= node->get_children()) {
 
 				node = tree->pool.fetch_tree_node(node->header()->next);
 				if (node == 0) {
-                    TR << "REACHED TO THE END" << TREND;
+                    //TR << "REACHED TO THE END" ;
 					end();
 				} else {
-                    TR << "REACHED TO THE NODE END" << TREND;
+                    //TR << "REACHED TO THE NODE END" ;
 					this->keyindex = 0;
 					nodeaddr = node->addr;
 				}
@@ -1260,18 +1260,18 @@ private:
 
 			if (is_end()) return false;
 			auto *node = tree->pool.fetch_tree_node(nodeaddr);
-            TR << "fetch  NODE  " << node << TREND;
+            //TR << "fetch  NODE  " << node ;
 			if (!node) return false;
 
-            TR << "get key from  NODE addr " << nodeaddr << TREND;
-            node->dump();
+            //TR << "get key from  NODE addr " << nodeaddr ;
+            //node->dump();
 
 
             return tree->get_key_from_datanode(node->key()[keyindex], key, length);
 		}
 
 		virtual void begin() {
-		    TR<< "BEGIN" << TREND;
+		    //TR<< "BEGIN" ;
 			lower_bound("", 0);
 		}
 

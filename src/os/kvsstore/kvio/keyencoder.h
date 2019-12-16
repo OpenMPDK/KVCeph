@@ -147,12 +147,11 @@ inline uint8_t construct_collkey_impl(void *buffer, const char *name, const int 
     FTRACE
 
     struct kvs_coll_key *collkey = (struct kvs_coll_key *)buffer;
-TR << "1 buffer = " << buffer << TREND;
     collkey->prefix = GROUP_PREFIX_COLL;	// for list_collections
     collkey->group  = GROUP_PREFIX_COLL;
-    TR << "2 name = " << name << ",name len " << namelen << TREND;
+    //TR << "coll name = " << name << ",name len " << namelen ;
     memcpy((char*)buffer + sizeof(kvs_coll_key), name, namelen);
-    TR << "returning " <<sizeof(kvs_coll_key) + namelen << TREND;
+    //TR << "returning " <<sizeof(kvs_coll_key) + namelen ;
     return (sizeof(kvs_coll_key) + namelen);
 }
 
@@ -227,7 +226,7 @@ inline uint8_t construct_object_key(CephContext* cct, const ghobject_t& oid, voi
         ceph_abort();
     }
 
-    TR << "construct object key: oid=" << oid << ", keybuffer = " << print_kvssd_key(keybuffer, total_keylength) << TREND;
+    TR << "construct object key: oid=" << oid << ", keybuffer = " << print_kvssd_key(keybuffer, total_keylength) ;
     return total_keylength;
 }
 

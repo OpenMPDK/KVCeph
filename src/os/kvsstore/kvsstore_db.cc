@@ -265,7 +265,7 @@ void KvsStoreDB::add_coll(KvsIoContext *ctx, const coll_t &cid, bufferlist &bl) 
 
 	auto keyfunc = [&] (void *buffer)->uint8_t {
 	    int l =  construct_collkey_impl(buffer, cidkey_str, cidkey_len);
-	    TR << "add_coll key = " << print_kvssd_key(std::string ((char*)buffer, l)) << TREND;
+	    TR << "add_coll key = " << print_kvssd_key(std::string ((char*)buffer, l)) ;
 		return l;
 	};
 	ctx->add_to_journal(KEYSPACE_COLLECTION, KVS_JOURNAL_ENTRY_COLL, &bl, keyfunc);
@@ -315,7 +315,10 @@ void KvsStoreDB::rm_onode(KvsIoContext *ctx,const ghobject_t& oid){
 
 void KvsStoreDB::add_userdata(KvsIoContext *ctx,const ghobject_t& oid, char *page, int length, int pageid){
     FTRACE
-    TR << "add userdata: oid = " << oid << ", length = " << length << ", pageid " << pageid << TREND;
+    TR << "add userdata: oid = " << oid << ", length = " << length << ", pageid " << pageid ;
+    if (length < 0 || length > 1000000000) {
+        TR << "debug point" ;
+    }
 	ctx->add_pending_data(KEYSPACE_DATA, page, length, [&] (void *buffer)->uint8_t {
 		return construct_object_key(cct, oid, buffer, pageid);
 	});
@@ -368,7 +371,7 @@ int KvsStoreDB::write_journal(KvsTransContext *txc) {
 		value.length = p->journal_buffer_pos;
 		value.value  = p->journal_buffer;
 
-		//TR << "[JOURNAL] write : num entries " << *p->num_io_pos << ", length " << p->journal_buffer_pos << TREND;
+		//TR << "[JOURNAL] write : num entries " << *p->num_io_pos << ", length " << p->journal_buffer_pos ;
 		ret = kadi.sync_write(KEYSPACE_JOURNAL, &value, [] (struct nvme_passthru_kv_cmd& cmd) {
 			const uint64_t id = KvsJournal::journal_index++;
 			cmd.key_length = construct_journalkey_impl(cmd.key, id);
@@ -391,32 +394,32 @@ int KvsStoreDB::aio_submit(KvsTransContext *txc)
 
     const int num_batch_cmds = txc->ioc.batchctx.size();
 
-    txc->ioc.running_ios.splice(txc->ioc.running_ios.begin(), txc->ioc.pending_ios);
+    txc->ioc.running_ios.swap(txc->ioc.pending_ios);
+    //txc->ioc.running_ios.splice(txc->ioc.running_ios.begin(), txc->ioc.pending_ios);
     txc->ioc.num_running = txc->ioc.running_ios.size() + num_batch_cmds;
 
-	std::unique_lock<std::mutex> lk(txc->ioc.running_aio_lock);
-	for (auto ior : txc->ioc.running_ios) {
+    {
+        std::unique_lock<std::mutex> lk(txc->ioc.running_aio_lock);
+        for (auto ior : txc->ioc.running_ios) {
+            if (ior->data == 0 && ior->raw_data == 0) { // delete
+                res = kadi.kv_delete_aio(ior->spaceid, ior->key, { txc_data_callback, static_cast<void*>(txc) });
+            }
+            else {
+                if (ior->data) {
+                    set_kv_value(&value, ior->data);
+                } else {
+                    set_kv_value(&value, ior->raw_data, ior->raw_data_length);
+                }
 
-		if (ior->data == 0 && ior->raw_data == 0) { // delete
-			res = kadi.kv_delete_aio(ior->spaceid, ior->key, { txc_data_callback, static_cast<void*>(txc) });
-		}
-		else {
-			if (ior->data) {
-				set_kv_value(&value, ior->data);
-			} else {
-				set_kv_value(&value, ior->raw_data, ior->raw_data_length);
-			}
+                res = kadi.kv_store_aio(ior->spaceid, ior->key, &value, { txc_data_callback, static_cast<void*>(txc) });
 
-			res = kadi.kv_store_aio(ior->spaceid, ior->key, &value, { txc_data_callback, static_cast<void*>(txc) });
+                //TR << "{AIO SUBMIT} STORE txc = " << (void *)txc  << print_kvssd_key(ior->key->key, ior->key->length) << ", value length = " << value.length << ", spaceid = " << (int)ior->spaceid << ", retcode = " << res ;
+            }
+            if (res != 0) return res;
+        }
 
-            TR << "{SUBMIT} STORE " << print_kvssd_key(ior->key->key, ior->key->length) << ", value length = " << value.length << ", spaceid = " << (int)ior->spaceid << ", retcode = " << res << TREND;
-		}
-        if (res != 0) return res;
-	}
-
-
-    res = kadi.batch_submit_aio(&txc->ioc.batchctx, 0, { txc_data_callback, static_cast<void*>(txc) });
-
+        res = kadi.batch_submit_aio(&txc->ioc.batchctx, 0, { txc_data_callback, static_cast<void*>(txc) });
+    }
     return res;
 }
 
@@ -448,25 +451,25 @@ uint64_t KvsStoreDB::compact() {
 				return;
 			}
 
-            //TR  << "opcode = " << opcode << ", key = " << print_key((const char*)key, length) << ", length = " << length << TREND;
+            //TR  << "opcode = " << opcode << ", key = " << print_key((const char*)key, length) << ", length = " << length ;
 
 			if (opcode == nvme_cmd_kv_store) {
-                TR << "tree-insert " << treename << ", key: " << print_kvssd_key(std::string((char*)key,length)) << TREND;
+                TR << "tree-insert " << treename << ", key: " << print_kvssd_key(std::string((char*)key,length)) ;
                 tree->insert((char*)key, length);
 			} else if (opcode == nvme_cmd_kv_delete) {
-                TR << "tree-remove " << treename << ", key: " << print_kvssd_key(std::string((char*)key,length)) << TREND;
+                TR << "tree-remove " << treename << ", key: " << print_kvssd_key(std::string((char*)key,length)) ;
                 tree->remove((char*)key, length);
 			}
 
 			//cout << "read: group"  << groupid << ", seq " << sequence << ", " << print_key((const char*)key, length) << ", length = " << length << endl;
 	});
-    //TR << "1. found and read " << processed_keys << " oplog pages" << TREND;
+    //TR << "1. found and read " << processed_keys << " oplog pages" ;
 
     onode_tree.flush();
 
     coll_tree.flush();
 
-    //TR << "2. updated the index structure " << TREND;
+    //TR << "2. updated the index structure " ;
 
 	return processed_keys;
 }
