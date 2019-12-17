@@ -1561,19 +1561,15 @@ OSDMapRef OSDService::_add_map(OSDMap *o)
 
 OSDMapRef OSDService::try_get_map(epoch_t epoch)
 {
-    derr << "try_get_map : 1" << dendl;
   std::lock_guard l(map_cache_lock);
   OSDMapRef retval = map_cache.lookup(epoch);
-    derr << "try_get_map : 2 retval = " << retval << dendl;
   if (retval) {
-    dout(30) << "get_map " << epoch << " -cached" << dendl;
     if (logger) {
       logger->inc(l_osd_map_cache_hit);
     }
     return retval;
   }
 
-    derr << "try_get_map : 3"<< dendl;
   if (logger) {
     logger->inc(l_osd_map_cache_miss);
     epoch_t lb = map_cache.cached_key_lower_bound();
@@ -1583,10 +1579,8 @@ OSDMapRef OSDService::try_get_map(epoch_t epoch)
       logger->inc(l_osd_map_cache_miss_low_avg, lb - epoch);
     }
   }
-    derr << "try_get_map : 4"<< dendl;
   OSDMap *map = new OSDMap;
   if (epoch > 0) {
-      derr << "try_get_map : 5"<< dendl;
     dout(20) << "get_map " << epoch << " - loading and decoding " << map << dendl;
     bufferlist bl;
     if (!_get_map_bl(epoch, bl) || bl.length() == 0) {
@@ -1594,14 +1588,11 @@ OSDMapRef OSDService::try_get_map(epoch_t epoch)
       delete map;
       return OSDMapRef();
     }
-      derr << "try_get_map : 6"<< dendl;
     map->decode(bl);
-      derr << "try_get_map : 7"<< dendl;
   } else {
 
     dout(20) << "get_map " << epoch << " - return initial " << map << dendl;
   }
-    derr << "try_get_map : 8"<< dendl;
   return _add_map(map);
 }
 
@@ -3389,7 +3380,6 @@ int OSD::init()
       goto out;
     }
   }
-    derr << "2" << dendl;
   assert_warn(whoami == superblock.whoami);
   if (whoami != superblock.whoami) {
     derr << "OSD::init: superblock says osd"
@@ -3397,7 +3387,7 @@ int OSD::init()
     r = -EINVAL;
     goto out;
   }
-    derr << "3" << dendl;
+
   startup_time = ceph::mono_clock::now();
 
   // load up "current" osdmap
@@ -3408,15 +3398,14 @@ int OSD::init()
     goto out;
   }
   osdmap = get_map(superblock.current_epoch);
-    derr << "4" << dendl;
+
   // make sure we don't have legacy pgs deleting
   {
     vector<coll_t> ls;
     int r = store->list_collections(ls);
-      derr << "5 r = " << r << dendl;
+
     ceph_assert(r >= 0);
 
-      derr << "list collections size = " << ls.size() << dendl;
     for (auto c : ls) {
       spg_t pgid;
       if (c.is_pg(&pgid) &&
@@ -3431,7 +3420,6 @@ int OSD::init()
 	}
       }
     }
-      derr << "6 "  << dendl;
   }
 
 
@@ -3461,13 +3449,11 @@ int OSD::init()
     if (r < 0)
       goto out;
   }
-    derr << "8 "  << dendl;
 
 
     // put this check before the snapmapper check
     // make sure snap mapper object exists
     if (!store->exists(service.meta_ch, OSD::make_snapmapper_oid())) {
-        derr << "8.1 "  << dendl;
         dout(10) << "init creating/touching snapmapper object" << dendl;
         ObjectStore::Transaction t;
         t.touch(coll_t::meta(), OSD::make_snapmapper_oid());
@@ -3481,19 +3467,19 @@ int OSD::init()
     ObjectStore::Transaction t;
     t.touch(coll_t::meta(), OSD::make_purged_snaps_oid());
     r = store->queue_transaction(service.meta_ch, std::move(t));
-      derr << __LINE__ << ": r = " << r  << dendl;
+
     if (r < 0)
       goto out;
   }
 
   if (cct->_conf->osd_open_classes_on_start) {
     int r = ClassHandler::get_instance().open_all_classes();
-      derr << __LINE__ << ": r = " << r  << dendl;
+
     if (r)
       dout(1) << "warning: got an error loading one or more classes: " << cpp_strerror(r) << dendl;
   }
 
-    derr << __LINE__ << " 9"  << dendl;
+
   check_osdmap_features();
 
   create_recoverystate_perf();
@@ -3688,7 +3674,6 @@ int OSD::init()
   monc->renew_subs();
 
   start_boot();
-    derr << __LINE__ << "init succeeded!"  << dendl;
   return 0;
 
 out:
@@ -4680,19 +4665,17 @@ void OSD::load_pgs()
     auto pghist = make_pg_num_history_oid();
     bufferlist bl;
     int r = store->read(service.meta_ch, pghist, 0, 0, bl, 0);
-      derr << "pg num history decode: r = " << r << ", bl.length = " << bl.length()<< dendl;
     if (r >= 0 && bl.length() > 0) {
       auto p = bl.cbegin();
       decode(pg_num_history, p);
     }
-      derr << "pg num history decode done" << dendl;
     dout(20) << __func__ << " pg_num_history " << pg_num_history << dendl;
   }
 
-  derr << "list collections " << dendl;
+
   vector<coll_t> ls;
   int r = store->list_collections(ls);
-    derr << "list collections -> result = " << ls.size() << dendl;
+
   if (r < 0) {
     derr << "failed to list pgs: " << cpp_strerror(-r) << dendl;
   }
@@ -4701,7 +4684,7 @@ void OSD::load_pgs()
   for (vector<coll_t>::iterator it = ls.begin();
        it != ls.end();
        ++it) {
-      derr << "list collection loop " << dendl;
+
     spg_t pgid;
     if (it->is_temp(&pgid) ||
        (it->is_pg(&pgid) && PG::_has_removal_flag(store, pgid))) {
@@ -4713,12 +4696,12 @@ void OSD::load_pgs()
       continue;
     }
 
-    derr << "OSD 1" << dendl;
+
     if (!it->is_pg(&pgid)) {
       dout(10) << "load_pgs ignoring unrecognized " << *it << dendl;
       continue;
     }
-      derr << "pgid " << pgid << " coll " << coll_t(pgid) << dendl;
+
     dout(10) << "pgid " << pgid << " coll " << coll_t(pgid) << dendl;
     epoch_t map_epoch = 0;
     int r = PG::peek_map_epoch(store, pgid, &map_epoch);
@@ -4727,12 +4710,12 @@ void OSD::load_pgs()
 	   << dendl;
       continue;
     }
-      derr << "OSD 2" << dendl;
+
     PGRef pg;
     if (map_epoch > 0) {
-        derr << "OSD 3 map_epoch= " << map_epoch << dendl;
+
       OSDMapRef pgosdmap = service.try_get_map(map_epoch);
-        derr << "OSD 4" << dendl;
+
       if (!pgosdmap) {
 	if (!osdmap->have_pg_pool(pgid.pool())) {
 	  derr << __func__ << ": could not find map for epoch " << map_epoch
@@ -4748,52 +4731,52 @@ void OSD::load_pgs()
 	  ceph_abort_msg("Missing map in load_pgs");
 	}
       }
-        derr << "OSD 5" << dendl;
+
       pg = _make_pg(pgosdmap, pgid);
     } else {
-        derr << "OSD 6" << dendl;
+
       pg = _make_pg(osdmap, pgid);
     }
     if (!pg) {
-        derr << "OSD 7" << dendl;
+
       recursive_remove_collection(cct, store, pgid, *it);
       continue;
     }
 
     // there can be no waiters here, so we don't call _wake_pg_slot
-      derr << "OSD 8" << dendl;
+
     pg->lock();
-      derr << "OSD 9" << dendl;
+
     pg->ch = store->open_collection(pg->coll);
-      derr << "OSD 10" << dendl;
+
 
     // read pg state, log
     pg->read_state(store);
 
-      derr << "OSD 11" << dendl;
+
     if (pg->dne())  {
       dout(10) << "load_pgs " << *it << " deleting dne" << dendl;
       pg->ch = nullptr;
       pg->unlock();
-        derr << "OSD 12" << dendl;
+
       recursive_remove_collection(cct, store, pgid, *it);
       continue;
     }
     {
-        derr << "OSD 13" << dendl;
+
       uint32_t shard_index = pgid.hash_to_shard(shards.size());
       assert(NULL != shards[shard_index]);
       store->set_collection_commit_queue(pg->coll, &(shards[shard_index]->context_queue));
     }
-      derr << "OSD 14" << dendl;
+
     pg->reg_next_scrub();
 
     dout(10) << __func__ << " loaded " << *pg << dendl;
     pg->unlock();
-      derr << "OSD 15" << dendl;
+
     register_pg(pg);
     ++num;
-      derr << "OSD 16" << dendl;
+
   }
   dout(0) << __func__ << " opened " << num << " pgs" << dendl;
 }
@@ -8089,34 +8072,7 @@ void OSD::handle_osd_map(MOSDMap *m)
   {
     bufferlist bl;
     ::encode(pg_num_history, bl);
-#if 0
-      {
-          std::stringstream ss;
-          JSONFormatter jf(true);
-          pg_num_history.dump(&jf);
-          jf.flush(ss);
-          derr << "DECODE CHECK bl contents: " << ss.str()  << dendl;
-      }
-      {
-          derr << "DECODE CHECK bl length " << bl.length() << dendl;
-          {
-              auto p = bl.cbegin();
-              __u32 len;
-              decode(len, p);
-              derr << "length = " << len << dendl;
-          }
-          bufferlist bl2;
-          if (bl.length() > 0) {
-              auto p = bl.cbegin();
-              decode(bl2, p);
-              derr << "decoding is done" << dendl;
-          }
-          derr << "DECODED " << ", hash = " << ceph_str_hash_linux(bl2.c_str(), bl2.length()) << dendl;
-      }
-#endif
-    derr << "DECODE oid = " << make_pg_num_history_oid() << ", bl length = " << bl.length() << ", hash = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << dendl;
     t.write(coll_t::meta(), make_pg_num_history_oid(), 0, bl.length(), bl);
-
 
     dout(20) << __func__ << " pg_num_history " << pg_num_history << dendl;
   }
@@ -8140,22 +8096,6 @@ void OSD::handle_osd_map(MOSDMap *m)
     service.meta_ch,
     std::move(t));
   service.publish_superblock(superblock);
-
-#if 0
-    {
-        sleep(10);
-        derr << "DECODE CHECK2 " << service.meta_ch << dendl;
-        bufferlist bl;
-        int r = store->read(service.meta_ch, make_pg_num_history_oid(), 0, 0, bl, 0);
-        if (r >= 0 && bl.length() > 0) {
-            auto p = bl.cbegin();
-            decode(pg_num_history, p);
-        }
-        derr << "DECODE CHECK2  done " << dendl;
-        exit(1);
-
-    }
-#endif
 
 }
 

@@ -24,6 +24,7 @@
 #define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 
 #define ENABLE_FTRACE
+#define ENABLE_IOTRACE
 
 #ifdef ENABLE_FTRACE
 
@@ -37,7 +38,8 @@ public:
             fp.open("ftrace.txt", std::ofstream::out | std::ofstream::app);
         }
         fp << message.str() << "\n";
-        //fp.flush();
+        if (!fp.bad())
+            fp.flush();
         mutex.unlock();
 
     }
@@ -141,7 +143,7 @@ struct FtraceObject {
     }
 };
 
-#define LOGOSD FLOG
+#define LOGOSD if (false) FLOG
 #define LOGEND ""
 
 #define FTRACE FtraceObject fobj(__FILENAME__, __LINE__);
@@ -150,8 +152,8 @@ struct FtraceObject {
 #else
 #define FTRACE
 #define TR if (false) std::cout
-#define LOGOSD std::cout
-#define LOGEND std::endl
+#define LOGOSD if (false) std::cout
+#define LOGEND ""
 #endif
 
 

@@ -264,12 +264,8 @@ struct KvsJournal {
 	template<typename Functor>
 	void add_journal_entry(Functor &&filler) {
 	    FTRACE
-
-	    TR << " journal buffer = " << (void*)journal_buffer << ", pos = " <<  journal_buffer_pos ;
 		journal_buffer_pos += filler(journal_buffer + journal_buffer_pos);
-        TR << " filler is done" <<  journal_buffer_pos ;
 		*num_io_pos = *num_io_pos + 1;
-        TR << " # of IOs in the journal" <<  *num_io_pos ;
 	}
 
 	template<typename Functor>
@@ -283,18 +279,6 @@ struct KvsJournal {
 			journal_buffer_pos = keypos + entry->key_length;
 		}
 	}
-    /*entrysize 8
-	journal_pos 148 + 12 + 87 = 16 + 87 = 103
-     entry length 21 156,
-	data_pos    12
-	key  pos    12+ data length  = 87-> 88 = 100
-
-    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0
-            ----------------- d--------------- k---------------
-
-	header (kvs_journal_entry)
-	data
-	key*/
 };
 
 

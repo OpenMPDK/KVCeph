@@ -23,10 +23,11 @@
 #undef dout_prefix
 #define dout_prefix *_dout << "[kvsstore] "
 
+#ifdef ENABLE_FTRACE
 FtraceFile FLOG;
 std::mutex FtraceFile::mutex;
 std::ofstream FtraceFile::fp;
-
+#endif
 
 std::atomic<uint64_t> KvsJournal::journal_index = {0};
 
@@ -181,7 +182,6 @@ OnodeRef KvsCollection::get_onode(const ghobject_t &oid, bool create,
 		bool is_createop) {
 
 	ceph_assert(create ? ceph_mutex_is_wlocked(lock) : ceph_mutex_is_locked(lock));
-    TR << __func__ << " oid = " << oid ;
 	spg_t pgid;
 	if (cid.is_pg(&pgid)) {
 		if (!oid.match(cnode.bits, pgid.ps())) {

@@ -315,7 +315,7 @@ void KvsStoreDB::rm_onode(KvsIoContext *ctx,const ghobject_t& oid){
 
 void KvsStoreDB::add_userdata(KvsIoContext *ctx,const ghobject_t& oid, char *page, int length, int pageid){
     FTRACE
-    TR << "add userdata: oid = " << oid << ", length = " << length << ", pageid " << pageid ;
+    //TR << "add userdata: oid = " << oid << ", length = " << length << ", pageid " << pageid ;
     if (length < 0 || length > 1000000000) {
         TR << "debug point" ;
     }

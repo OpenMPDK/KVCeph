@@ -474,6 +474,8 @@ public:
 
     deque<KvsTransContext*> kv_committing_to_finalize;   ///< pending finalization
 
+    std::mutex writing_lock;
+    map<const ghobject_t, KvsStoreDataObject* > writing;
 
     //# Perfcounters ------------------------------------------------
 
