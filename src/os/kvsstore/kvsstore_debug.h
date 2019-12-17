@@ -37,8 +37,9 @@ public:
             fp.open("ftrace.txt", std::ofstream::out | std::ofstream::app);
         }
         fp << message.str() << "\n";
-        fp.flush();
+        //fp.flush();
         mutex.unlock();
+
     }
 private:
     static std::mutex mutex;

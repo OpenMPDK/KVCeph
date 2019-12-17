@@ -10,6 +10,76 @@
 template<typename T>
 inline void assert_eq(T a, T b, const std::function< void (T, T)> &c) { if (a != b) return c(a, b); }
 
+TEST_P(KvsStoreTest, QuickReadWriteTest1){
+    coll_t cid(spg_t(pg_t(0, 1), shard_id_t(1)));// Added for iterator bug in FW
+    bufferlist bl;
+    bl.append("1234512345");
+    int r;
+    int NUM_OBJS = 1;
+    int NUM_UPDATES = 1;
+    set<ghobject_t> created;
+    string base = "";
+    //for (int i = 0; i < 20; ++i) base.append("a");
+    auto ch = store->create_new_collection(cid);
+    {
+        cerr << "create collection" << std::endl;
+        ObjectStore::Transaction t;
+        t.create_collection(cid, 0);
+        r = queue_transaction(store, ch, std::move(t));
+        ASSERT_EQ(r, 0);
+    }
+    {
+        cerr << " write objects to collection" << std::endl;
+
+        for (int i = 0; i < NUM_OBJS; i++){
+            cerr << "Object " << i << std::endl;
+
+            char buf[100];
+            snprintf(buf, sizeof(buf), "%d", i);
+
+            bufferlist bl1;
+            for (int i = 0; i<425; i++)
+                bl1.append("12");
+
+            ghobject_t hoid(hobject_t(sobject_t(string(buf) + base, CEPH_NOSNAP)));
+            created.insert(hoid);
+
+            for (int k = 0; k < NUM_UPDATES; k++) {
+                cerr << "[" << k << "]  Object = " << hoid << " writing " << bl1.length() << " bytes" << std::endl;
+
+                ObjectStore::Transaction t;
+                t.write(cid, hoid, 0, bl1.length(), bl1);
+                r = queue_transaction(store, ch, std::move(t));
+                ASSERT_EQ(r, 0);
+
+                bufferlist in;
+
+                r = store->read(ch, hoid, 0, bl1.length(), in);
+                cerr << " read oid: " << hoid << ",  retcode: " << r
+                     << " written bl length: " << in.length()
+                     << " read bl length: " << bl1.length()
+                     << ", written hash: " << ceph_str_hash_linux(bl1.c_str(), bl1.length())
+                     << ", read hash: " << ceph_str_hash_linux(in.c_str(), in.length())
+                     << std::endl;
+
+                ASSERT_EQ(r, bl1.length());
+                ASSERT_EQ(r, in.length());
+                ASSERT_EQ(ceph_str_hash_linux(in.c_str(), in.length()), ceph_str_hash_linux(bl1.c_str(), bl1.length()));
+                ASSERT_EQ(bl1.length(),in.length());
+                ASSERT_TRUE(bl_eq(in, bl1));
+
+                in.clear();
+
+            }
+            bl1.clear();
+        }
+
+        cerr << " ALL clear" << std::endl;
+
+    }
+    exit(1);
+}
+
 #if 0
 TEST_P(KvsStoreTest, MergeCollection) {
     int common_suffix_size = 5;
@@ -188,7 +258,7 @@ TEST_P(KvsStoreTest, MergeCollectionTest){
         ASSERT_EQ(r, 0);
     }
 }
-#endif
+
 
 template<typename T, typename O>
 inline void check_objects_in_collection(O &store, T ch, int expected, const std::string &name){
@@ -2871,7 +2941,7 @@ TEST_P(KvsStoreTest, SimpleWriteReadTest1){
   }
 
 }
-
+#endif
 
 // instantiation
 INSTANTIATE_TEST_CASE_P(
