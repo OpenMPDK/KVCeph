@@ -483,17 +483,9 @@ void KvsStore::_txc_write_nodes(KvsTransContext *txc) {
 		bufferlist bl;
         {
             auto p = bl.get_contiguous_appender(bound, true);
-            //char *old = p.get_pos();
-            //TR << "ONODE WRITE oid " << o->oid << "initial pos = " << (void*)old ;
             denc(o->onode, p);
-            //TR << "ONODE WRITE oid " << o->oid << "new pos = " << (void*)p.get_pos() << " bytes written = " << p.get_pos() - old;
         }
 
-        //TR << "ONODE WRITE oid, contents = " << bl.c_str() ;
-        //TR << "ONODE WRITE oid " << o->oid << ", onode size = " << o->onode.size << ", bl length " << bl.length() ;
-        if (bl.length() == 0) {
-            ceph_abort_msg("bl length == 0");
-        }
 		db.add_onode(&txc->ioc, o->oid, bl);
 
 		o->flushing_count++;
@@ -683,6 +675,7 @@ void KvsStore::_txc_finish(KvsTransContext *txc) {
 		if (osr->q.empty()) {
 			dout(20) << __func__ << " osr " << osr << " q now empty" << dendl;
 			empty = true;
+			TR << "osr is empty now";
 		}
 		if (notify || empty) {
 			osr->qcond.notify_all();
@@ -3004,7 +2997,6 @@ int KvsStore::_write(KvsTransContext *txc, CollectionRef &c, OnodeRef &o,
 		r = datao.write(offset, *bl, [&] (char* data, int pageid, uint32_t &nread)->int {
 			return db.read_block(o->oid, pageid, data, nread);
 		});
-
 	} else { // fill zero
 		r = datao.zero(offset, length, [&] (char* data, int pageid, uint32_t &nread)->int  {
             return db.read_block(o->oid, pageid, data, nread);
@@ -3055,10 +3047,6 @@ void KvsStore::_txc_aio_submit(KvsTransContext *txc) {
 	for (auto &obj: txc->databuffers) {
 		KvsStoreDataObject &datao = obj.second;
 		datao.list_pages([&] (int pageid, char *data, int length) {
-		    if (length <= 0 || length > 1000000000) {
-		        TR << "pageid = " << pageid << ", length == " << length ;
-		        ceph_abort_msg("length == 0");
-		    }
 			db.add_userdata(&txc->ioc, obj.first, data, length, pageid);
 		});
         {

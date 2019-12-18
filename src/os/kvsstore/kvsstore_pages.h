@@ -49,13 +49,17 @@ struct KvsPage {
 
  public:
   KvsPage(size_t page_size, uint64_t offset_): offset(offset_), length(page_size)  {
-      FTRACE
+      //TR << "KvsPage: offset " << offset << ", pagesize = " << page_size;
       data = (char*) malloc(page_size);
+      if (data == 0) {
+          TR << "malloc failed, page size = " << page_size;
+          exit(1);
+      }
   }
 
   ~KvsPage() {
-      FTRACE
-      free(data);
+      //TR << "KvsPage: free data " << (void*)data;
+      if (data) free(data);
   }
 
 };
@@ -122,31 +126,30 @@ class KvsPageSet {
 
       if (it == pages.end()) {
           page = new KvsPage(page_size, page_offset);
-          pages.insert(it, { page_offset, page });
+          page->length = length;
 
-          if (offset > page->offset) {
+          TR << "prepare 1 page->data = " << (void *) page->data;
+          pages.insert({ page_offset, page });
+
+          if (offset > 0 && offset < page_size) {
               int ret = page_loader(page->data, page_offset / page_size, page->length);
 
               if (ret != 0) {
+                  TR << "prepare 2 fill offset " << offset ;
                   // page does not exist. fill 0 from page offset to offset
-                  std::fill(page->data, page->data + offset - page->offset, 0);
+                  std::fill(page->data, page->data + offset, 0);
               }
-              if (!last)
-                assert(page->length == page_size);
           }
-          if (last) {
-              page->length = length;
-          }
-          if (!last && offset + length < page->offset + page->length)
-              std::fill(page->data + offset + length - page->offset, page->data + page->length, 0);
       } else {
+          TR << "existing page";
           page = it->second;
+          TR << "existing page data = " << (void*)page->data << ", length = " << page->length;
       }
       return page;
   }
 
     template <typename Functor>
-    inline KvsPage* load_page(const uint64_t offset, const uint64_t page_offset, Functor &&page_loader, bool last)
+    inline KvsPage* load_page(const uint64_t offset, const uint64_t page_offset, int pgid, Functor &&page_loader, bool last)
     {
         auto it = pages.find(page_offset);
 
@@ -154,7 +157,7 @@ class KvsPageSet {
             auto page = new KvsPage(page_size, page_offset);
             pages.insert(it, { page_offset, page });
 
-            int ret = page_loader(page->data, page_offset / page_size, page->length);
+            int ret = page_loader(page->data, pgid, page->length);
             if (ret != 0) { return 0; }
 
             if (!last) {
@@ -178,13 +181,15 @@ class KvsPageSet {
     std::lock_guard<lock_type> lock(mutex);
 
     for (pgid = 0; pgid < num_pages -1 ; pgid++) {
-        range.push_back(prepare_page_for_write(offset, length, page_offset, page_loader, false));
+        //TR << "pgid = " << pgid << ", off = " << offset << ", len = " << length << ", pg off " << page_offset;
+        range.push_back(prepare_page_for_write(offset, page_size, page_offset, page_loader, false));
         length      -= page_size;
         page_offset += page_size;
     }
 
     // last page
-      range.push_back(prepare_page_for_write(offset, length, page_offset, page_loader, true));
+    //TR << "pgid = " << pgid << ", off = " << offset << ", len = " << length << ", pg off " << page_offset;
+    range.push_back(prepare_page_for_write(offset, length, page_offset, page_loader, true));
 
   }
 
@@ -200,7 +205,7 @@ class KvsPageSet {
       std::lock_guard<lock_type> lock(mutex);
 
       for (pgid = 0; pgid < num_pages -1 ; pgid++) {
-          KvsPage *p = load_page(offset, page_offset, page_loader, false);
+          KvsPage *p = load_page(offset, page_offset, pgid, page_loader, false);
           if (p == 0) { range.clear(); return false; }
 
           range.push_back(p);
@@ -209,7 +214,7 @@ class KvsPageSet {
       }
 
       // last page
-      KvsPage *p = load_page(offset, page_offset, page_loader, true);
+      KvsPage *p = load_page(offset, page_offset, pgid, page_loader, true);
       if (p == 0) { range.clear(); return false; }
 
       range.push_back(p);

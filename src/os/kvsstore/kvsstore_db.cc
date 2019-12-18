@@ -371,14 +371,15 @@ int KvsStoreDB::write_journal(KvsTransContext *txc) {
 		value.length = p->journal_buffer_pos;
 		value.value  = p->journal_buffer;
 
-		//TR << "[JOURNAL] write : num entries " << *p->num_io_pos << ", length " << p->journal_buffer_pos ;
-		ret = kadi.sync_write(KEYSPACE_JOURNAL, &value, [] (struct nvme_passthru_kv_cmd& cmd) {
-			const uint64_t id = KvsJournal::journal_index++;
-			cmd.key_length = construct_journalkey_impl(cmd.key, id);
-		});
+		if (value.length > 4) { // flush if not empty
+            //TR << "[JOURNAL] write : num entries " << *p->num_io_pos << ", length " << p->journal_buffer_pos ;
+            ret = kadi.sync_write(KEYSPACE_JOURNAL, &value, [](struct nvme_passthru_kv_cmd &cmd) {
+                const uint64_t id = KvsJournal::journal_index++;
+                cmd.key_length = construct_journalkey_impl(cmd.key, id);
+            });
 
-		if (ret != 0) return ret;
-
+            if (ret != 0) return ret;
+        }
 		delete p;	// delete journal object
 	}
 
@@ -418,7 +419,7 @@ int KvsStoreDB::aio_submit(KvsTransContext *txc)
             if (res != 0) return res;
         }
 
-        res = kadi.batch_submit_aio(&txc->ioc.batchctx, 0, { txc_data_callback, static_cast<void*>(txc) });
+        //res = kadi.batch_submit_aio(&txc->ioc.batchctx, 0, { txc_data_callback, static_cast<void*>(txc) });
     }
     return res;
 }

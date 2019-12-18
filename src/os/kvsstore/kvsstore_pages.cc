@@ -105,23 +105,24 @@ int KvsStoreDataObject::write(uint64_t offset, bufferlist &src, Functor &&page_l
     // make sure the page range is allocated
     data.alloc_range(offset, src.length(), tls_pages, page_loader);
 
-    auto page = tls_pages.begin();
+
+    //auto page = tls_pages.begin();
 
     auto p = src.begin();
-    while (len > 0) {
-        unsigned page_offset = offset - (*page)->offset;
-        unsigned pageoff = data.get_page_size() - page_offset;
-        unsigned count = std::min(len, pageoff);
-        p.copy(count, (*page)->data + page_offset);
-        offset += count;
-        len -= count;
-        if (count == pageoff)
-            ++page;
+
+    for (KvsPage *pg : tls_pages) {
+        unsigned page_offset = offset - pg->offset;
+        //TR << ", pg = " << (void*)pg << ", page offset " << page_offset << ", page length = " << pg->length << ", remaining " << len;
+        p.copy(pg->length, pg->data + page_offset);
+        offset += pg->length;
+        len -= pg->length;
     }
 
     if (data_len < offset)
         data_len = offset;
+
     tls_pages.clear(); // drop page refs
+
     return 0;
 }
 

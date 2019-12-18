@@ -431,8 +431,6 @@ public:
 
     //# Protect zombie_osr_set -------------------------------------
 
-    // TODO: check next_sequencer_id in Bluestore
-
     std::mutex zombie_osr_lock; // = ceph::make_mutex("KvsStore::zombie_osr_lock");
     uint32_t next_sequencer_id = 0;
     std::map<coll_t,OpSequencerRef> zombie_osr_set;
