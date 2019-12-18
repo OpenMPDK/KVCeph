@@ -128,7 +128,7 @@ public:
           page = new KvsPage(page_size, page_offset);
           page->length = length;
 
-          TR << "prepare 1 page->data = " << (void *) page->data;
+          //TR << "prepare 1 page->data = " << (void *) page->data;
           pages.insert({ page_offset, page });
 
           if (offset > 0 && offset < page_size) {
@@ -141,9 +141,9 @@ public:
               }
           }
       } else {
-          TR << "existing page";
+          //TR << "existing page";
           page = it->second;
-          TR << "existing page data = " << (void*)page->data << ", length = " << page->length;
+          //TR << "existing page data = " << (void*)page->data << ", length = " << page->length;
       }
       return page;
   }
