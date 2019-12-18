@@ -149,12 +149,13 @@ struct FtraceObject {
 
 #define FTRACE FtraceObject fobj(__FUNCTION__, __LINE__);
 #define TR FLOG << pthread_self() << "[" << __FILENAME__ << ":"  << __LINE__ << "] "
-
+#define TRBACKTRACE { ostringstream oss; oss << BackTrace(1); FLOG << pthread_self() << "[" << __FILENAME__ << ":"  << __LINE__ << "] " << "Backtrace: " << oss.str(); }
 #else
 #define FTRACE
 #define TR if (false) std::cout
 #define LOGOSD if (false) std::cout
 #define LOGEND ""
+#define TRBACKTRACE
 #endif
 
 
@@ -198,8 +199,8 @@ inline std::string print_kvssd_key(const std::string &str)
 // Backtrace
 // -----------------------------------------------------------
 
-#define BACKTRACE(cct) ({ ostringstream oss; oss << BackTrace(1); lderr(cct) << oss.str() << dendl; })
-//#define BACKTRACE ({ ostringstream oss; oss << BackTrace(1); lderr(cct) << oss.str() << dendl; })
+//#define BACKTRACE(cct) ({ ostringstream oss; oss << BackTrace(1); lderr(cct) << oss.str() << dendl; })
+
 
 
 #define NOTSUPPORTED_EXIT do { std::string msg = std::string(__func__ ) + " is not implemented yet";  /* BACKTRACE(msg); */ derr << msg << dendl; return 0; } while (0)

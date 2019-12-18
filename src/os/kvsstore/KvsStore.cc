@@ -2466,6 +2466,7 @@ int KvsStore::getattr(CollectionHandle &c_, const ghobject_t &oid,
 		r = 0;
 	}
 	out:
+        TR << "getattr return " << r;
 		return r;
 }
 
@@ -2883,7 +2884,6 @@ void KvsStore::set_collection_commit_queue(const coll_t &cid,
 
 
 int KvsStore::set_collection_opts(const coll_t &cid, const pool_opts_t &opts) {
-	FTRACE
 	CollectionHandle ch = _get_collection(cid);
 	if (!ch)
 		return -ENOENT;
@@ -2895,7 +2895,6 @@ int KvsStore::set_collection_opts(const coll_t &cid, const pool_opts_t &opts) {
 
 int KvsStore::set_collection_opts(CollectionHandle &ch,
 		const pool_opts_t &opts) {
-	FTRACE
 	dout(15) << __func__ << " " << ch->cid << " options " << opts << dendl;
 	KvsCollection *c = static_cast<KvsCollection*>(ch.get());
 	if (!c->exists)
@@ -3109,6 +3108,7 @@ int KvsStore::_clone(KvsTransContext *txc, CollectionRef &c, OnodeRef &oldo, Ono
 		int ret = db.read_omap(oldo->oid, oldo->onode.lid, name, bl);
 		if (ret != 0) {
 			derr << "omap_get_values failed: ret = " << ret << dendl;
+			r = -ENOENT;
 		}
 		db.add_omap(&txc->ioc, newo->oid, newo->onode.lid, name, bl);
 	}
@@ -3185,15 +3185,26 @@ int KvsStore::_read_data(KvsTransContext *txc, const ghobject_t &oid, uint64_t o
 int KvsStore::omap_get_values(CollectionHandle &c_, const ghobject_t &oid,
 		const set<string> &keys, map<string, bufferlist> *out) {
 	FTRACE
+
+	TR << "omap get values oid = " << oid;
+    TRBACKTRACE
+
 	KvsCollection *c = static_cast<KvsCollection*>(c_.get());
 	std::shared_lock l(c->lock);
 	OnodeRef o = c->get_onode(oid, false);
 
+    for (const std::string &p : o->onode.omaps) {
+        TR << "omap key = " << p;
+    }
+
 	for (const std::string &p : keys) {
-		int ret = db.read_omap(oid, o->onode.lid, p, (*out)[p]);
-		if (ret != 0) {
-			derr << "omap_get_values failed: ret = " << ret << dendl;
-		}
+	    if (o->onode.omaps.find(p) != o->onode.omaps.end()) {
+            TR << "omap get values key  = " << p;
+            int ret = db.read_omap(oid, o->onode.lid, p, (*out)[p]);
+            if (ret != 0) {
+                derr << "omap_get_values failed: ret = " << ret << dendl;
+            }
+	    }
 	}
 	return 0;
 }

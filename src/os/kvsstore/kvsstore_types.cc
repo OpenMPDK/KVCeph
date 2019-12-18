@@ -72,9 +72,12 @@ void KvsOnode::flush()
 
 void KvsLruOnodeCacheShard::_trim_to(uint64_t max)
 {
-	if (max >= lru.size()) {
+    TR << "onode cache trim: max = " << max << ", LRU size = " << lru.size();
+
+    if (max >= lru.size()) {
 		return; // don't even try
 	}
+
 	uint64_t n = lru.size() - max;
 
 	auto p = lru.end();
@@ -110,6 +113,7 @@ void KvsLruOnodeCacheShard::_trim_to(uint64_t max)
 		--n;
 	}
 	num = lru.size();
+    TR << "onode cache done: new size = " << num;
 }
 
 void KvsLruBufferCacheShard::_trim_to(uint64_t max)
