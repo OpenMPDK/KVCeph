@@ -85,16 +85,23 @@ int KvsStoreDataObject::zero(uint64_t offset, unsigned len, Functor &&page_loade
 
 template<typename Functor>
 void KvsStoreDataObject::remove_object(uint64_t size, Functor &&page_remover) {
-    KvsPageSet::page_vector tls_pages;
-    data.alloc_range(0, size, tls_pages, [&](char *, int, uint32_t &) -> int {
-        return 0;
-    });
 
-    for (const auto &p : tls_pages) {
-        page_remover(p->offset);
-    }
+    const int offset = 0;
+    const int num_pages  = data.count_pages(offset, size);
+    uint64_t page_offset = offset & ~(page_size-1);
+
+    if (num_pages == 0) return;
 
     data.free_pages_after(0);
+
+    int pgid;
+    for (pgid = 0; pgid < num_pages -1 ; pgid++) {
+        page_remover(pgid);
+        size        -= page_size;
+        page_offset += page_size;
+    }
+
+    page_remover(pgid);
 }
 
 template<typename Functor>

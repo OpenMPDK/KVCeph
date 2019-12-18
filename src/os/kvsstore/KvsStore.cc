@@ -663,7 +663,7 @@ void KvsStore::_txc_finish(KvsTransContext *txc) {
 
 			dout(20) << __func__ << "  txc " << txc << " "
 								<< txc->get_state_name() << dendl;
-			if (txc->state != KvsTransContext::STATE_DONE) {
+			if (txc->state != KvsTransContext::STATE_DONE || txc->submitted == false) {
 				break;
 			}
 
@@ -3057,6 +3057,11 @@ void KvsStore::_txc_aio_submit(KvsTransContext *txc) {
 
 	db.aio_submit(txc);
 
+    if (txc->osr->kv_submitted_waiters) {
+        std::lock_guard l(txc->osr->qlock);
+        txc->osr->qcond.notify_all();
+    }
+    txc->submitted = true;
 
 }
 

@@ -177,6 +177,9 @@ inline uint8_t construct_omapkey_impl(void *keybuffer, uint64_t lid, const char 
     kvskey->isheader = (name_len == 0);
 
     memcpy((char*)keybuffer + sizeof(kvs_omap_key), name, name_len);
+
+    TR << "OMAP KVSSD KEY " << print_kvssd_key(keybuffer, (sizeof(kvs_omap_key) + name_len));
+
     return (sizeof(kvs_omap_key) + name_len);
 }
 

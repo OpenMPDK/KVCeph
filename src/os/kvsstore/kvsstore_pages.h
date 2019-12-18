@@ -82,7 +82,7 @@ class KvsPageSet {
   lock_type mutex;
 
 
-
+public:
   int count_pages(uint64_t offset, uint64_t len) const {
     // count the overlapping pages
     int count = 0;

@@ -334,6 +334,7 @@ void KvsStoreDB::rm_data(KvsIoContext *ctx,const ghobject_t& oid, int blockid){
 void KvsStoreDB::add_omap(KvsIoContext *ctx,const ghobject_t& oid, uint64_t index, const std::string &strkey, bufferlist &bl)
 {
     FTRACE
+    TR << "add omap: oid = " << oid << ", index = " << index << ", strkey = " << strkey << ", bl = " << ceph_str_hash_linux(bl.c_str(), bl.length());
 	ctx->add_pending_meta(KEYSPACE_DATA, bl, [&] (void *buffer)->uint8_t {
 		return construct_omapkey_impl(buffer, index, strkey.c_str(), strkey.length(), KEYSPACE_OMAP);
 	});
@@ -342,6 +343,7 @@ void KvsStoreDB::add_omap(KvsIoContext *ctx,const ghobject_t& oid, uint64_t inde
 void KvsStoreDB::rm_omap(KvsIoContext *ctx,const ghobject_t& oid, uint64_t index, const std::string &strkey)
 {
     FTRACE
+    TR << "rm omap: oid = " << oid << ", index = " << index << ", strkey = " << strkey;
 	ctx->add_pending_remove(KEYSPACE_OMAP, [&] (void *buffer)->uint8_t {
 		return construct_omapkey_impl(buffer, index, strkey.c_str(), strkey.length(), KEYSPACE_OMAP);
 	});
@@ -418,11 +420,8 @@ int KvsStoreDB::aio_submit(KvsTransContext *txc)
             }
             if (res != 0) return res;
         }
-        
-        if (txc->osr->kv_submitted_waiters) {
-            std::lock_guard l(txc->osr->qlock);
-            txc->osr->qcond.notify_all();
-        }
+
+
         //res = kadi.batch_submit_aio(&txc->ioc.batchctx, 0, { txc_data_callback, static_cast<void*>(txc) });
     }
     return res;

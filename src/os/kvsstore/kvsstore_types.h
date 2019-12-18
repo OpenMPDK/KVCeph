@@ -491,7 +491,7 @@ struct KvsTransContext  {
 
     uint64_t seq = 0;
     utime_t t0,t1,t2,t3,t4,t5,t6,t7,t8,t9;
-
+    bool submitted = false;
     explicit KvsTransContext(CephContext *_cct, KvsCollection *c, KvsStore *_store, KvsOpSequencer *o,
                              list<Context *> *on_commits)
         : cct(_cct), ch(c), store(_store), osr(o), ioc(_cct)
