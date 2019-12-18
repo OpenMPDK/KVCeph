@@ -3057,10 +3057,7 @@ void KvsStore::_txc_aio_submit(KvsTransContext *txc) {
 
 	db.aio_submit(txc);
 
-    if (txc->osr->kv_submitted_waiters) {
-        std::lock_guard l(txc->osr->qlock);
-        txc->osr->qcond.notify_all();
-    }
+
 }
 
 

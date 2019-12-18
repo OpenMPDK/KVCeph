@@ -418,7 +418,11 @@ int KvsStoreDB::aio_submit(KvsTransContext *txc)
             }
             if (res != 0) return res;
         }
-
+        
+        if (txc->osr->kv_submitted_waiters) {
+            std::lock_guard l(txc->osr->qlock);
+            txc->osr->qcond.notify_all();
+        }
         //res = kadi.batch_submit_aio(&txc->ioc.batchctx, 0, { txc_data_callback, static_cast<void*>(txc) });
     }
     return res;
