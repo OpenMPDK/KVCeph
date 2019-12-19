@@ -311,7 +311,7 @@ private:
                         ret = adi->kv_store_aio(ksid_skp, &value, {kv_indexnode_flush_cb, &flushctx},
                                                 [&] (struct nvme_passthru_kv_cmd& cmd){
                                                     cmd.key_length = fill_cmdkey_for_index_nodes(cmd.key, p->addr);
-                                                    TR << "store node:  key = " << print_kvssd_key((char*)cmd.key, cmd.key_length) << ", " << desc (p->addr) ;
+                                                    //TR << "store node:  key = " << print_kvssd_key((char*)cmd.key, cmd.key_length) << ", " << desc (p->addr) ;
                                                 });
 
                         break;
@@ -322,7 +322,7 @@ private:
                                                  });
                         break;
                     default:
-                        TR << "ERR: wrong op code " << p->op ;
+                        //TR << "ERR: wrong op code " << p->op ;
                         return false;
 
                 };
@@ -331,7 +331,7 @@ private:
                 if (ret != 0) { // I/O not issued
                     num_ios--;
                     if (p->op != NODE_OP_NOP) {
-                        TR << "ERR: I/O failed: op = "  << p->op ;
+                        //TR << "ERR: I/O failed: op = "  << p->op ;
                         return false;
                     }
                 }

@@ -72,7 +72,7 @@ void KvsOnode::flush()
 
 void KvsLruOnodeCacheShard::_trim_to(uint64_t max)
 {
-    TR << "onode cache trim: max = " << max << ", LRU size = " << lru.size();
+    //TR << "onode cache trim: max = " << max << ", LRU size = " << lru.size();
 
     if (max >= lru.size()) {
 		return; // don't even try
@@ -113,7 +113,7 @@ void KvsLruOnodeCacheShard::_trim_to(uint64_t max)
 		--n;
 	}
 	num = lru.size();
-    TR << "onode cache done: new size = " << num;
+    //TR << "onode cache done: new size = " << num;
 }
 
 void KvsLruBufferCacheShard::_trim_to(uint64_t max)
@@ -139,7 +139,7 @@ void KvsLruBufferCacheShard::_trim_to(uint64_t max)
 
 KvsBuffer* KvsBufferSpace::lookup_data(const ghobject_t &oid)
 {
-	KvsBuffer* o;
+	KvsBuffer* o = 0;
 	{
 		std::lock_guard l(cache->lock);
 		const auto &p = data_map.find(oid);
@@ -221,7 +221,7 @@ OnodeRef KvsCollection::get_onode(const ghobject_t &oid, bool create,
 		lderr(store->cct) << __func__ << "I/O Error: ret = " << ret << dendl;
 		ceph_abort_msg("Failed to read an onode due to an I/O error");
 	}
-    TR << __func__ << "oid is loaded " << on->oid ;
+    //TR << __func__ << "oid is loaded " << on->oid ;
 	o.reset(on);
 	return onode_map.add(oid, o);
 }

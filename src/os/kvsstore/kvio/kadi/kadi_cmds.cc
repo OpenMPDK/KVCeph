@@ -999,7 +999,7 @@ int KADI::iter_readall_aio(kv_iter_context *iter_ctx, std::list<std::pair<char*,
 	return r;
 
 error_exit:
-    TR << __func__ << ": ERROR" ;
+    std::cerr << __func__ << ": ERROR\n" ;
 	buflist.clear();
 	if (iter_ctx) iter_close(iter_ctx, space_id);
 	return r;

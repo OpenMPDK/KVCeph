@@ -44,7 +44,7 @@ static inline void set_dirty(kv_indexnode *sub_node) {
 class bptree_meta: public kv_indexnode {
 public:
     virtual void dump() {
-        TR << "bpmeta" ;
+        //TR << "bpmeta" ;
     }
 	const static int META_SIZE = 16;
     bool isnew;
@@ -203,9 +203,6 @@ public:
 	bptree_node(const bp_addr_t &addr, char *buffer, uint16_t buffer_size, bool isnew, bool leaf, int max_order_, int max_entries_):
 		kv_indexnode(addr, buffer, buffer_size), max_order(max_order_), max_entries(max_entries_) {
 
-	    if (addr == 0) {
-	        TR << "---------------WRONG ADDRESS -------------" ;
-	    }
 		if (isnew) {
 			header()->type = (leaf)? BPLUS_TREE_LEAF:BPLUS_TREE_NON_LEAF;
 			header()->children = 0;
@@ -231,11 +228,11 @@ public:
 	inline bp_addr_t* sub()  { return (bp_addr_t*)(offset_ptr() + ((max_order -1) * sizeof(bp_addr_t))); }
 
 	void dump() {
-        TR << "NODE ADDR = " << addr ;
+        /*TR << "NODE ADDR = " << addr ;
         auto keys = key();
         for (int i = 0; i < get_children(); i++) {
             TR << i << "th key addr = " << keys[i] ;
-        }
+        }*/
     }
 };
 
@@ -254,7 +251,6 @@ public:
 		param(block_size), pool(adi, ksid_skp, prefix, &param), level(0), dirty(false)
 	{
 	    FTRACE
-	    TR << ">> 2. constructing B+ tree for prefix " << prefix ;
 
 		// create or fetch root node
 		meta = pool.get_meta();
@@ -275,7 +271,7 @@ public:
 			bp_addr_t keyaddr = datanode->insert(key, length);
 			if (keyaddr != invalid_key_addr) {
                 datanode->set_dirty();
-                TR << "DN insert: DN ADDR " << desc(datanode->addr) << ", KEY ADDR " << desc(keyaddr) ;
+                //TR << "DN insert: DN ADDR " << desc(datanode->addr) << ", KEY ADDR " << desc(keyaddr) ;
 				return keyaddr;
 			}
 		}
@@ -284,7 +280,7 @@ public:
 		datanode_cache.push_back(dn);
         bp_addr_t keyaddr = dn->insert(key, length);
         dn->set_dirty();
-        TR << "DN insert: DN ADDR " << desc(dn->addr) << ", KEY ADDR " << desc(keyaddr) ;
+        //TR << "DN insert: DN ADDR " << desc(dn->addr) << ", KEY ADDR " << desc(keyaddr) ;
 		return keyaddr;
 	}
 
@@ -334,7 +330,7 @@ public:
 		set_dirty(root);
 		this->level = 1;
         this->dirty = true;
-        TR << "root node created: addr = " << desc(root->addr) ;
+        //TR << "root node created: addr = " << desc(root->addr) ;
 		return 0;
 	}
 
@@ -371,8 +367,8 @@ private:
 	/// B+ TREE ALGORITHM - INSERT
 	///
     inline bp_addr_t replicate_key(const bp_addr_t &key){
-        char *k;
-        int l;
+        char *k = 0;
+        int l = 0;
         get_key_from_datanode(key, &k, l);
         return insert_key_to_datanode(k, l);
         //std::cerr << "split key = " << std::string(k + 4, 12) << std::endl;
@@ -390,7 +386,7 @@ private:
 		bp_addr_t key = insert_key_to_datanode(userkey, keylength);
 		insert = -insert - 1;
 
-		TR << "tree insert key = " << key ;
+        //TR << "tree insert key = " << key ;
 		/* leaf is full */
 	  	if (leaf->get_children() == param.max_entries) {
 				bp_addr_t split_key;

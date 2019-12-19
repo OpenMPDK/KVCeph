@@ -178,7 +178,7 @@ inline uint8_t construct_omapkey_impl(void *keybuffer, uint64_t lid, const char 
 
     memcpy((char*)keybuffer + sizeof(kvs_omap_key), name, name_len);
 
-    TR << "OMAP KVSSD KEY " << print_kvssd_key(keybuffer, (sizeof(kvs_omap_key) + name_len));
+    //TR << "OMAP KVSSD KEY " << print_kvssd_key(keybuffer, (sizeof(kvs_omap_key) + name_len));
 
     return (sizeof(kvs_omap_key) + name_len);
 }
@@ -229,7 +229,7 @@ inline uint8_t construct_object_key(CephContext* cct, const ghobject_t& oid, voi
         ceph_abort();
     }
 
-    TR << "construct object key: oid=" << oid << ", keybuffer = " << print_kvssd_key(keybuffer, total_keylength) ;
+    //TR << "construct object key: oid=" << oid << ", keybuffer = " << print_kvssd_key(keybuffer, total_keylength) ;
     return total_keylength;
 }
 

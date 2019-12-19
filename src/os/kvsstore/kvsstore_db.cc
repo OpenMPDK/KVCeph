@@ -265,7 +265,7 @@ void KvsStoreDB::add_coll(KvsIoContext *ctx, const coll_t &cid, bufferlist &bl) 
 
 	auto keyfunc = [&] (void *buffer)->uint8_t {
 	    int l =  construct_collkey_impl(buffer, cidkey_str, cidkey_len);
-	    TR << "add_coll key = " << print_kvssd_key(std::string ((char*)buffer, l)) ;
+        //TR << "add_coll key = " << print_kvssd_key(std::string ((char*)buffer, l)) ;
 		return l;
 	};
 	ctx->add_to_journal(KEYSPACE_COLLECTION, KVS_JOURNAL_ENTRY_COLL, &bl, keyfunc);
@@ -316,9 +316,6 @@ void KvsStoreDB::rm_onode(KvsIoContext *ctx,const ghobject_t& oid){
 void KvsStoreDB::add_userdata(KvsIoContext *ctx,const ghobject_t& oid, char *page, int length, int pageid){
     FTRACE
     //TR << "add userdata: oid = " << oid << ", length = " << length << ", pageid " << pageid ;
-    if (length < 0 || length > 1000000000) {
-        TR << "debug point" ;
-    }
 	ctx->add_pending_data(KEYSPACE_DATA, page, length, [&] (void *buffer)->uint8_t {
 		return construct_object_key(cct, oid, buffer, pageid);
 	});
@@ -334,7 +331,7 @@ void KvsStoreDB::rm_data(KvsIoContext *ctx,const ghobject_t& oid, int blockid){
 void KvsStoreDB::add_omap(KvsIoContext *ctx,const ghobject_t& oid, uint64_t index, const std::string &strkey, bufferlist &bl)
 {
     FTRACE
-    TR << "add omap: oid = " << oid << ", index = " << index << ", strkey = " << strkey << ", bl = " << ceph_str_hash_linux(bl.c_str(), bl.length());
+    //TR << "add omap: oid = " << oid << ", index = " << index << ", strkey = " << strkey << ", bl = " << ceph_str_hash_linux(bl.c_str(), bl.length());
 	ctx->add_pending_meta(KEYSPACE_DATA, bl, [&] (void *buffer)->uint8_t {
 		return construct_omapkey_impl(buffer, index, strkey.c_str(), strkey.length(), KEYSPACE_OMAP);
 	});
@@ -343,7 +340,7 @@ void KvsStoreDB::add_omap(KvsIoContext *ctx,const ghobject_t& oid, uint64_t inde
 void KvsStoreDB::rm_omap(KvsIoContext *ctx,const ghobject_t& oid, uint64_t index, const std::string &strkey)
 {
     FTRACE
-    TR << "rm omap: oid = " << oid << ", index = " << index << ", strkey = " << strkey;
+    //TR << "rm omap: oid = " << oid << ", index = " << index << ", strkey = " << strkey;
 	ctx->add_pending_remove(KEYSPACE_OMAP, [&] (void *buffer)->uint8_t {
 		return construct_omapkey_impl(buffer, index, strkey.c_str(), strkey.length(), KEYSPACE_OMAP);
 	});
@@ -458,10 +455,10 @@ uint64_t KvsStoreDB::compact() {
             //TR  << "opcode = " << opcode << ", key = " << print_key((const char*)key, length) << ", length = " << length ;
 
 			if (opcode == nvme_cmd_kv_store) {
-                TR << "tree-insert " << treename << ", key: " << print_kvssd_key(std::string((char*)key,length)) ;
+                //TR << "tree-insert " << treename << ", key: " << print_kvssd_key(std::string((char*)key,length)) ;
                 tree->insert((char*)key, length);
 			} else if (opcode == nvme_cmd_kv_delete) {
-                TR << "tree-remove " << treename << ", key: " << print_kvssd_key(std::string((char*)key,length)) ;
+                //TR << "tree-remove " << treename << ", key: " << print_kvssd_key(std::string((char*)key,length)) ;
                 tree->remove((char*)key, length);
 			}
 

@@ -8,52 +8,32 @@ int KvsStoreDataObject::read(uint64_t offset, uint64_t len, bufferlist &bl, Func
     const auto end = offset + len;
     auto remaining = len;
 
-    TR << "prepare range";
+    //TR << "prepare range";
 
     KvsPageSet::page_vector tls_pages;
     bool suc = data.get_range(offset, len, tls_pages, page_loader);
 
     if (!suc) {
-        TR << "read failed - tls pages clear";
+        //TR << "read failed - tls pages clear";
         tls_pages.clear();
-        return -1;
+        return -ENOENT;
     }
 
-    TR << "range is ready: " << tls_pages.size();
 
-    // allocate a buffer for the data
-    buffer::ptr buf(len);
-
-    auto p = tls_pages.begin();
-    while (remaining) {
-
-        // no more pages in range
-        if (p == tls_pages.end() || (*p)->offset >= end) {
-            buf.zero(offset - start, remaining);
-            break;
-        }
-
-        auto page = *p;
-
-        // read from page
-        const auto page_offset = offset - page->offset;
-
-        const auto count = std::min(remaining, /*data.get_page_size()*/ (uint64_t) page->length);
-
-        buf.copy_in(offset - start, count, page->data + page_offset);
-
-        remaining -= count;
-        offset += count;
-
-        ++p;
+    uint64_t sum_length = 0;
+    for (KvsPage *pg : tls_pages) {
+        TR << "copy " << pg->length << " bytes, current = " << sum_length << "/" << len;
+        bl.append(pg->data, pg->length);
+        sum_length+= pg->length;
     }
 
-    tls_pages.clear(); // drop page refs
 
-    bl.append(std::move(buf));
-
-    TR << "read done bl = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", bl length = " << bl.length();
-    return len;
+    TR<< "read done. length = " << bl.length() << ", len = " << len;
+    if (bl.length() != len) {
+        ceph_abort_msg("read failed");
+    }
+    //TR << "read done bl = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", bl length = " << bl.length();
+    return bl.length();
 }
 
 template<typename Functor>

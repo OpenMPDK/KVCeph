@@ -13,7 +13,7 @@ adi(adi_), ksid_skp(ksid_skp_), prefix(prefix_), param(param_)
 {
     FTRACE
 	meta = _fetch_meta();
-	TR << "meta = " << meta ;
+    //TR << "meta = " << meta ;
 	//next_pgid = meta->get_last_pgid();
 }
 
@@ -62,12 +62,12 @@ void bptree_pool::flush(const bp_addr_t &newrootaddr) {
 
 	meta->set_next_pgid(next_pgid);
 	meta->set_root_addr(newrootaddr);
-    TR << "FLUSH meta root->addr = " << desc(meta->get_root_addr()) << " next pgid  = " << next_pgid ;
+    //TR << "FLUSH meta root->addr = " << desc(meta->get_root_addr()) << " next pgid  = " << next_pgid ;
 
 	meta->set_dirty();
 
 
-    TR << "Nodepool Flush - set meta - rootaddr = " << newrootaddr << ", get_root_addr = " << meta->get_root_addr() << ", meta addr = " << meta->addr;
+    //TR << "Nodepool Flush - set meta - rootaddr = " << newrootaddr << ", get_root_addr = " << meta->get_root_addr() << ", meta addr = " << meta->addr;
 	_flush_dirtylist();
 }
 

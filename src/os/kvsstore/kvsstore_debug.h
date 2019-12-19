@@ -24,7 +24,7 @@
 #define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 
 #define ENABLE_FTRACE
-#define ENABLE_IOTRACE
+//#define ENABLE_IOTRACE
 
 #ifdef ENABLE_FTRACE
 
@@ -164,8 +164,8 @@ struct FtraceObject {
 template<typename T>
 inline void assert_equals(const T &t1, const T &t2, const std::string &msg) {
     if (t1 != t2) {
-        TR << "ASSERT FAILURE: " << msg ;
-        TR << "NOT EQUAL: " << t1 << " != " << t2 ;
+        //TR << "ASSERT FAILURE: " << msg ;
+        //TR << "NOT EQUAL: " << t1 << " != " << t2 ;
         exit(1);
     }
 }

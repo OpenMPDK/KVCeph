@@ -52,7 +52,7 @@ struct KvsPage {
       //TR << "KvsPage: offset " << offset << ", pagesize = " << page_size;
       data = (char*) malloc(page_size);
       if (data == 0) {
-          TR << "malloc failed, page size = " << page_size;
+          //TR << "malloc failed, page size = " << page_size;
           exit(1);
       }
   }
@@ -135,7 +135,7 @@ public:
               int ret = page_loader(page->data, page_offset / page_size, page->length);
 
               if (ret != 0) {
-                  TR << "prepare 2 fill offset " << offset ;
+                  //TR << "prepare 2 fill offset " << offset ;
                   // page does not exist. fill 0 from page offset to offset
                   std::fill(page->data, page->data + offset, 0);
               }
@@ -154,11 +154,14 @@ public:
         auto it = pages.find(page_offset);
 
         if (it == pages.end()) {
+
             auto page = new KvsPage(page_size, page_offset);
             pages.insert(it, { page_offset, page });
 
             int ret = page_loader(page->data, pgid, page->length);
             if (ret != 0) { return 0; }
+
+
 
             if (!last) {
                 assert(page->length == page_size);

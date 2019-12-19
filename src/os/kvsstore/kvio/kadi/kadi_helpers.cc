@@ -162,7 +162,7 @@ bool opbuf_reader::nextkey(int *optype, void **key, int *length)
 
     *key    = (((char*)buf)+bufoffset);
 
-   	TR << "key found: " << print_key((const char*)(((char*)buf)+bufoffset), *length ) << ", length = " << *length ;
+    //TR << "key found: " << print_key((const char*)(((char*)buf)+bufoffset), *length ) << ", length = " << *length ;
 
     bufoffset += ((entry->keysize -1) / 16 +  1) * 16;
     curkeyid++;
