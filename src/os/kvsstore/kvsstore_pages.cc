@@ -4,9 +4,6 @@
 template<typename Functor>
 int KvsStoreDataObject::read(uint64_t offset, uint64_t len, bufferlist &bl, Functor &&page_loader) {
     FTRACE
-    const auto start = offset;
-    const auto end = offset + len;
-    auto remaining = len;
 
     //TR << "prepare range";
 
@@ -24,18 +21,7 @@ int KvsStoreDataObject::read(uint64_t offset, uint64_t len, bufferlist &bl, Func
    
     for (KvsPage *pg : tls_pages) {
         unsigned pgoff = offset - pg->offset;
-        int toread = std::min(len, (uint64_t)pg->length);
-	/*int pgoff = 0;
-
-        if (offset > pg->offset && offset < pg->offset + page_size) {
-            pgoff = offset - pg->offset;
-        }*/
-		
-        TR << "copy " << toread << " bytes, current = " << sum_length << "/" << len;
-        TR << "pgoff = " << pgoff;
-        if (len == 10) {
-           TR << "content = " << std::string(pg->data + pgoff, 10);
-        }
+        int toread = std::min(len, page_size);
 
         bl.append(pg->data + pgoff, toread);
         offset += pg->length;
@@ -43,14 +29,41 @@ int KvsStoreDataObject::read(uint64_t offset, uint64_t len, bufferlist &bl, Func
         sum_length+= pg->length;
     }
 
-
-    if (bl.length() != len) {
-        ceph_abort_msg("read failed");
-    }
     TR << "read done bl = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", bl length = " << bl.length()<< "/" << len;
     return bl.length();
 }
 
+template<typename Functor>
+int KvsStoreDataObject::write(uint64_t offset, bufferlist &src, Functor &&page_loader) {
+    uint64_t len = src.length();
+
+    KvsPageSet::page_vector tls_pages;
+    // make sure the page range is allocated
+    data.alloc_range(offset, src.length(), tls_pages, page_loader);
+
+    auto p = src.begin();
+
+    if (len < page_size) {
+        TR << "write - source data " << std::string(src.c_str(), src.length());
+    }
+    for (KvsPage *pg : tls_pages) {
+        unsigned page_offset = offset - pg->offset;
+        TR << ", pg = " << (void*)pg << ", page offset " << page_offset << ", page length = " << pg->length << ", remaining " << len;
+        p.copy(std::min(len, page_size), pg->data + page_offset);
+
+        if (len < page_size)
+            TR << "written - content = " << std::string(pg->data+page_offset, pg->length);
+        offset += pg->length;
+        len -= pg->length;
+    }
+
+    if (data_len < offset)
+        data_len = offset;
+
+    tls_pages.clear(); // drop page refs
+
+    return 0;
+}
 template<typename Functor>
 int KvsStoreDataObject::zero(uint64_t offset, unsigned len, Functor &&page_loader) {
 
@@ -99,41 +112,6 @@ void KvsStoreDataObject::remove_object(uint64_t size, Functor &&page_remover) {
     page_remover(pgid);
 }
 
-template<typename Functor>
-int KvsStoreDataObject::write(uint64_t offset, bufferlist &src, Functor &&page_loader) {
-    uint64_t len = src.length();
-
-    KvsPageSet::page_vector tls_pages;
-    // make sure the page range is allocated
-    data.alloc_range(offset, src.length(), tls_pages, page_loader);
-
-
-    //auto page = tls_pages.begin();
-
-    auto p = src.begin();
-
-
-    if (len < page_size) {
-       TR << "write - source data " << std::string(src.c_str(), src.length()); 
-    }
-    for (KvsPage *pg : tls_pages) {
-        unsigned page_offset = offset - pg->offset;
-        TR << ", pg = " << (void*)pg << ", page offset " << page_offset << ", page length = " << pg->length << ", remaining " << len;
-        p.copy(std::min(len, (uint64_t)pg->length), pg->data + page_offset);
-
-        if (len < page_size)
-           TR << "written - content = " << std::string(pg->data+page_offset, pg->length);
-        offset += pg->length;
-        len -= pg->length;
-    }
-
-    if (data_len < offset)
-        data_len = offset;
-
-    tls_pages.clear(); // drop page refs
-
-    return 0;
-}
 
 template<typename Functor>
 int KvsStoreDataObject::clone(KvsStoreDataObject *src, uint64_t srcoff,

@@ -117,7 +117,31 @@ public:
   size_t size() const { return pages.size(); }
   size_t get_page_size() const { return page_size; }
 
-  // allocate all pages that intersect the range [offset,length)
+    template <typename Functor>
+    void alloc_range(uint64_t offset, uint64_t length, page_vector &range, Functor &&page_loader) {
+        FTRACE
+        if (length == 0) return;
+
+        int pgid;
+        const int num_pages = count_pages(offset, length);
+        uint64_t page_offset = offset & ~(page_size-1);
+
+        std::lock_guard<lock_type> lock(mutex);
+
+        for (pgid = 0; pgid < num_pages -1 ; pgid++) {
+            TR << "pgid = " << pgid << ", off = " << offset << ", len = " << length << ", pg off " << page_offset;
+            range.push_back(prepare_page_for_write(offset, page_size, page_offset, page_loader, false));
+            length      -= page_size;
+            page_offset += page_size;
+        }
+
+        // last page
+        TR << "pgid = " << pgid << ", off = " << offset << ", len = " << length << ", pg off " << page_offset;
+        range.push_back(prepare_page_for_write(offset, length, page_offset, page_loader, true));
+
+    }
+
+  // allocate page, length = actual size of data
   template <typename Functor>
   inline KvsPage* prepare_page_for_write(const uint64_t offset, const uint64_t length, const uint64_t page_offset, Functor &&page_loader, bool last)
   {
@@ -126,12 +150,10 @@ public:
 
       if (it == pages.end()) {
           page = new KvsPage(page_size, page_offset);
-          page->length = length;
 
-          //TR << "prepare 1 page->data = " << (void *) page->data;
           pages.insert({ page_offset, page });
 
-          if (offset > 0 && offset < page_size) {
+          if (offset > 0 && offset < page_size) { // first page only
               int ret = page_loader(page->data, page_offset / page_size, page->length);
 
               if (ret != 0) {
@@ -145,6 +167,8 @@ public:
           page = it->second;
           //TR << "existing page data = " << (void*)page->data << ", length = " << page->length;
       }
+
+      page->length = length;
       return page;
   }
 
@@ -161,41 +185,11 @@ public:
             int ret = page_loader(page->data, pgid, page->length);
             if (ret != 0) { return 0; }
 
-
-
-            if (!last) {
-                //TR << "check  page->length vs page_size " << page->length << ","<<page_size;
-                assert(page->length == page_size);
-            }
             return page;
         } else {
             return it->second;
         }
     }
-
-  template <typename Functor>
-  void alloc_range(uint64_t offset, uint64_t length, page_vector &range, Functor &&page_loader) {
-      FTRACE
-    if (length == 0) return;
-
-    int pgid;
-    const int num_pages = count_pages(offset, length);
-    uint64_t page_offset = offset & ~(page_size-1);
-
-    std::lock_guard<lock_type> lock(mutex);
-
-    for (pgid = 0; pgid < num_pages -1 ; pgid++) {
-        TR << "pgid = " << pgid << ", off = " << offset << ", len = " << length << ", pg off " << page_offset;
-        range.push_back(prepare_page_for_write(offset, page_size, page_offset, page_loader, false));
-        length      -= page_size;
-        page_offset += page_size;
-    }
-
-    // last page
-    TR << "pgid = " << pgid << ", off = " << offset << ", len = " << length << ", pg off " << page_offset;
-    range.push_back(prepare_page_for_write(offset, length, page_offset, page_loader, true));
-
-  }
 
   // return all allocated pages that intersect the range [offset,length)
   bool get_range(uint64_t offset, uint64_t length, page_vector &range, const std::function< int (char *, int, uint32_t&) > &page_loader) {
@@ -211,7 +205,7 @@ public:
       for (pgid = 0; pgid < num_pages -1 ; pgid++) {
           KvsPage *p = load_page(offset, page_offset, pgid, page_loader, false);
           if (p == 0) { range.clear(); return false; }
-          //TR << "get_range: page length = " << p->length;
+          TR << "get_range: page length = " << p->length;
           range.push_back(p);
           length      -= page_size;
           page_offset += page_size;
