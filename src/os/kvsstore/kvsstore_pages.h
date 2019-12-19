@@ -125,10 +125,10 @@ public:
         const int num_pages = count_pages(offset, length);
         uint64_t page_offset = offset & ~(page_size-1);
         int pgid = page_offset / page_size;
-
+	const int endpgid = pgid + num_pages -1;
         std::lock_guard<lock_type> lock(mutex);
 
-        for (; pgid < num_pages -1 ; pgid++) {
+        for (; pgid < endpgid ; pgid++) {
             TR << "pgid = " << pgid << ", off = " << offset << ", len = " << length << ", pg off " << page_offset;
             range.push_back(prepare_page_for_write(offset, page_size, page_offset, page_loader, false));
             length      -= page_size;
@@ -200,10 +200,10 @@ public:
       const int num_pages = count_pages(offset, length);
       uint64_t page_offset = offset & ~(page_size-1);
       int pgid = page_offset / page_size;
-
+      const int endpgid = pgid + num_pages -1;
       std::lock_guard<lock_type> lock(mutex);
 
-      for (; pgid < num_pages -1 ; pgid++) {
+      for (; pgid < endpgid ; pgid++) {
           KvsPage *p = load_page(offset, page_offset, pgid, page_loader, false);
           if (p == 0) { range.clear(); return false; }
           //TR << "get_range: page length = " << p->length;
