@@ -344,10 +344,10 @@ int KADI::kv_retrieve_sync(uint8_t space_id, kv_key *key, kv_value *value) {
 #ifdef ENABLE_IOTRACE
     if (ret == 0) {
         TR << "<kv_retrieve_sync> " << print_kvssd_key(std::string((const char*)key->key, key->length))
-           << ", value = " << value->value << ", offset = " << value->offset << ", value length = " << std::min(cmd.result, value->length) << ", hash " << ceph_str_hash_linux((const char*)value->value, value->length)<< " OK" ;
+           << ", value = " << value->value << ", offset = " << value->offset<< ", actual length " << value->actual_value_size  << ", value length = " << std::min(cmd.result, value->length) << ", hash " << ceph_str_hash_linux((const char*)value->value, value->length)<< " OK" ;
     } else {
         TR << "<kv_retrieve_sync> " << print_kvssd_key(std::string((const char*)key->key, key->length))
-           << ", value = " << value->value << ", offset = " << value->offset << ", value length = " << value->length
+           << ", value = " << value->value << ", offset = " << value->offset << ", actual length " << value->actual_value_size << ", value length = " << value->length
            << ", retcode = " << ret << ", FAILED" ;
     }
 #endif
@@ -391,10 +391,10 @@ int KADI::kv_retrieve_sync(uint8_t space_id, kv_value *value, const std::functio
     }
     if (ret == 0) {
         TR << "<kv_retrieve_sync> " << print_kvssd_key((const char*)keyptr, cmd.key_length)
-           << ", value = " << value->value << ", value offset = " << value->offset<< ", value length = " << std::min(cmd.result, value->length) << ", hash " << ceph_str_hash_linux((const char*)value->value, value->length)<< " OK" ;
+           << ", value = " << value->value << ", value offset = " << value->offset << ", actual length " << value->actual_value_size << ", value length = " << std::min(cmd.result, value->length) << ", hash " << ceph_str_hash_linux((const char*)value->value, value->length)<< " OK" ;
     } else {
         TR << "<kv_retrieve_sync> " << print_kvssd_key((const char*)keyptr, cmd.key_length)
-           << ", value = " << value->value << ", value offset = " << value->offset << ", value length = " << value->length
+           << ", value = " << value->value << ", value offset = " << value->offset << ", actual length " << value->actual_value_size  << ", value length = " << value->length
            << ", retcode = " << ret << ", FAILED" ;
     }
 #endif

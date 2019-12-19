@@ -24,6 +24,9 @@ int KvsStoreDataObject::read(uint64_t offset, uint64_t len, bufferlist &bl, Func
         unsigned pgoff = offset - pg->offset;
         int toread = std::min(len, page_size);
 
+        if (pgoff + toread > pg->length ) {
+            return -ENOENT;
+        }
 
         TR << "append: offset " << pg->offset << ", pgoff = " << pgoff << ", hash = " << ceph_str_hash_linux(pg->data+pgoff, toread) << ", length = " << toread;
         bl.append(pg->data + pgoff, toread);
