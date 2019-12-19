@@ -196,8 +196,13 @@ int KvsStoreDB::read_block(const ghobject_t &oid, const int blockindex, char *da
 		cmd.key_length = construct_object_key(cct, oid, long_keyaddr, blockindex);
 	});
 
-	if (ret == 0)
-		nread = value.length;
+	if (ret == 0) {
+        nread = value.length;
+        TR << "data read = " << ceph_str_hash_linux(data, nread) << ", nread = " << nread;
+    }
+	else {
+	    TR << "read failed";
+	}
 
 	return ret;
 }

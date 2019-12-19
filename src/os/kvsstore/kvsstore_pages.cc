@@ -24,18 +24,14 @@ int KvsStoreDataObject::read(uint64_t offset, uint64_t len, bufferlist &bl, Func
         unsigned pgoff = offset - pg->offset;
         int toread = std::min(len, page_size);
 
-        if (len == 10) {
-            TR << "read content1 = " << std::string(pg->data, 10);
-        }
 
+        TR << "append: offset " << pg->offset << ", pgoff = " << pgoff << ", hash = " << ceph_str_hash_linux(pg->data+pgoff, toread) << ", length = " << toread;
         bl.append(pg->data + pgoff, toread);
         offset += toread;
         len -= toread;
         sum_length+= toread;
     }
-    if (bl.length() == 10) {
-        TR << "read content = " << std::string(bl.c_str(), bl.length());
-    }
+
     TR << "read done bl = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", bl length = " << bl.length()<< "/" << len;
 
     return bl.length();

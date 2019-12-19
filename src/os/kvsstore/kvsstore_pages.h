@@ -125,7 +125,7 @@ public:
         const int num_pages = count_pages(offset, length);
         uint64_t page_offset = offset & ~(page_size-1);
         int pgid = page_offset / page_size;
-	const int endpgid = pgid + num_pages -1;
+	    const int endpgid = pgid + num_pages -1;
         std::lock_guard<lock_type> lock(mutex);
 
         for (; pgid < endpgid ; pgid++) {

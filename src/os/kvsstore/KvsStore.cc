@@ -340,7 +340,8 @@ int KvsStore::_collection_list(KvsCollection *c, const ghobject_t &start,
 				}
 				break;
 			}
-			//dout(20)<< __func__ << " key " << print_kvssd_key(it->key().key, it->key().length) << dendl;
+            TR << __func__ << " key " << it->key().key << ", length " << it->key().length;
+			TR << __func__ << " key " << print_kvssd_key(it->key().key, it->key().length);
 			kv_key key = it->key();
 			ghobject_t oid;
 			construct_onode_ghobject_t(cct, key, &oid);
@@ -2527,7 +2528,7 @@ int KvsStore::read(CollectionHandle &c_, const ghobject_t &oid, uint64_t offset,
 
 
         int ret =  _read_data(0, oid, offset, length, bl);
-        //TR << "4 read data : oid = " << oid << " offset " << offset << ", length " << length << ", hash = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", result = " << ret ;
+        TR << "4 read data : oid = " << oid << " offset " << offset << ", length " << length << ", hash = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", result = " << ret ;
         return ret;
     }
 
@@ -3171,8 +3172,8 @@ int KvsStore::_read_data(KvsTransContext *txc, const ghobject_t &oid, uint64_t o
 		    datao = &newdatao;
 	}
 
-	//TR << "read_data: oid " << oid << " offset " << offset << " length " << length ;
 	int r = datao->read(offset, length, bl, [&] (char* data, int pageid, uint32_t &nread)->int  {
+        TR << "read block: oid " << oid << ", pageid " << pageid << ", into " << (void *)data;
         return db.read_block(oid, pageid, data, nread);
 	});
 
