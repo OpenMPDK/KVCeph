@@ -164,6 +164,7 @@ public:
 
 
             if (!last) {
+                //TR << "check  page->length vs page_size " << page->length << ","<<page_size;
                 assert(page->length == page_size);
             }
             return page;
@@ -184,14 +185,14 @@ public:
     std::lock_guard<lock_type> lock(mutex);
 
     for (pgid = 0; pgid < num_pages -1 ; pgid++) {
-        //TR << "pgid = " << pgid << ", off = " << offset << ", len = " << length << ", pg off " << page_offset;
+        TR << "pgid = " << pgid << ", off = " << offset << ", len = " << length << ", pg off " << page_offset;
         range.push_back(prepare_page_for_write(offset, page_size, page_offset, page_loader, false));
         length      -= page_size;
         page_offset += page_size;
     }
 
     // last page
-    //TR << "pgid = " << pgid << ", off = " << offset << ", len = " << length << ", pg off " << page_offset;
+    TR << "pgid = " << pgid << ", off = " << offset << ", len = " << length << ", pg off " << page_offset;
     range.push_back(prepare_page_for_write(offset, length, page_offset, page_loader, true));
 
   }
@@ -210,7 +211,7 @@ public:
       for (pgid = 0; pgid < num_pages -1 ; pgid++) {
           KvsPage *p = load_page(offset, page_offset, pgid, page_loader, false);
           if (p == 0) { range.clear(); return false; }
-
+          //TR << "get_range: page length = " << p->length;
           range.push_back(p);
           length      -= page_size;
           page_offset += page_size;
