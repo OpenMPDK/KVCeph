@@ -122,13 +122,13 @@ public:
         FTRACE
         if (length == 0) return;
 
-        int pgid;
         const int num_pages = count_pages(offset, length);
         uint64_t page_offset = offset & ~(page_size-1);
+        int pgid = page_offset / page_size;
 
         std::lock_guard<lock_type> lock(mutex);
 
-        for (pgid = 0; pgid < num_pages -1 ; pgid++) {
+        for (; pgid < num_pages -1 ; pgid++) {
             TR << "pgid = " << pgid << ", off = " << offset << ", len = " << length << ", pg off " << page_offset;
             range.push_back(prepare_page_for_write(offset, page_size, page_offset, page_loader, false));
             length      -= page_size;
@@ -196,24 +196,33 @@ public:
       FTRACE
       if (length == 0) return true;
 
-      int pgid = 0;
+
       const int num_pages = count_pages(offset, length);
       uint64_t page_offset = offset & ~(page_size-1);
+      int pgid = page_offset / page_size;
 
       std::lock_guard<lock_type> lock(mutex);
 
-      for (pgid = 0; pgid < num_pages -1 ; pgid++) {
+      for (; pgid < num_pages -1 ; pgid++) {
           KvsPage *p = load_page(offset, page_offset, pgid, page_loader, false);
           if (p == 0) { range.clear(); return false; }
-          TR << "get_range: page length = " << p->length;
+          //TR << "get_range: page length = " << p->length;
           range.push_back(p);
           length      -= page_size;
           page_offset += page_size;
       }
 
+      if (length == 10) {
+          TR << "load page offset " << offset << ", page offset " << page_offset << ", pgid " << pgid;
+      }
       // last page
       KvsPage *p = load_page(offset, page_offset, pgid, page_loader, true);
       if (p == 0) { range.clear(); return false; }
+
+      if (length == 10) {
+          TR << "page loaded: content =  " << std::string(p->data, page_size) << ", length = " << p->length;
+          TR << "page loaded: content first 10 b=  " << std::string(p->data, 10) ;
+      }
 
       range.push_back(p);
       return true;

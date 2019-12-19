@@ -18,18 +18,26 @@ int KvsStoreDataObject::read(uint64_t offset, uint64_t len, bufferlist &bl, Func
 
 
     uint64_t sum_length = 0;
-   
+
+
     for (KvsPage *pg : tls_pages) {
         unsigned pgoff = offset - pg->offset;
         int toread = std::min(len, page_size);
 
-        bl.append(pg->data + pgoff, toread);
-        offset += pg->length;
-        len -= pg->length;
-        sum_length+= pg->length;
-    }
+        if (len == 10) {
+            TR << "read content1 = " << std::string(pg->data, 10);
+        }
 
+        bl.append(pg->data + pgoff, toread);
+        offset += toread;
+        len -= toread;
+        sum_length+= toread;
+    }
+    if (bl.length() == 10) {
+        TR << "read content = " << std::string(bl.c_str(), bl.length());
+    }
     TR << "read done bl = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", bl length = " << bl.length()<< "/" << len;
+
     return bl.length();
 }
 
@@ -49,12 +57,13 @@ int KvsStoreDataObject::write(uint64_t offset, bufferlist &src, Functor &&page_l
     for (KvsPage *pg : tls_pages) {
         unsigned page_offset = offset - pg->offset;
         TR << ", pg = " << (void*)pg << ", page offset " << page_offset << ", page length = " << pg->length << ", remaining " << len;
-        p.copy(std::min(len, page_size), pg->data + page_offset);
+        auto datasize = std::min(len, page_size);
+        p.copy(datasize, pg->data + page_offset);
 
         if (len < page_size)
             TR << "written - content = " << std::string(pg->data+page_offset, pg->length);
-        offset += pg->length;
-        len -= pg->length;
+        offset += datasize;
+        len -= datasize;
     }
 
     if (data_len < offset)
