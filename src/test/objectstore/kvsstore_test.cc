@@ -7,32 +7,38 @@
 
 #define DEBUG 0
 
+template<typename T, typename FUNC>
+inline void assert_eq(T a, T b, const FUNC &c) { if (a != b) return c(a, b); }
+
 template<typename T>
-inline void assert_eq(T a, T b, const std::function< void (T, T)> &c) { if (a != b) return c(a, b); }
+inline ObjectStore::CollectionHandle open_collection(T &store, coll_t &cid) {
+    auto ch = store->open_collection(cid);
+    if (!ch) {
+        ch = open_collection(store, cid);
+        ObjectStore::Transaction t;
+        t.create_collection(cid,0);
+        int r = queue_transaction(store, ch, std::move(t));
+        assert_eq(r, 0, [] (int r, int e) {
+            std::cerr << "create collection failed " << r << "!=" << e << std::endl; });
+    }
+    return ch;
+}
+
+
 
 TEST_P(KvsStoreTest, PartialWriteTest){
     coll_t cid(spg_t(pg_t(0, 1), shard_id_t(1)));// Added for iterator bug in FW
     int r;
-    // open collection
-    auto ch = store->open_collection(cid);
-    if (!ch) {
-        ch = store->create_new_collection(cid);
-        ObjectStore::Transaction t;
-        t.create_collection(cid,0);
-        r = queue_transaction(store, ch, std::move(t));
-        ASSERT_EQ(r, 0);
-    }
-
-
-
     bufferlist bl1;
     bl1.append_zero(8192*2);
     bl1.append("helloworld");
 
+    // open collection
+    auto ch = open_collection(store, cid);
+
     ghobject_t hoid(hobject_t(sobject_t("large object", CEPH_NOSNAP)));
 
-    {
-        std::cerr << "test: remove " << std::endl;
+    { std::cerr << "test: remove " << std::endl;
 
         // write a multi-page object
         ObjectStore::Transaction t;
@@ -76,12 +82,11 @@ TEST_P(KvsStoreTest, PartialWriteTest){
         ASSERT_EQ(out2.length(), 8192);
         ASSERT_EQ(ceph_str_hash_linux(bl1.c_str()+4096, out2.length()), ceph_str_hash_linux(out2.c_str(), out2.length()));
     }
-    { std::cerr << "test: append" << std::endl;
+    { std::cerr << "test: append 4B" << std::endl;
 
         bufferlist bl2;
         bl2.append("test");
 
-        // partial update 0 - 4096
         ObjectStore::Transaction t;
         t.write(cid, hoid, bl1.length(), 4, bl2);
         r = queue_transaction(store, ch, std::move(t));
@@ -96,104 +101,19 @@ TEST_P(KvsStoreTest, PartialWriteTest){
         ASSERT_EQ(r, bl1.length());
         ASSERT_EQ(out.length(), bl1.length());
         ASSERT_EQ(ceph_str_hash_linux(bl1.c_str(), out.length()), ceph_str_hash_linux(out.c_str(), out.length()));
-
     }
 
     std::cerr << "done" << std::endl;
-    exit(0);
 }
 
-TEST_P(KvsStoreTest, QuickReadWriteTest1){
-    coll_t cid(spg_t(pg_t(0, 1), shard_id_t(1)));// Added for iterator bug in FW
-    bufferlist bl;
-    bl.append("1234512345");
-    int r;
-    int NUM_OBJS = 1;
-    int NUM_UPDATES = 1;
-    set<ghobject_t> created;
-    string base = "";
-    //for (int i = 0; i < 20; ++i) base.append("a");
 
-    auto ch = store->open_collection(cid);
-    if (!ch) {
-        ch = store->create_new_collection(cid);
-        std::cerr << "create collection" << std::endl;
-        ObjectStore::Transaction t;
-        t.create_collection(cid,0);
-        r = queue_transaction(store, ch, std::move(t));
-        ASSERT_EQ(r, 0);
-    }
-    {
-        cerr << " write objects to collection" << std::endl;
-        for (int i = 0; i < NUM_OBJS; i++){
-            cerr << "Object " << i << std::endl;
-
-            char buf[100];
-            snprintf(buf, sizeof(buf), "%d", i);
-
-            bufferlist bl1;
-            bl1.append_zero(8192);
-            bl1.append("helloworld");
-
-            ghobject_t hoid(hobject_t(sobject_t(string(buf) + base, CEPH_NOSNAP)));
-            created.insert(hoid);
-
-            for (int k = 0; k < NUM_UPDATES; k++) {
-                cerr << "[" << k << "]  Object = " << hoid << " writing " << bl1.length() << " bytes" << std::endl;
-
-                ObjectStore::Transaction t;
-                t.write(cid, hoid, 0, bl1.length(), bl1);
-                r = queue_transaction(store, ch, std::move(t));
-                ASSERT_EQ(r, 0);
-
-                // ADD OMAP VALUE
-                //t.omap_setkeys(cid, hoid, omapentry);
-                // GET OMAP VALUE
-
-
-                bufferlist in;
-
-                r = store->read(ch, hoid, 8192, 10, in);
-                cerr << " read oid: " << hoid << ",  retcode: " << r
-                     << " written bl length: " << in.length()
-                     << " read bl length: " << bl1.length()
-                     << " content = " << std::string(in.c_str(), in.length())
-                     //<< ", written hash: " << ceph_str_hash_linux(bl1.c_str(), bl1.length())
-                     //<< ", read hash: " << ceph_str_hash_linux(in.c_str(), in.length())
-                     << std::endl;
-
-                r = store->read(ch, hoid, 0, bl1.length(), in);
-
-                ASSERT_EQ(r, bl1.length());
-                ASSERT_EQ(r, in.length());
-                ASSERT_EQ(ceph_str_hash_linux(in.c_str(), in.length()), ceph_str_hash_linux(bl1.c_str(), bl1.length()));
-                ASSERT_EQ(bl1.length(),in.length());
-                ASSERT_TRUE(bl_eq(in, bl1));
-
-                r = store->read(ch, hoid, 0, 4096 , in);
-                ASSERT_EQ(r, 4096);
-                ASSERT_EQ(r, in.length());
-                ASSERT_EQ(ceph_str_hash_linux(in.c_str(), in.length()), ceph_str_hash_linux(bl1.c_str(), 4096));
-
-                in.clear();
-
-            }
-            bl1.clear();
-        }
-
-        cerr << " ALL clear" << std::endl;
-
-    }
-    exit(1);
-}
-
-#if 0
+#if 1
 TEST_P(KvsStoreTest, MergeCollection) {
     int common_suffix_size = 5;
     coll_t cid1(spg_t(pg_t(0,52),shard_id_t::NO_SHARD));
     coll_t cid2(spg_t(pg_t(1<<common_suffix_size,52),shard_id_t::NO_SHARD));
-    auto c1 = store->create_new_collection(cid1);
-    auto c2 = store->create_new_collection(cid2);
+    auto c1 = open_collection(store, cid1);
+    auto c2 = open_collection(store, cid2);
 
     std::function<void(int, int)> cleanup = [&] (int r, int e) {
         if (r != e)
@@ -245,8 +165,8 @@ TEST_P(KvsStoreTest, MergeCollectionTest){
 
     coll_t cid(spg_t(pg_t(0,52),shard_id_t::NO_SHARD));
     coll_t tid(spg_t(pg_t(1<<common_suffix_size,52),shard_id_t::NO_SHARD));
-    auto ch = store->create_new_collection(cid);
-    auto tch = store->create_new_collection(tid);
+    auto ch = open_collection(store, cid);
+    auto tch = open_collection(store, tid);
     int r = 0;
     {
         cerr << " create Collection 1" << std::endl;
@@ -385,7 +305,7 @@ TEST_P(KvsStoreTest, MergeSplitCollection) {
     int common_suffix_size = 5;
     coll_t cid(spg_t(pg_t(0, 52), shard_id_t::NO_SHARD));
     coll_t tid(spg_t(pg_t(1 << common_suffix_size, 52), shard_id_t::NO_SHARD));
-    auto ch = store->create_new_collection(cid);
+    auto ch = open_collection(store, cid);
     auto tch = store->create_new_collection(tid);
 
     // create collection
@@ -488,7 +408,7 @@ TEST_P(KvsStoreTest, OpenCollectionTest) {
     bufferlist bl;
     bl.append("1234512345");
     int r;
-    auto ch = store->create_new_collection(cid);
+    auto ch = open_collection(store, cid);
     {
         cerr << "create collection + write" << std::endl;
         ObjectStore::Transaction t;
@@ -523,7 +443,7 @@ TEST_P(KvsStoreTest, OpenCollectionTest) {
     ASSERT_EQ(0, r);
     r = store->mount();
     ASSERT_EQ(0, r);
-    ch = store->create_new_collection(cid);
+    ch = open_collection(store, cid);
     {
         ObjectStore::Transaction t;
         t.create_collection(cid, 0);
@@ -548,7 +468,7 @@ TEST_P(KvsStoreTest, RemoveCollection) {
     bufferlist bl;
     bl.append("1234512345");
     int r;
-    auto ch = store->create_new_collection(cid);
+    auto ch = open_collection(store, cid);
     {
         cerr << "create collection + write" << std::endl;
         ObjectStore::Transaction t;
@@ -592,7 +512,7 @@ TEST_P(KvsStoreTest, QuickReadWriteTest){
   set<ghobject_t> created;
   string base = "";
   //for (int i = 0; i < 20; ++i) base.append("a");
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     cerr << "create collection" << std::endl;
     ObjectStore::Transaction t;
@@ -663,7 +583,7 @@ TEST_P(KvsStoreTest, SimpleRemount) {
   bufferlist bl;
   bl.append("1234512345");
   int r;
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     cerr << "create collection + write" << std::endl;
     ObjectStore::Transaction t;
@@ -698,7 +618,7 @@ TEST_P(KvsStoreTest, SimpleRemount) {
   ASSERT_EQ(0, r);
   r = store->mount();
   ASSERT_EQ(0, r);
-  ch = store->create_new_collection(cid);
+  ch = open_collection(store, cid);
   {
     ObjectStore::Transaction t;
     t.create_collection(cid, 0);
@@ -721,7 +641,7 @@ TEST_P(KvsStoreTest, IORemount) {
   bufferlist bl;
   bl.append("1234512345");
   int r;
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     cerr << "create collection + objects" << std::endl;
     ObjectStore::Transaction t;
@@ -770,7 +690,7 @@ TEST_P(KvsStoreTest, UnprintableCharsName) {
   }
   ghobject_t oid(hobject_t(sobject_t(name, CEPH_NOSNAP)));
   int r;
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     cerr << "create collection + object" << std::endl;
     ObjectStore::Transaction t;
@@ -799,7 +719,7 @@ TEST_P(KvsStoreTest, SimpleMetaColTest) {
   coll_t cid(spg_t(pg_t(0, 1), shard_id_t(5)));// Added for iterator bug in FW
   int r = 0;
   {
-    auto ch = store->create_new_collection(cid);
+    auto ch = open_collection(store, cid);
     ObjectStore::Transaction t;
     t.create_collection(cid, 0);
     cerr << "create collection" << std::endl;
@@ -815,7 +735,7 @@ TEST_P(KvsStoreTest, SimpleMetaColTest) {
     ASSERT_EQ(r, 0);
   }
   {
-    auto ch = store->create_new_collection(cid);
+    auto ch = open_collection(store, cid);
     ObjectStore::Transaction t;
     t.create_collection(cid, 0);
     cerr << "add collection" << std::endl;
@@ -838,7 +758,7 @@ TEST_P(KvsStoreTest, SimplePGColTest) {
   int r = 0;
   {
     ObjectStore::Transaction t;
-    auto ch = store->create_new_collection(cid);
+    auto ch = open_collection(store, cid);
     t.create_collection(cid, 4);
     cerr << "create collection" << std::endl;
     r = queue_transaction(store, ch, std::move(t));
@@ -856,7 +776,7 @@ TEST_P(KvsStoreTest, SimplePGColTest) {
     ObjectStore::Transaction t;
     t.create_collection(cid, 4);
     cerr << "add collection" << std::endl;
-    auto ch = store->create_new_collection(cid);
+    auto ch = open_collection(store, cid);
     r = queue_transaction(store, ch, std::move(t));
     ASSERT_EQ(r, 0);
   }
@@ -892,7 +812,7 @@ TEST_P(KvsStoreTest, SimpleColPreHashTest) {
 
   coll_t cid(spg_t(pg_t(pg_id, 15), shard_id_t::NO_SHARD));
   int r;
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     // Create a collection along with a hint
     ObjectStore::Transaction t;
@@ -920,7 +840,7 @@ TEST_P(KvsStoreTest, SimpleColPreHashTest) {
 TEST_P(KvsStoreTest, SmallBlockWrites) {
   int r;
   coll_t cid;
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   ghobject_t hoid(hobject_t(sobject_t("foo", CEPH_NOSNAP)));
   {
     ObjectStore::Transaction t;
@@ -1035,7 +955,7 @@ TEST_P(KvsStoreTest, BufferCacheReadTest) {
     auto ch = store->open_collection(cid);
     ASSERT_FALSE(ch);
   }
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     ObjectStore::Transaction t;
     t.create_collection(cid, 0);
@@ -1161,7 +1081,7 @@ TEST_P(KvsStoreTest, SimpleObjectTest) {
     auto ch = store->open_collection(cid);
     ASSERT_FALSE(ch);
   }
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     ObjectStore::Transaction t;
     t.create_collection(cid, 0);
@@ -1374,7 +1294,7 @@ TEST_P(KvsStoreTest, ManySmallWrite) {
   coll_t cid;
   ghobject_t a(hobject_t(sobject_t("Object 1", CEPH_NOSNAP)));
   ghobject_t b(hobject_t(sobject_t("Object 2", CEPH_NOSNAP)));
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     ObjectStore::Transaction t;
     t.create_collection(cid, 0);
@@ -1414,7 +1334,7 @@ TEST_P(KvsStoreTest, MultiSmallWriteSameBlock) {
   int r;
   coll_t cid;
   ghobject_t a(hobject_t(sobject_t("Object 1", CEPH_NOSNAP)));
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     ObjectStore::Transaction t;
     t.create_collection(cid, 0);
@@ -1471,7 +1391,7 @@ TEST_P(KvsStoreTest, SmallSkipFront) {
   int r;
   coll_t cid;
   ghobject_t a(hobject_t(sobject_t("Object 1", CEPH_NOSNAP)));
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     ObjectStore::Transaction t;
     t.create_collection(cid, 0);
@@ -1519,7 +1439,7 @@ TEST_P(KvsStoreTest, OMapIterator) {
   coll_t cid;
   ghobject_t hoid(hobject_t("tesomap", "", CEPH_NOSNAP, 0, 0, ""));
   int count = 0;
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   int r;
   {
     ObjectStore::Transaction t;
@@ -1624,7 +1544,7 @@ TEST_P(KvsStoreTest, OMapIterator) {
 TEST_P(KvsStoreTest, SimpleCloneRangeTest) {
   int r;
   coll_t cid;
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     ObjectStore::Transaction t;
     t.create_collection(cid, 0);
@@ -1682,7 +1602,7 @@ TEST_P(KvsStoreTest, SimpleCloneRangeTest) {
 TEST_P(KvsStoreTest, OmapSimple) {
   int r;
   coll_t cid;
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     ObjectStore::Transaction t;
     t.create_collection(cid, 0);
@@ -1750,7 +1670,7 @@ TEST_P(KvsStoreTest, OmapSimple) {
 TEST_P(KvsStoreTest, OMapTest) {
   coll_t cid;
   ghobject_t hoid(hobject_t("tesomap", "", CEPH_NOSNAP, 0, 0, ""));
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   int r;
   {
     ObjectStore::Transaction t;
@@ -1939,7 +1859,7 @@ TEST_P(KvsStoreTest, OMapTest) {
 TEST_P(KvsStoreTest, OmapCloneTest) {
   int r;
   coll_t cid;
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     ObjectStore::Transaction t;
     t.create_collection(cid, 0);
@@ -1996,7 +1916,7 @@ TEST_P(KvsStoreTest, OmapCloneTest) {
 TEST_P(KvsStoreTest, SimpleObjectLongnameTest) {
   int r;
   coll_t cid;
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     ObjectStore::Transaction t;
     t.create_collection(cid, 0);
@@ -2036,7 +1956,7 @@ ghobject_t generate_long_name(unsigned i)
 TEST_P(KvsStoreTest, LongnameSplitTest) {
   int r;
   coll_t cid;
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     ObjectStore::Transaction t;
     t.create_collection(cid, 0);
@@ -2093,7 +2013,7 @@ TEST_P(KvsStoreTest, ManyObjectTest) {
   string base = "";
   for (int i = 0; i < 100; ++i) base.append("aaaaa");
   set<ghobject_t> created;
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     ObjectStore::Transaction t;
     t.create_collection(cid, 0);
@@ -2247,7 +2167,7 @@ TEST_P(KvsStoreTest, HashCollisionTest) {
   int64_t poolid = 11;
   coll_t cid(spg_t(pg_t(0,poolid),shard_id_t::NO_SHARD));
   int r;
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     ObjectStore::Transaction t;
     t.create_collection(cid, 0);
@@ -2331,7 +2251,7 @@ TEST_P(KvsStoreTest, ScrubTest) {
   int64_t poolid = 111;
   coll_t cid(spg_t(pg_t(0, poolid),shard_id_t(1)));
   int r;
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     ObjectStore::Transaction t;
     t.create_collection(cid, 0);
@@ -2437,7 +2357,7 @@ TEST_P(KvsStoreTest, XattrTest) {
     small.append('\0');
   }
   int r;
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     ObjectStore::Transaction t;
     t.create_collection(cid, 0);
@@ -2541,7 +2461,7 @@ TEST_P(KvsStoreTest, ColSplitTest2Clones) {
 TEST_P(KvsStoreTest, TwoHash) {
   coll_t cid;
   int r;
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     ObjectStore::Transaction t;
     t.create_collection(cid, 0);
@@ -2614,7 +2534,7 @@ TEST_P(KvsStoreTest, Rename) {
   bufferlist a, b;
   a.append("foo");
   b.append("bar");
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   int r;
   {
     ObjectStore::Transaction t;
@@ -2669,7 +2589,7 @@ TEST_P(KvsStoreTest, MoveRename) {
   coll_t cid(spg_t(pg_t(0, 212),shard_id_t::NO_SHARD));
   ghobject_t temp_oid(hobject_t("tmp_oid", "", CEPH_NOSNAP, 0, 0, ""));
   ghobject_t oid(hobject_t("dest_oid", "", CEPH_NOSNAP, 0, 0, ""));
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   int r;
   {
     ObjectStore::Transaction t;
@@ -2748,7 +2668,7 @@ TEST_P(KvsStoreTest, BigRGWObjectName) {
   ghobject_t oidhead(oid);
   oidhead.generation = ghobject_t::NO_GEN;
 
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
 
   int r;
   {
@@ -2793,7 +2713,7 @@ TEST_P(KvsStoreTest, BigRGWObjectName) {
 TEST_P(KvsStoreTest, SetAllocHint) {
   coll_t cid;
   ghobject_t hoid(hobject_t("test_hint", "", CEPH_NOSNAP, 0, 0, ""));
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   int r;
   {
     ObjectStore::Transaction t;
@@ -2832,7 +2752,7 @@ TEST_P(KvsStoreTest, TryMoveRename) {
   coll_t cid;
   ghobject_t hoid(hobject_t("test_hint", "", CEPH_NOSNAP, 0, -1, ""));
   ghobject_t hoid2(hobject_t("test_hint2", "", CEPH_NOSNAP, 0, -1, ""));
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   int r;
   {
     ObjectStore::Transaction t;
@@ -2875,7 +2795,7 @@ TEST_P(KvsStoreTest, JournalReplay){
   set<ghobject_t> created;
   string base = "";
   for (int i = 0; i < 20; ++i) base.append("a");
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     cerr << "create collection" << std::endl;
     ObjectStore::Transaction t;
@@ -2979,7 +2899,7 @@ TEST_P(KvsStoreTest, SimpleWriteReadTest1){
   set<ghobject_t> created;
   string base = "";
   //for (int i = 0; i < 20; ++i) base.append("a");
-  auto ch = store->create_new_collection(cid);
+  auto ch = open_collection(store, cid);
   {
     cerr << "create collection" << std::endl;
     ObjectStore::Transaction t;

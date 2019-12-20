@@ -233,7 +233,7 @@ public:
     KvsStoreTest()
             : StoreTestFixture(GetParam())
     {}
-    };
+};
 
 // KvsStoreTest DeferredSetup
 class KvsStoreTestDeferredSetup: public KvsStoreTest {
@@ -255,11 +255,11 @@ class KvsStoreTestSpecificAUSize : public KvsStoreTestDeferredSetup{
 
 public:
     typedef std::function<void(
-        uint64_t num_ops,
-        uint64_t max_obj,
-        uint64_t max_wr,
-        uint64_t align)>
-        MatrixTest;
+            uint64_t num_ops,
+            uint64_t max_obj,
+            uint64_t max_wr,
+            uint64_t align)>
+            MatrixTest;
 
     void StartDeferred(size_t min_alloc_size)
     {

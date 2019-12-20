@@ -709,13 +709,16 @@ void KvsStore::_txc_release_alloc(KvsTransContext *txc) {
         auto &dbs = *txc->get_databuffers();
         auto cur = dbs.begin();
         auto end = dbs.end();
-	while (cur != end) {
-            cur->second->persistent = true;
-            if (cur->second->readers == 0) {
-		delete cur->second;
-		cur = dbs.erase(cur);
-            }
-	}
+        while (cur != end) {
+                cur->second->persistent = true;
+                if (cur->second->readers == 0) {
+                    delete cur->second;
+                    cur = dbs.erase(cur);
+                }
+                else {
+                    cur++;
+                }
+        }
     }
 	{
 		std::unique_lock<std::mutex> lk ( ioc->running_aio_lock );
