@@ -52,7 +52,7 @@ int KvsStoreDataObject::write(uint64_t offset, bufferlist &src, Functor &&page_l
         //TR << ", pg = " << (void*)pg << ", page offset " << page_offset << ", page length = " << pg->length << ", remaining " << len;
 
         unsigned page_offset = offset - pg->offset;
-        const auto datasize = std::min(len, page_size);
+        const auto datasize = std::min(len, page_size- page_offset);
         p.copy(datasize, pg->data + page_offset);
 
         offset += datasize;
