@@ -16,23 +16,17 @@ int KvsStoreDataObject::read(uint64_t offset, uint64_t len, bufferlist &bl, Func
         return -ENOENT;
     }
 
-
-    uint64_t sum_length = 0;
-
-
     for (KvsPage *pg : tls_pages) {
         unsigned pgoff = offset - pg->offset;
-        int toread = std::min(len, page_size);
+        int toread = std::min(len, page_size - pgoff);
 
-        if (pgoff + toread > pg->length ) {
-            return -ENOENT;
-        }
-
-        TR << "append: offset " << pg->offset << ", pgoff = " << pgoff << ", hash = " << ceph_str_hash_linux(pg->data+pgoff, toread) << ", length = " << toread;
+        /*if (toread < page_size) {
+            TR << "content = " << std::string(pg->data + pgoff, toread);
+        }*/
+        //TR << "append: offset " << pg->offset << ", pgoff = " << pgoff << ", hash = " << ceph_str_hash_linux(pg->data+pgoff, toread) << ", length = " << toread << ", len = " << len << ", toread =" << toread;
         bl.append(pg->data + pgoff, toread);
         offset += toread;
         len -= toread;
-        sum_length+= toread;
     }
 
     TR << "read done bl = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", bl length = " << bl.length()<< "/" << len;
@@ -46,7 +40,7 @@ int KvsStoreDataObject::write(uint64_t offset, bufferlist &src, Functor &&page_l
 
     KvsPageSet::page_vector tls_pages;
     // make sure the page range is allocated
-    data.alloc_range(offset, src.length(), tls_pages, page_loader);
+    data.alloc_range(offset, len, tls_pages, page_loader);
 
     auto p = src.begin();
 
@@ -54,13 +48,12 @@ int KvsStoreDataObject::write(uint64_t offset, bufferlist &src, Functor &&page_l
         TR << "write - source data " << std::string(src.c_str(), src.length());
     }*/
     for (KvsPage *pg : tls_pages) {
-        unsigned page_offset = offset - pg->offset;
         //TR << ", pg = " << (void*)pg << ", page offset " << page_offset << ", page length = " << pg->length << ", remaining " << len;
-        auto datasize = std::min(len, page_size);
+
+        unsigned page_offset = offset - pg->offset;
+        const auto datasize = std::min(len, page_size);
         p.copy(datasize, pg->data + page_offset);
 
-        //if (len < page_size)
-            //TR << "written - content = " << std::string(pg->data+page_offset, pg->length);
         offset += datasize;
         len -= datasize;
     }

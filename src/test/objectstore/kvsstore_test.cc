@@ -10,6 +10,99 @@
 template<typename T>
 inline void assert_eq(T a, T b, const std::function< void (T, T)> &c) { if (a != b) return c(a, b); }
 
+TEST_P(KvsStoreTest, PartialWriteTest){
+    coll_t cid(spg_t(pg_t(0, 1), shard_id_t(1)));// Added for iterator bug in FW
+    int r;
+    // open collection
+    auto ch = store->open_collection(cid);
+    if (!ch) {
+        ch = store->create_new_collection(cid);
+        ObjectStore::Transaction t;
+        t.create_collection(cid,0);
+        r = queue_transaction(store, ch, std::move(t));
+        ASSERT_EQ(r, 0);
+    }
+
+
+
+    bufferlist bl1;
+    bl1.append_zero(8192*2);
+    bl1.append("helloworld");
+
+    ghobject_t hoid(hobject_t(sobject_t("large object", CEPH_NOSNAP)));
+
+    {
+        std::cerr << "test: remove " << std::endl;
+
+        // write a multi-page object
+        ObjectStore::Transaction t;
+        t.remove(cid, hoid);
+        r = queue_transaction(store, ch, std::move(t));
+    }
+
+    { std::cerr << "test: multi-page write" << std::endl;
+
+        // write a multi-page object
+        ObjectStore::Transaction t;
+        t.write(cid, hoid, 0, bl1.length(), bl1);
+        r = queue_transaction(store, ch, std::move(t));
+        ASSERT_EQ(r, 0);
+
+        bufferlist out;
+        r = store->read(ch, hoid, 0, bl1.length(), out);
+        ASSERT_EQ(r, 16394);
+        ASSERT_EQ(ceph_str_hash_linux(bl1.c_str(), bl1.length()), ceph_str_hash_linux(out.c_str(), out.length()));
+    }
+
+    { std::cerr << "test: partial write 0 ~ 4096" << std::endl;
+
+        bufferlist bl2;
+        bl2.append_zero(4096);
+        // partial update 0 - 4096
+        ObjectStore::Transaction t;
+        t.write(cid, hoid, 0, 4096, bl2);
+        r = queue_transaction(store, ch, std::move(t));
+        ASSERT_EQ(r, 0);
+
+        bufferlist out;
+        r = store->read(ch, hoid, 0, 4096, out);
+        ASSERT_EQ(r, 4096);
+        ASSERT_EQ(out.length(), 4096);
+        ASSERT_EQ(ceph_str_hash_linux(bl1.c_str(), out.length()), ceph_str_hash_linux(out.c_str(), out.length()));
+
+        bufferlist out2;
+        r = store->read(ch, hoid, 4096, 8192, out2);
+        ASSERT_EQ(r, 8192);
+        ASSERT_EQ(out2.length(), 8192);
+        ASSERT_EQ(ceph_str_hash_linux(bl1.c_str()+4096, out2.length()), ceph_str_hash_linux(out2.c_str(), out2.length()));
+    }
+    { std::cerr << "test: append" << std::endl;
+
+        bufferlist bl2;
+        bl2.append("test");
+
+        // partial update 0 - 4096
+        ObjectStore::Transaction t;
+        t.write(cid, hoid, bl1.length(), 4, bl2);
+        r = queue_transaction(store, ch, std::move(t));
+        ASSERT_EQ(r, 0);
+
+        bl1.append(bl2);
+
+        TR << "original content = " << std::string(bl1.c_str(), bl1.length());
+
+        bufferlist out;
+        r = store->read(ch, hoid, 0, bl1.length(), out);
+        ASSERT_EQ(r, bl1.length());
+        ASSERT_EQ(out.length(), bl1.length());
+        ASSERT_EQ(ceph_str_hash_linux(bl1.c_str(), out.length()), ceph_str_hash_linux(out.c_str(), out.length()));
+
+    }
+
+    std::cerr << "done" << std::endl;
+    exit(0);
+}
+
 TEST_P(KvsStoreTest, QuickReadWriteTest1){
     coll_t cid(spg_t(pg_t(0, 1), shard_id_t(1)));// Added for iterator bug in FW
     bufferlist bl;
@@ -20,17 +113,18 @@ TEST_P(KvsStoreTest, QuickReadWriteTest1){
     set<ghobject_t> created;
     string base = "";
     //for (int i = 0; i < 20; ++i) base.append("a");
-    auto ch = store->create_new_collection(cid);
-    {
-        cerr << "create collection" << std::endl;
+
+    auto ch = store->open_collection(cid);
+    if (!ch) {
+        ch = store->create_new_collection(cid);
+        std::cerr << "create collection" << std::endl;
         ObjectStore::Transaction t;
-        t.create_collection(cid, 0);
+        t.create_collection(cid,0);
         r = queue_transaction(store, ch, std::move(t));
         ASSERT_EQ(r, 0);
     }
     {
         cerr << " write objects to collection" << std::endl;
-
         for (int i = 0; i < NUM_OBJS; i++){
             cerr << "Object " << i << std::endl;
 
@@ -38,8 +132,8 @@ TEST_P(KvsStoreTest, QuickReadWriteTest1){
             snprintf(buf, sizeof(buf), "%d", i);
 
             bufferlist bl1;
-            for (int i = 0; i<425; i++)
-                bl1.append("12");
+            bl1.append_zero(8192);
+            bl1.append("helloworld");
 
             ghobject_t hoid(hobject_t(sobject_t(string(buf) + base, CEPH_NOSNAP)));
             created.insert(hoid);
@@ -52,21 +146,34 @@ TEST_P(KvsStoreTest, QuickReadWriteTest1){
                 r = queue_transaction(store, ch, std::move(t));
                 ASSERT_EQ(r, 0);
 
+                // ADD OMAP VALUE
+                //t.omap_setkeys(cid, hoid, omapentry);
+                // GET OMAP VALUE
+
+
                 bufferlist in;
 
-                r = store->read(ch, hoid, 0, bl1.length(), in);
+                r = store->read(ch, hoid, 8192, 10, in);
                 cerr << " read oid: " << hoid << ",  retcode: " << r
                      << " written bl length: " << in.length()
                      << " read bl length: " << bl1.length()
-                     << ", written hash: " << ceph_str_hash_linux(bl1.c_str(), bl1.length())
-                     << ", read hash: " << ceph_str_hash_linux(in.c_str(), in.length())
+                     << " content = " << std::string(in.c_str(), in.length())
+                     //<< ", written hash: " << ceph_str_hash_linux(bl1.c_str(), bl1.length())
+                     //<< ", read hash: " << ceph_str_hash_linux(in.c_str(), in.length())
                      << std::endl;
+
+                r = store->read(ch, hoid, 0, bl1.length(), in);
 
                 ASSERT_EQ(r, bl1.length());
                 ASSERT_EQ(r, in.length());
                 ASSERT_EQ(ceph_str_hash_linux(in.c_str(), in.length()), ceph_str_hash_linux(bl1.c_str(), bl1.length()));
                 ASSERT_EQ(bl1.length(),in.length());
                 ASSERT_TRUE(bl_eq(in, bl1));
+
+                r = store->read(ch, hoid, 0, 4096 , in);
+                ASSERT_EQ(r, 4096);
+                ASSERT_EQ(r, in.length());
+                ASSERT_EQ(ceph_str_hash_linux(in.c_str(), in.length()), ceph_str_hash_linux(bl1.c_str(), 4096));
 
                 in.clear();
 

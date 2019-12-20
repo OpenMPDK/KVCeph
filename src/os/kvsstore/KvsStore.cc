@@ -706,8 +706,12 @@ void KvsStore::_txc_release_alloc(KvsTransContext *txc) {
 	KvsIoContext *ioc = &txc->ioc;
     {
         std::lock_guard<std::mutex> l (writing_lock);
-        for (auto &obj: txc->databuffers) {
-            writing.erase(obj.first);
+        auto &dbs = *txc->get_databuffers();
+        for (auto &pendingobj: dbs) {
+            pendingobj.second->persistent = true;
+            if (pendingobj.second->readers == 0) {
+                pending_datao.erase(pendingobj.first);
+            }
         }
     }
 	{
@@ -2517,13 +2521,20 @@ int KvsStore::read(CollectionHandle &c_, const ghobject_t &oid, uint64_t offset,
 
     {
         std::shared_lock l(c->lock);
+        OnodeRef o = c->get_onode(oid, false);
+        if (!o || !o->exists) {
+            return -ENOENT;
+        }
 
         if (offset == length && offset == 0) {
-            OnodeRef o = c->get_onode(oid, false);
-            if (!o || !o->exists) {
-                return -ENOENT;
-            }
             length = o->onode.size;
+        }
+
+        if (offset > o->onode.size) {
+            return 0;
+        }
+        if (offset + length > o->onode.size) {
+            length = o->onode.size - offset;
         }
 
 
@@ -2984,19 +2995,15 @@ int KvsStore::_write(KvsTransContext *txc, CollectionRef &c, OnodeRef &o,
 		uint32_t fadvise_flags) {
 	FTRACE
 
+	TR << "_write: oid " << o->oid << ", onode size " << o->onode.size << ", offset " << offset << ", length " << length << ", hash = " << ceph_str_hash_linux(bl->c_str(), bl->length());
+
 	int r = 0;
 	const uint64_t enddata_off = offset + length;
 
-   
-
-	KvsStoreDataObject &datao = txc->databuffers[o->oid];
+	KvsStoreDataObject &datao = *txc->get_databuffer(o->oid);
 	datao.data_len = o->onode.size;
 
 	if (bl) {
-                TR << "write hash = " << ceph_str_hash_linux(bl->c_str(), bl->length()) << ", offset = " << offset  << ", length = " << bl->length() << "/" << length ;
-                if (bl->length() == 10) {
-			TR << "content=" << bl->c_str();
-		}
 		r = datao.write(offset, *bl, [&] (char* data, int pageid, uint32_t &nread)->int {
 			return db.read_block(o->oid, pageid, data, nread);
 		});
@@ -3029,8 +3036,9 @@ int KvsStore::_do_truncate(KvsTransContext *txc, CollectionRef &c, OnodeRef o,
 	if (offset == o->onode.size)
 		return 0;
 
-	KvsStoreDataObject &datao = txc->databuffers[o->oid];
+	KvsStoreDataObject &datao = *txc->get_databuffer(o->oid);
 	datao.data_len = o->onode.size;
+
 	int r = datao.truncate(offset, [&] (char* data, int pageid, uint32_t &nread)->int  {
 		return db.read_block(o->oid, pageid, data, nread);
 	});
@@ -3046,15 +3054,15 @@ int KvsStore::_do_truncate(KvsTransContext *txc, CollectionRef &c, OnodeRef o,
 
 void KvsStore::_txc_aio_submit(KvsTransContext *txc) {
 	FTRACE
-
-	for (auto &obj: txc->databuffers) {
-		KvsStoreDataObject &datao = obj.second;
-		datao.list_pages([&] (int pageid, char *data, int length) {
+    auto &dbs = *txc->get_databuffers();
+	for (auto &obj: dbs) {
+		KvsStoreDataObject *datao = obj.second;
+		datao->list_pages([&] (int pageid, char *data, int length) {
 			db.add_userdata(&txc->ioc, obj.first, data, length, pageid);
 		});
         {
             std::lock_guard<std::mutex> l (writing_lock);
-            writing[obj.first] = &datao;
+            pending_datao[obj.first] = datao;
         }
 	}
 
@@ -3083,9 +3091,10 @@ int KvsStore::_clone(KvsTransContext *txc, CollectionRef &c, OnodeRef &oldo, Ono
 
 	oldo->flush();
 
-	KvsStoreDataObject &olddatao = txc->databuffers[oldo->oid];
+
+	KvsStoreDataObject &olddatao = *txc->get_databuffer(oldo->oid);
 	olddatao.data_len = oldo->onode.size;
-	KvsStoreDataObject &newdatao = txc->databuffers[newo->oid];
+	KvsStoreDataObject &newdatao = *txc->get_databuffer(newo->oid);
     newdatao.data_len = 0;
 
     // clone data
@@ -3135,7 +3144,7 @@ int KvsStore::_do_remove(KvsTransContext *txc, CollectionRef &c, OnodeRef o) {
 		o->flush();
 		_do_omap_clear(txc, o);
 	}
-	txc->databuffers[o->oid].remove_object(o->onode.size, [&] (int pageid)->int {
+    txc->get_databuffer(o->oid)->remove_object(o->onode.size, [&] (int pageid)->int {
 		db.rm_data(&txc->ioc, o->oid, pageid);
 		return 0;
 	});
@@ -3156,26 +3165,41 @@ int KvsStore::_read_data(KvsTransContext *txc, const ghobject_t &oid, uint64_t o
 	FTRACE
 	bl.clear();
 	KvsStoreDataObject *datao = 0;
-    KvsStoreDataObject newdatao;
 	if (txc) {
-        datao = &txc->databuffers[oid];
+        datao = txc->get_databuffer(oid);
     }
 	else {
-        {
-            std::lock_guard<std::mutex> l (writing_lock);
-            auto it = writing.find(oid);
-            if (it != writing.end()) {
-                datao = it->second;
-            }
+        std::lock_guard<std::mutex> l (writing_lock);
+        auto it = pending_datao.find(oid);
+        if (it != pending_datao.end()) {
+            datao = it->second;
         }
-	    if (!datao)
-		    datao = &newdatao;
+        else {
+            datao = new KvsStoreDataObject;
+            datao->persistent = true;
+        }
+        datao->readers++;
 	}
 
 	int r = datao->read(offset, length, bl, [&] (char* data, int pageid, uint32_t &nread)->int  {
-        TR << "read block: oid " << oid << ", pageid " << pageid << ", into " << (void *)data;
+        //TR << "read block: oid " << oid << ", pageid " << pageid << ", into " << (void *)data;
         return db.read_block(oid, pageid, data, nread);
 	});
+
+	if (!txc) {
+        std::lock_guard<std::mutex> l (writing_lock);
+        datao->readers--;
+        if (datao->persistent && datao->readers == 0) {
+            auto it = pending_datao.find(oid);
+            if (it != pending_datao.end()) {
+                delete it->second;
+                pending_datao.erase(it);
+            } else {
+                delete datao;
+            }
+        }
+	}
+
 
 	if (r >= 0) {
 		return r;

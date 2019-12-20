@@ -8,10 +8,12 @@
 #define SRC_OS_KVSSTORE_KVSSTORE_PAGES_H_
 
 
+
 ///--------------------------------------------------------
 /// Page
 ///--------------------------------------------------------
 
+#include <sstream>
 #include <algorithm>
 #include <atomic>
 #include <cassert>
@@ -52,14 +54,20 @@ struct KvsPage {
       //TR << "KvsPage: offset " << offset << ", pagesize = " << page_size;
       data = (char*) malloc(page_size);
       if (data == 0) {
-          //TR << "malloc failed, page size = " << page_size;
+          TR << "malloc failed, page size = " << page_size;
           exit(1);
       }
   }
 
   ~KvsPage() {
-      //TR << "KvsPage: free data " << (void*)data;
+      TR << "KvsPage: free data " << (void*)data;
       if (data) free(data);
+  }
+
+  std::string dump() {
+      std::stringstream ss;
+      ss << "offset = " << offset << ", length " << length << ", data = " << (void*)data;
+      return ss.str();
   }
 
 };
@@ -104,9 +112,7 @@ public:
     : pages(std::move(rhs.pages)), page_size(rhs.page_size) {}
 
   ~KvsPageSet() {
-      for (const auto &p : pages) {
-          if (p.second) delete p.second;
-      }
+      free_pages_after(0);
   }
 
   // disable copy
@@ -124,26 +130,22 @@ public:
 
         const int num_pages = count_pages(offset, length);
         uint64_t page_offset = offset & ~(page_size-1);
+
         int pgid = page_offset / page_size;
-	    const int endpgid = pgid + num_pages -1;
+	    const int endpgid = pgid + num_pages;
         std::lock_guard<lock_type> lock(mutex);
 
         for (; pgid < endpgid ; pgid++) {
-            TR << "pgid = " << pgid << ", off = " << offset << ", len = " << length << ", pg off " << page_offset;
-            range.push_back(prepare_page_for_write(offset, page_size, page_offset, page_loader, false));
+            TR << "pgid = " << pgid << ", off = " << offset << ", len = " << page_size << ", pg off " << page_offset;
+            range.push_back(prepare_page_for_write(offset, page_offset, pgid, page_loader));
             length      -= page_size;
             page_offset += page_size;
         }
-
-        // last page
-        TR << "pgid = " << pgid << ", off = " << offset << ", len = " << length << ", pg off " << page_offset;
-        range.push_back(prepare_page_for_write(offset, length, page_offset, page_loader, true));
-
     }
 
   // allocate page, length = actual size of data
   template <typename Functor>
-  inline KvsPage* prepare_page_for_write(const uint64_t offset, const uint64_t length, const uint64_t page_offset, Functor &&page_loader, bool last)
+  inline KvsPage* prepare_page_for_write(const uint64_t offset, const uint64_t page_offset, const int pgid, Functor &&page_loader)
   {
       KvsPage* page = 0;
       auto it = pages.find(page_offset);
@@ -153,8 +155,8 @@ public:
 
           pages.insert({ page_offset, page });
 
-          if (offset > 0 && offset < page_size) { // first page only
-              int ret = page_loader(page->data, page_offset / page_size, page->length);
+          if (offset > page_offset && offset < page_offset+page_size) {
+              int ret = page_loader(page->data, pgid, page->length);
 
               if (ret != 0) {
                   //TR << "prepare 2 fill offset " << offset ;
@@ -163,30 +165,31 @@ public:
               }
           }
       } else {
-          //TR << "existing page";
+          TR << "existing page (write)";
           page = it->second;
           //TR << "existing page data = " << (void*)page->data << ", length = " << page->length;
       }
 
-      page->length = length;
+
       return page;
   }
 
     template <typename Functor>
-    inline KvsPage* load_page(const uint64_t offset, const uint64_t page_offset, int pgid, Functor &&page_loader, bool last)
+    inline KvsPage* load_page(const uint64_t offset, const uint64_t page_offset, int pgid, Functor &&page_loader)
     {
         auto it = pages.find(page_offset);
 
         if (it == pages.end()) {
 
             auto page = new KvsPage(page_size, page_offset);
-            pages.insert(it, { page_offset, page });
-
+            pages.insert({ page_offset, page });
+            TR << page->dump();
             int ret = page_loader(page->data, pgid, page->length);
             if (ret != 0) { return 0; }
-
+            TR << page->dump();
             return page;
         } else {
+            TR << "existing page (read)";
             return it->second;
         }
     }
@@ -200,36 +203,25 @@ public:
       const int num_pages = count_pages(offset, length);
       uint64_t page_offset = offset & ~(page_size-1);
       int pgid = page_offset / page_size;
-      const int endpgid = pgid + num_pages -1;
+      const int endpgid = pgid + num_pages;
       std::lock_guard<lock_type> lock(mutex);
 
       for (; pgid < endpgid ; pgid++) {
-          KvsPage *p = load_page(offset, page_offset, pgid, page_loader, false);
+          TR<< "page offset = " << page_offset ;
+          KvsPage *p = load_page(offset, page_offset, pgid, page_loader);
           if (p == 0) { range.clear(); return false; }
-          //TR << "get_range: page length = " << p->length;
+          TR << "get_range: " << p->dump();
           range.push_back(p);
-          length      -= page_size;
           page_offset += page_size;
       }
 
-      if (length == 10) {
-          TR << "load page offset " << offset << ", page offset " << page_offset << ", pgid " << pgid;
-      }
-      // last page
-      KvsPage *p = load_page(offset, page_offset, pgid, page_loader, true);
-      if (p == 0) { range.clear(); return false; }
-
-      if (length == 10) {
-          TR << "page loaded: content =  " << std::string(p->data, page_size) << ", length = " << p->length;
-          TR << "page loaded: content first 10 b=  " << std::string(p->data, 10) ;
-      }
-
-      range.push_back(p);
       return true;
 
   }
 
   void free_pages_after(uint64_t offset) {
+      FTRACE
+
     std::lock_guard<lock_type> lock(mutex);
     auto cur = pages.lower_bound(offset & ~(page_size-1));
     if (cur == pages.end())
@@ -237,10 +229,13 @@ public:
 
     if (cur->second->offset < offset) cur++;
 
-    while (cur != pages.end()) {
+      TR << "free pages after ";
+    auto end = pages.end();
+    while (cur != end) {
         delete cur->second;
-        cur++;
+        cur = pages.erase(cur);
     }
+      TR << "free pages after -done";
   }
 
   void list_pages(const std::function< void (int, char *, int )> &mypage) {
@@ -259,7 +254,8 @@ struct KvsStoreDataObject {
   KvsPageSet data;
   uint64_t data_len;
   size_t page_size;
-
+  bool persistent= false;
+  int readers = 0;
   size_t get_size() const { return data_len; }
 
   // Functor (char* data, int pageid)->int (success?)

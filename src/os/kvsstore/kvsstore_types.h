@@ -485,8 +485,20 @@ struct KvsTransContext  {
     list<Context*> 		oncommits;  		 ///< more commit completions
     list<CollectionRef> removed_collections; ///< colls we removed
 
-    map<const ghobject_t, KvsStoreDataObject > databuffers; /// data to write
+    inline map<const ghobject_t, KvsStoreDataObject*>* get_databuffers() {
+        return &databuffers;
+    }
 
+    inline KvsStoreDataObject* get_databuffer(const ghobject_t& oid) {
+        auto it = databuffers.find(oid);
+        if (it != databuffers.end()) {
+            return it->second;
+        } else {
+            auto obj = new KvsStoreDataObject;
+            databuffers[oid] = obj;
+            return obj;
+        }
+    }
     KvsIoContext ioc;	// I/O operations
 
     uint64_t seq = 0;
@@ -526,6 +538,9 @@ struct KvsTransContext  {
     // callback for data
     void aio_finish(kv_io_context *op);
     void journal_finish(kv_io_context *op);
+private:
+
+    map<const ghobject_t, KvsStoreDataObject*> databuffers; /// data to write
 
 };
 

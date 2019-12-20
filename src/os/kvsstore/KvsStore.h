@@ -409,6 +409,8 @@ public:
 	int _kvs_replay_journal(kvs_journal_key *j);
 	void _delete_journal();
 	void _init_perf_logger(CephContext *cct);
+
+
 public:
     /// =========================================================
 	/// Member Variables
@@ -473,7 +475,7 @@ public:
     deque<KvsTransContext*> kv_committing_to_finalize;   ///< pending finalization
 
     std::mutex writing_lock;
-    map<const ghobject_t, KvsStoreDataObject* > writing;
+    map<const ghobject_t, KvsStoreDataObject* > pending_datao;
 
     //# Perfcounters ------------------------------------------------
 
