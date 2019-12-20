@@ -50,17 +50,17 @@ int KvsStoreDataObject::write(uint64_t offset, bufferlist &src, Functor &&page_l
 
     auto p = src.begin();
 
-    if (len < page_size) {
+    /*if (len < page_size) {
         TR << "write - source data " << std::string(src.c_str(), src.length());
-    }
+    }*/
     for (KvsPage *pg : tls_pages) {
         unsigned page_offset = offset - pg->offset;
-        TR << ", pg = " << (void*)pg << ", page offset " << page_offset << ", page length = " << pg->length << ", remaining " << len;
+        //TR << ", pg = " << (void*)pg << ", page offset " << page_offset << ", page length = " << pg->length << ", remaining " << len;
         auto datasize = std::min(len, page_size);
         p.copy(datasize, pg->data + page_offset);
 
-        if (len < page_size)
-            TR << "written - content = " << std::string(pg->data+page_offset, pg->length);
+        //if (len < page_size)
+            //TR << "written - content = " << std::string(pg->data+page_offset, pg->length);
         offset += datasize;
         len -= datasize;
     }
