@@ -89,7 +89,7 @@ struct FtraceObject {
     //HeapLeakChecker heap_checker;, heap_checker(f)
     FtraceObject(const char *f, int line_) : func(f), line(line_) {
 
-        //FLOG << pthread_self() << "[ETR][" << func << ":" << line <<  "] ";
+        FLOG << pthread_self() << "[ETR][" << func << ":" << line <<  "] ";
 #if MEMCHECK
         FLOG << ", memcheck= " ;
         {
@@ -118,7 +118,7 @@ struct FtraceObject {
 
 
     ~FtraceObject() {
-        //FLOG << pthread_self() << "[EXT][" << func << ":" << line <<  "] ";
+        FLOG << pthread_self() << "[EXT][" << func << ":" << line <<  "] ";
 #if MEMCHECK
         {
             std::vector<void *> malloc_p;

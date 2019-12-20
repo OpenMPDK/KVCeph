@@ -707,12 +707,15 @@ void KvsStore::_txc_release_alloc(KvsTransContext *txc) {
     {
         std::lock_guard<std::mutex> l (writing_lock);
         auto &dbs = *txc->get_databuffers();
-        for (auto &pendingobj: dbs) {
+        auto cur = dbs.begin();
+        auto end = dbs.end();
+	while (cur != end) {
             pendingobj.second->persistent = true;
             if (pendingobj.second->readers == 0) {
-                pending_datao.erase(pendingobj.first);
+		delete cur->second;
+		cur = pages.erase(cur);
             }
-        }
+	}
     }
 	{
 		std::unique_lock<std::mutex> lk ( ioc->running_aio_lock );
@@ -2706,21 +2709,27 @@ int KvsStore::_omap_setkeys(KvsTransContext *txc, CollectionRef &c,
 	auto p = bl.cbegin();
 	__u32 num;
 	decode(num, p);
-
+        TR << "1";
 	if (num > 0) {
 		txc->write_onode(o);
 	}
 
+        TR << "2";
 	while (num--) {
+
+        TR << "3";
 		string key;
 		bufferlist list;
 		decode(key, p);
 		decode(list, p);
+        TR << "4";
 		// store key-value pair (key -> onod , value -> ssd)
 		o->onode.omaps.insert(key);
 		db.add_omap(&txc->ioc, o->oid, o->onode.lid, key, list);
+        TR << "5";
 	}
 
+        TR << "6";
 	return 0;
 }
 
@@ -3192,9 +3201,12 @@ int KvsStore::_read_data(KvsTransContext *txc, const ghobject_t &oid, uint64_t o
         if (datao->persistent && datao->readers == 0) {
             auto it = pending_datao.find(oid);
             if (it != pending_datao.end()) {
-                delete it->second;
+                KvsStoreDataObject *d = it->second;
                 pending_datao.erase(it);
+                TR << "Delete pending DAO on reads";
+		delete d;
             } else {
+                TR << "Delete local DAO on reads";
                 delete datao;
             }
         }

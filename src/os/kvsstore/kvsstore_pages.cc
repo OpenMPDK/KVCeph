@@ -36,6 +36,7 @@ int KvsStoreDataObject::read(uint64_t offset, uint64_t len, bufferlist &bl, Func
 
 template<typename Functor>
 int KvsStoreDataObject::write(uint64_t offset, bufferlist &src, Functor &&page_loader) {
+    FTRACE
     uint64_t len = src.length();
 
     KvsPageSet::page_vector tls_pages;
@@ -67,7 +68,7 @@ int KvsStoreDataObject::write(uint64_t offset, bufferlist &src, Functor &&page_l
 }
 template<typename Functor>
 int KvsStoreDataObject::zero(uint64_t offset, unsigned len, Functor &&page_loader) {
-
+    FTRACE
     KvsPageSet::page_vector tls_pages;
     // make sure the page range is allocated
     data.alloc_range(offset, len, tls_pages, page_loader);
@@ -94,7 +95,7 @@ int KvsStoreDataObject::zero(uint64_t offset, unsigned len, Functor &&page_loade
 
 template<typename Functor>
 void KvsStoreDataObject::remove_object(uint64_t size, Functor &&page_remover) {
-
+    FTRACE
     const int offset = 0;
     const int num_pages  = data.count_pages(offset, size);
     uint64_t page_offset = offset & ~(page_size-1);
@@ -117,6 +118,7 @@ void KvsStoreDataObject::remove_object(uint64_t size, Functor &&page_remover) {
 template<typename Functor>
 int KvsStoreDataObject::clone(KvsStoreDataObject *src, uint64_t srcoff,
                               unsigned len, uint64_t dstoff, Functor &&page_loader) {
+    FTRACE
     const int64_t delta = dstoff - srcoff;
 
     auto &src_data = static_cast<KvsStoreDataObject *>(src)->data;
@@ -211,6 +213,7 @@ int KvsStoreDataObject::clone(KvsStoreDataObject *src, uint64_t srcoff,
 
 template<typename Functor>
 int KvsStoreDataObject::truncate(uint64_t size, Functor &&page_loader) {
+    FTRACE
     data.free_pages_after(size);
     data_len = size;
 
