@@ -710,10 +710,10 @@ void KvsStore::_txc_release_alloc(KvsTransContext *txc) {
         auto cur = dbs.begin();
         auto end = dbs.end();
 	while (cur != end) {
-            pendingobj.second->persistent = true;
-            if (pendingobj.second->readers == 0) {
+            cur->second->persistent = true;
+            if (cur->second->readers == 0) {
 		delete cur->second;
-		cur = pages.erase(cur);
+		cur = dbs.erase(cur);
             }
 	}
     }
