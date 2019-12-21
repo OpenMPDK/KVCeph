@@ -3025,7 +3025,7 @@ int KvsStore::_write(KvsTransContext *txc, CollectionRef &c, OnodeRef &o,
 		});
 	}
 
-	if (r == 0 && enddata_off > o->onode.size) {
+	if (r == 0 && enddata_off >= o->onode.size) {
 		o->onode.size =datao.data_len;
 		txc->write_onode(o);
 	}
