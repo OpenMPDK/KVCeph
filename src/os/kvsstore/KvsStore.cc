@@ -892,8 +892,6 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
 		}
 
 		if (!create && (!o || !o->exists)) {
-			derr << __func__ << " op " << op->op << " got ENOENT on "
-								<< i.get_oid(op->oid) << dendl;
 			dout(10) << __func__ << " op " << op->op << " got ENOENT on "
 								<< i.get_oid(op->oid) << dendl;
 
@@ -970,16 +968,11 @@ void KvsStore::_txc_add_transaction(KvsTransContext *txc, Transaction *t) {
 
 		case Transaction::OP_CLONE: {
 				OnodeRef &no = ovec[op->dest_oid];
-				//derr << " op_clone get_onode" << dendl;
 				if (!no) {
 					const ghobject_t &noid = i.get_oid(op->dest_oid);
-					//derr << " op_clone get_onode 2 " << dendl;
 					no = c->get_onode(noid, true);
-					//derr << " op_clone get_onode 3 no = " << no  << dendl;
 				}
-				//derr << " op_clone before clone  " << dendl;
 				r = _clone(txc, c, o, no);
-				//derr << " op_clone after _clone r =  " << r << dendl;
 			}
 			break;
 
@@ -1805,9 +1798,8 @@ int KvsStore::_fsck() {
 	int ret = _read_sb();
 	if (ret < 0) return 0;
 	derr <<  "read superblock, ret = " << ret  << dendl;
-#if 0
+
 	ret = _journal_replay();
-#endif
     derr <<  "journal, ret = " << ret  << dendl;
 
 	return ret;
@@ -3033,7 +3025,7 @@ int KvsStore::_write(KvsTransContext *txc, CollectionRef &c, OnodeRef &o,
 		});
 	}
 
-	if (r == 0 && enddata_off >= o->onode.size) {
+	if (r == 0 && enddata_off > o->onode.size) {
 		o->onode.size =datao.data_len;
 		txc->write_onode(o);
 	}
@@ -3122,12 +3114,11 @@ int KvsStore::_clone(KvsTransContext *txc, CollectionRef &c, OnodeRef &oldo, Ono
 	r = newdatao.clone(&olddatao, 0, oldo->onode.size, 0, [&] (char* data, int pageid, uint32_t &nread)->int  {
 		return db.read_block(oldo->oid, pageid, data, nread);
 	});
-	derr << __func__ << " clone data r = " << r << dendl;
+
 
 	// clear newo's omap
 	if (newo->onode.has_omap()) {
 		dout(20) << __func__ << " clearing old omap data" << dendl;
-		derr << __func__ << " clearing old omap data" << dendl;
 		newo->flush();
 		_do_omap_clear(txc, newo);
 	}
@@ -3140,7 +3131,6 @@ int KvsStore::_clone(KvsTransContext *txc, CollectionRef &c, OnodeRef &oldo, Ono
 	for (const std::string &name : newo->onode.omaps) {
 		bufferlist bl;
 		int ret = db.read_omap(oldo->oid, oldo->onode.lid, name, bl);
-		derr << __func__ << " read_omap ret = " << ret << dendl;
 		if (ret != 0) {
 			derr << "omap_get_values failed: ret = " << ret << dendl;
 			r = -ENOENT;
