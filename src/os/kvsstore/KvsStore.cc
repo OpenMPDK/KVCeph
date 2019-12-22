@@ -3353,6 +3353,7 @@ int KvsStore::_do_write(KvsTransContext *txc,
     }
 
     return r;
+
 }
 
 int KvsStore::_do_zero(KvsTransContext *txc, CollectionRef &c, OnodeRef &o,
