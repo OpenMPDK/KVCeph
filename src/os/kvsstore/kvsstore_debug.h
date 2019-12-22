@@ -8,7 +8,6 @@
 #ifndef SRC_OS_KVSSTORE_KVSSTORE_DEBUG_H_
 #define SRC_OS_KVSSTORE_KVSSTORE_DEBUG_H_
 
-#include "indexer_hint.h"
 #include <string>
 #include <mutex>
 #include <fstream>
@@ -24,9 +23,10 @@
 #define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 
 #define ENABLE_FTRACE
+//#define ENABLE_FUNCTION_TRACE
 #define ENABLE_IOTRACE
+//#define IOTRACE_MINIMAL
 
-#ifdef ENABLE_FTRACE
 
 class FtraceFile {
 public:
@@ -37,7 +37,8 @@ public:
         if (!fp.is_open()) {
             fp.open("ftrace.txt", std::ofstream::out | std::ofstream::app);
         }
-        fp << message.str() << "\n";
+        fp << message.str();
+        fp << "\n";
         if (!fp.bad())
             fp.flush();
         mutex.unlock();
@@ -81,7 +82,10 @@ SimpleLoggerBuffer operator<<(FtraceFile &simpleLogger, T&& message)
     return buf;
 }
 
+#ifdef ENABLE_FTRACE
+
 #define MEMCHECK 0
+
 struct FtraceObject {
 
     std::string func;
@@ -89,7 +93,9 @@ struct FtraceObject {
     //HeapLeakChecker heap_checker;, heap_checker(f)
     FtraceObject(const char *f, int line_) : func(f), line(line_) {
 
-        FLOG << pthread_self() << "[ETR][" << func << ":" << line <<  "] ";
+#ifdef ENABLE_FUNCTION_TRACE
+       FLOG << pthread_self() << "[ETR][" << func << ":" << line <<  "] ";
+#endif
 #if MEMCHECK
         FLOG << ", memcheck= " ;
         {
@@ -118,7 +124,9 @@ struct FtraceObject {
 
 
     ~FtraceObject() {
+#ifdef ENABLE_FUNCTION_TRACE
         FLOG << pthread_self() << "[EXT][" << func << ":" << line <<  "] ";
+#endif
 #if MEMCHECK
         {
             std::vector<void *> malloc_p;
@@ -149,14 +157,24 @@ struct FtraceObject {
 
 #define FTRACE FtraceObject fobj(__FUNCTION__, __LINE__);
 #define TR FLOG << pthread_self() << "[" << __FILENAME__ << ":"  << __LINE__ << "] "
+#define TRERR FLOG << pthread_self() << "[" << __FILENAME__ << ":"  << __LINE__ << "] ERR: "
 #define TRBACKTRACE { ostringstream oss; oss << BackTrace(1); FLOG << pthread_self() << "[" << __FILENAME__ << ":"  << __LINE__ << "] " << "Backtrace: " << oss.str(); }
 #else
+#define TRERR FLOG << pthread_self() << "[" << __FILENAME__ << ":"  << __LINE__ << "] ERR: "
 #define FTRACE
 #define TR if (false) std::cout
 #define LOGOSD if (false) std::cout
 #define LOGEND ""
 #define TRBACKTRACE
 #endif
+
+#ifdef IOTRACE_MINIMAL
+#define TRIO if (false) FLOG
+#else
+#define TRIO FLOG << pthread_self() << "[" << __FILENAME__ << ":"  << __LINE__ << "] "
+#endif
+
+
 
 
 // key traces: prints keys

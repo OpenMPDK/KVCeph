@@ -391,14 +391,9 @@ public:
 
 	void return_free_context(T* ctx)
 	{
+        ctx->buf = 0;
 		ctx->byteswritten =0;
-		if (!ctx->end) {
-			free_iter_contexts.push_back(ctx);
-		}
-		else {
-			// if it is done, do not return to the freelist.
-			delete ctx;
-		}
+    	free_iter_contexts.push_back(ctx);
 	}
 
 	void fire_event(T *ctx){

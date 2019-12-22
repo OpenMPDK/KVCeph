@@ -143,6 +143,23 @@ opbuf_reader::opbuf_reader(void *c, int gropuid_, void *buf_, int length_)
     }
 }
 
+/*
+template<class InputIt1, class InputIt2>
+inline int test_cmp(InputIt1 first1, InputIt1 last1, InputIt2 first2, InputIt2 last2)
+{
+    for ( ; (first1 != last1) && (first2 != last2); ++first1, (void) ++first2 ) {
+        if (*first1 < *first2) return -1;
+        if (*first2 < *first1) return +1;
+    }
+
+    if (first1 == last1) {
+        if (first2 == last2) return 0;
+        return -1;
+    }
+
+    return +1;
+}*/
+
 bool opbuf_reader::nextkey(int *optype, void **key, int *length)
 {
 	if (numkeys == curkeyid) return false;
@@ -162,7 +179,9 @@ bool opbuf_reader::nextkey(int *optype, void **key, int *length)
 
     *key    = (((char*)buf)+bufoffset);
 
-    //TR << "key found: " << print_key((const char*)(((char*)buf)+bufoffset), *length ) << ", length = " << *length ;
+
+
+    TR << "key found: addr = " << (void*)*key << "," << print_key((const char*)(*key), *length ) << ", length = " << *length ;
 
     bufoffset += ((entry->keysize -1) / 16 +  1) * 16;
     curkeyid++;

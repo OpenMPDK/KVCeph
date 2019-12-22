@@ -1,7 +1,6 @@
 #ifndef CEPH_KVSSTORE_H
 #define CEPH_KVSSTORE_H
 
-#include "indexer_hint.h"
 #include <unistd.h>
 #include <memory.h>
 
@@ -282,7 +281,7 @@ public:
     void _osr_register_zombie(KvsOpSequencer *osr);
     void _osr_drain(KvsOpSequencer *osr);
     void _osr_drain_all();
-
+    void _make_ordered_transaction_list(KvsTransContext *txc, deque<KvsTransContext*> &list);
 public:
     /// =========================================================
 	/// Internal Threads for KvsStore
@@ -331,8 +330,14 @@ public:
     /// =========================================================
 	/// Implementation of ObjectStore Interface
 	/// =========================================================
+    void _do_read_stripe(OnodeRef o, uint64_t offset, bufferlist *pbl);
+    void _do_write_stripe(KvsTransContext *txc, OnodeRef o, uint64_t offset, bufferlist& bl);
+    void _do_remove_stripe(KvsTransContext *txc, OnodeRef o, uint64_t offset);
 
-	int _do_read(KvsCollection *c, OnodeRef o,uint64_t offset,size_t len,bufferlist& bl,uint32_t op_flags = 0);
+    int _do_write(KvsTransContext *txc, OnodeRef o, uint64_t offset, uint64_t length,
+                  bufferlist& bl, uint32_t fadvise_flags);
+
+    int _do_read( OnodeRef o,uint64_t offset,size_t len,bufferlist& bl,uint32_t op_flags = 0);
 	int _fiemap(CollectionHandle &c_, const ghobject_t& oid, uint64_t offset, size_t len, interval_set<uint64_t>& destset);
 	int _flush_cache();
 	int _open_super();
@@ -345,7 +350,7 @@ public:
 
 	int _touch(KvsTransContext *txc,CollectionRef& c,OnodeRef &o);
 
-	int _write(KvsTransContext *txc,CollectionRef& c,OnodeRef& o,uint64_t offset, size_t len, bufferlist* bl,uint32_t fadvise_flags);
+	int _write(KvsTransContext *txc,CollectionRef& c,OnodeRef& o,uint64_t offset, size_t len, bufferlist& bl,uint32_t fadvise_flags);
 
 	int _update_write_buffer(OnodeRef &o, uint64_t offset, size_t length, bufferlist *towrite, bufferlist &out, bool truncate);
 	int _do_write(KvsTransContext *txc, CollectionRef& c,OnodeRef o,uint64_t offset, uint64_t length,bufferlist& bl, uint32_t fadvise_flags);
@@ -371,8 +376,7 @@ public:
 						   OnodeRef& oldo, OnodeRef& newo,
 						   const ghobject_t& new_oid);
 	int _read_data(KvsTransContext *txc, const ghobject_t &oid, uint64_t offset, size_t length, bufferlist &bl);
-	KvsTransContext *_txc_create(KvsCollection *c, KvsOpSequencer *osr,
-								 list<Context *> *on_commits);
+	KvsTransContext *_txc_create(KvsCollection *c, KvsOpSequencer *osr);
 
 	int _collection_list(
 			KvsCollection *c, const ghobject_t& start, const ghobject_t& end, int max,
@@ -390,7 +394,7 @@ public:
 	int _do_zero(KvsTransContext *txc, CollectionRef& c, OnodeRef& o, uint64_t offset, size_t length);
 	int _truncate(KvsTransContext *txc, CollectionRef& c, OnodeRef& o, uint64_t offset);
 	int _do_remove(KvsTransContext *txc, CollectionRef& c, OnodeRef o);
-	int _do_truncate(KvsTransContext *txc, CollectionRef& c, OnodeRef o, uint64_t offset);
+	int _do_truncate(KvsTransContext *txc,OnodeRef o, uint64_t offset);
 	int _remove(KvsTransContext *txc, CollectionRef& c, OnodeRef &o);
 	int _setattr(KvsTransContext *txc, CollectionRef& c, OnodeRef& o, const string& name, bufferptr& val);
 	int _rmattr(KvsTransContext *txc,CollectionRef& c,OnodeRef& o,const string& name);
@@ -475,7 +479,7 @@ public:
     deque<KvsTransContext*> kv_committing_to_finalize;   ///< pending finalization
 
     std::mutex writing_lock;
-    map<const ghobject_t, KvsStoreDataObject* > pending_datao;
+    //map<const ghobject_t, KvsStoreDataObject* > pending_datao;
 
     //# Perfcounters ------------------------------------------------
 

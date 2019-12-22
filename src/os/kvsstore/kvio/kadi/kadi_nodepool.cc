@@ -96,7 +96,6 @@ bptree_meta *bptree_pool::_fetch_meta() {
 }
 
 kv_indexnode *bptree_pool::_fetch_node(const bp_addr_t &addr) {
-    FTRACE
 	// search the cache
 	if (addr == invalid_key_addr) return 0;
 

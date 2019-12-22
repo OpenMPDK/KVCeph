@@ -8,7 +8,6 @@
 #ifndef SRC_OS_KVSSTORE_KVSSTORE_CACHE_IMPL_H_
 #define SRC_OS_KVSSTORE_KVSSTORE_CACHE_IMPL_H_
 
-#include "indexer_hint.h"
 #include <boost/intrusive/list.hpp>
 #include "kvsstore_debug.h"
 
@@ -273,6 +272,7 @@ public:
 	KvsOnodeSpace(KvsOnodeCacheShard *c) : cache(c) {}
 
 	~KvsOnodeSpace() {
+	    TR << "clearing cache " << (void*)cache << "\n";
 		clear();
 	}
 

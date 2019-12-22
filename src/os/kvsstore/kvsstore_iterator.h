@@ -8,7 +8,6 @@
 #ifndef SRC_OS_KVSSTORE_KVSSTORE_ITERATOR_IMPL_H_
 #define SRC_OS_KVSSTORE_KVSSTORE_ITERATOR_IMPL_H_
 
-#include "indexer_hint.h"
 #include "kvsstore_types.h"
 #include "kvio/kadi/kadi_bptree.h"
 

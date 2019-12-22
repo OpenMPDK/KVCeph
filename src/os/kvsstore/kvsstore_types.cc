@@ -4,7 +4,6 @@
  *  Created on: Nov 17, 2019
  *      Author: root
  */
-#include "indexer_hint.h"
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -23,11 +22,11 @@
 #undef dout_prefix
 #define dout_prefix *_dout << "[kvsstore] "
 
-#ifdef ENABLE_FTRACE
+
 FtraceFile FLOG;
 std::mutex FtraceFile::mutex;
 std::ofstream FtraceFile::fp;
-#endif
+
 
 std::atomic<uint64_t> KvsJournal::journal_index = {0};
 

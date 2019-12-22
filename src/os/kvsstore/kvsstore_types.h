@@ -8,7 +8,6 @@
 #ifndef SRC_OS_KVSSTORE_KVSSTORE_TYPES_H_
 #define SRC_OS_KVSSTORE_KVSSTORE_TYPES_H_
 
-#include "indexer_hint.h"
 #include <unistd.h>
 #include <memory.h>
 
@@ -108,6 +107,10 @@ struct KvsOnode {
     std::mutex flush_lock; // = ceph::make_mutex("KvsStore::flush_lock");  ///< protect flush_txns
     std::condition_variable flush_cond;   ///< wait here for uncommitted txns
 
+    map<uint64_t,bufferlist> pending_stripes;
+    void clear_pending_stripes() {
+        pending_stripes.clear();
+    }
     KvsOnode(KvsCollection *c, const ghobject_t& o)
             : nref(0),
               c(c),
@@ -379,7 +382,7 @@ public:
     /// Add to I/O and Journal queues
     /// ----------------------------------
 
-    inline void add_pending_meta(uint8_t space_id, bufferlist &bl, const std::function< uint8_t (void*)> &keygen) {
+    inline void add_pending_bl(uint8_t space_id, bufferlist &bl, const std::function< uint8_t (void*)> &keygen) {
 
     	if (DISABLE_BATCH || bl.length() > MAX_BATCH_VALUE_SIZE) {
     		// add key-value pair to the pending queue
@@ -482,10 +485,13 @@ struct KvsTransContext  {
     set<OnodeRef> onodes;     ///< these need to be updated/written
     set<OnodeRef> modified_objects;  ///< objects we modified (and need a ref)
 
+    Context *oncommit;         ///< signal on commit
+    Context *onreadable;         ///< signal on readable
+    Context *onreadable_sync;         ///< signal on readable
     list<Context*> 		oncommits;  		 ///< more commit completions
     list<CollectionRef> removed_collections; ///< colls we removed
 
-    inline map<const ghobject_t, KvsStoreDataObject*>* get_databuffers() {
+    /*inline map<const ghobject_t, KvsStoreDataObject*>* get_databuffers() {
         return &databuffers;
     }
 
@@ -499,24 +505,18 @@ struct KvsTransContext  {
             return obj;
         }
     }
+    */
     KvsIoContext ioc;	// I/O operations
 
     uint64_t seq = 0;
     utime_t t0,t1,t2,t3,t4,t5,t6,t7,t8,t9;
     bool submitted = false;
-    explicit KvsTransContext(CephContext *_cct, KvsCollection *c, KvsStore *_store, KvsOpSequencer *o,
-                             list<Context *> *on_commits)
-        : cct(_cct), ch(c), store(_store), osr(o), ioc(_cct)
+    explicit KvsTransContext(CephContext *_cct, KvsCollection *c, KvsStore *_store, KvsOpSequencer *o)
+        : cct(_cct), ch(c), store(_store), osr(o), oncommit(0),onreadable(0),onreadable_sync(0), ioc(_cct)
     {
-        FTRACE
-        if (on_commits)
-        {
-            oncommits.swap(*on_commits);
-        }
     }
 
     ~KvsTransContext() {
-        FTRACE
     }
 
     void write_onode(OnodeRef &o) {
@@ -540,7 +540,7 @@ struct KvsTransContext  {
     void journal_finish(kv_io_context *op);
 private:
 
-    map<const ghobject_t, KvsStoreDataObject*> databuffers; /// data to write
+    //map<const ghobject_t, KvsStoreDataObject*> databuffers; /// data to write
 
 };
 
@@ -582,18 +582,30 @@ public:
 		std::lock_guard l(qlock);
 		txc->seq = ++last_seq;
 		q.push_back(*txc);
+	    //TR << "queue new " <<  (void*)txc << " - queue size = " << q.size()<< "\n";
 	}
+
+	void pop_front_nolock() {
+        //void *txc = &q.front();
+        q.pop_front();
+        //TR << "queue pop " <<  (void*)txc << " - queue size = " << q.size()<< "\n";
+    }
 
     void drain() {
       std::unique_lock<std::mutex> l(qlock);
-      while (!q.empty())
-    	  qcond.wait(l);
+      //TR << "queue drain before " << q.size() << "\n";
+      while (!q.empty()) {
+          qcond.wait(l);
+      }
+      //TR << "queue drain end " << q.size() << "\n";
     }
 
     void drain_preceding(KvsTransContext *txc) {
       std::unique_lock<std::mutex> l(qlock);
+      //TR << "queue drain proceding before " << q.size() << "\n";
       while (&q.front() != txc)
     	  qcond.wait(l);
+      //TR << "queue drain proceding end" << q.size() << "\n";
     }
 
 
@@ -609,6 +621,7 @@ public:
 
     void flush() {
       std::unique_lock<std::mutex> l(qlock);
+      TR << "queue flush " << q.size() << "\n";
       while (true) {
 		// set flag before the check because the condition
 		// may become true outside qlock, and we need to make
@@ -621,6 +634,7 @@ public:
 		qcond.wait(l);
 		--kv_submitted_waiters;
       }
+      TR << "queue flush after" << q.size()<< "\n";
     }
 
 

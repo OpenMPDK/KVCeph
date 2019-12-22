@@ -307,7 +307,7 @@ public:
 
 	int insert(char *userkey, int keylength)
 	{
-		bptree_node *node = root;
+        bptree_node *node = root;
 
 		while (node != NULL) {
 			if (node->is_leaf()) {
@@ -315,6 +315,7 @@ public:
 				return leaf_insert(node, userkey, keylength);
 			} else {
 				int i = key_binary_search(node, userkey, keylength);
+				if (i == INT32_MAX) return -1;
 				if (i >= 0) {
 						node = pool.fetch_tree_node(node->sub()[i + 1]);
 				} else {
@@ -346,6 +347,7 @@ public:
 						return leaf_remove(node, userkey, keylength);
 				} else {
 						int i = key_binary_search(node, userkey, keylength);
+						if (i == INT32_MAX) return -1;
 						if (i >= 0) {
 								node = pool.fetch_tree_node(node->sub()[i + 1]);
 						} else {
@@ -377,6 +379,7 @@ private:
 	{
 		/* Search key location */
 		int insert = key_binary_search(leaf, userkey, keylength);
+		if (insert == INT32_MAX) return -1;
 		//std::cout << "binary search result = " << insert << std::endl;
 		if (insert >= 0) {
 			/* Already exists */
@@ -638,6 +641,7 @@ private:
 	{
 	        /* Search key location */
 	        int insert = key_binary_search(node, key);
+            if (insert == INT32_MAX) return -1;
 	        assert(insert < 0);
 	        insert = -insert - 1;
 
@@ -1014,6 +1018,7 @@ private:
 	inline int parent_key_index(bptree_node *parent, bp_addr_t key)
 	{
 	        int index = key_binary_search(parent, key);
+            if (index == INT32_MAX) return -1;
 	        return index >= 0 ? index : -index - 2;
 	}
 
@@ -1021,6 +1026,7 @@ private:
 	{
 			//printf("delete %.*s\n", 12, userkey + 4);
 	        int remove = key_binary_search(leaf, userkey, keylength);
+	        if (remove == INT32_MAX) return -1;
 	        if (remove < 0) {
 	                /* Not exist */
 	                return -1;
@@ -1175,7 +1181,9 @@ public:
 
 		while (low + 1 < high) {
 			int mid = low + (high - low) / 2;
-			pool.fetch_key(arr[mid], &key, length);
+			if (!pool.fetch_key(arr[mid], &key, length)) {
+			    return INT32_MAX;
+			}
 			if (is_larger(userkey, keylength, key, length )) {
 				low = mid;
 			} else {
@@ -1199,7 +1207,7 @@ public:
 		char *target_key;
 		int target_key_length;
 		pool.fetch_key(target, &target_key, target_key_length);
-		if (target_key == 0) { std::cerr << "target is not stored yet" << std::endl; exit(1); }
+		if (target_key == 0) return INT32_MAX;
 		return key_binary_search(node, target_key, target_key_length);
 	}
 
@@ -1284,6 +1292,7 @@ private:
 
 			while (node != 0) {
 				int i = tree->key_binary_search(node, key, length);
+				if (i == INT32_MAX) return;
 				if (node->is_leaf()) {
 					if ( i < 0) {
 						i = -i -1;
@@ -1315,6 +1324,7 @@ private:
 			keyindex = -1;
 			while (node != 0) {
 				int i = tree->key_binary_search(node, key, length, same);
+                if (i == INT32_MAX) return;
 				if (node->is_leaf()) {
 					if ( i < 0) {
 						i = -i -1;

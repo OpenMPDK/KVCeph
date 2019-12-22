@@ -11,7 +11,7 @@ int KvsStoreDataObject::read(uint64_t offset, uint64_t len, bufferlist &bl, Func
     bool suc = data.get_range(offset, len, tls_pages, page_loader);
 
     if (!suc) {
-        //TR << "read failed - tls pages clear";
+        TR << "read failed - tls pages clear";
         tls_pages.clear();
         return -ENOENT;
     }
@@ -29,7 +29,7 @@ int KvsStoreDataObject::read(uint64_t offset, uint64_t len, bufferlist &bl, Func
         len -= toread;
     }
 
-    TR << "read done bl = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", bl length = " << bl.length()<< "/" << len;
+    // TR << "read done bl = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", bl length = " << bl.length()<< "/" << len;
 
     return bl.length();
 }

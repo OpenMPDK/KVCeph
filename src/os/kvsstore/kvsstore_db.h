@@ -1,7 +1,6 @@
 #ifndef SRC_OS_KVSSTORE_KVSSTORE_KVCMDS_H_
 #define SRC_OS_KVSSTORE_KVSSTORE_KVCMDS_H_
 
-#include "indexer_hint.h"
 #include <map>
 
 #include "kvsstore_types.h"
@@ -49,6 +48,7 @@ public:
     void add_coll(KvsIoContext *ctx, const coll_t &cid, bufferlist &bl);
     void add_onode(KvsIoContext *ctx,const ghobject_t &oid, bufferlist &bl);
     void add_userdata(KvsIoContext *ctx,const ghobject_t& oid, char *page, int length, int pageid);
+    void add_userdata(KvsIoContext *ctx,const ghobject_t& oid, bufferlist &bl, int pageid);
     void add_omap(KvsIoContext *ctx,const ghobject_t& oid, uint64_t index, const std::string &strkey, bufferlist &bl);
 
     void rm_coll(KvsIoContext *ctx,const coll_t &cid);

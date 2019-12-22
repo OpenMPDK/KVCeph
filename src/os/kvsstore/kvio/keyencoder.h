@@ -170,6 +170,10 @@ inline uint8_t calculate_omapkey_length(const int namelen)
 
 inline uint8_t construct_omapkey_impl(void *keybuffer, uint64_t lid, const char *name, const int name_len, uint8_t space_id) {
 
+    if (sizeof(kvs_omap_key) + name_len > KVKEY_MAX_SIZE) {
+        TR << "omap key name is too long:" << sizeof(kvs_omap_key) + name_len;
+        exit(1);
+    }
     struct kvs_omap_key* kvskey = (struct kvs_omap_key*)keybuffer;
     kvskey->group= GROUP_PREFIX_OMAP;
     kvskey->lid  = lid;

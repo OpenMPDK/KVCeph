@@ -1,4 +1,3 @@
-#include "indexer_hint.h"
 
 #include <stdint.h>
 #include "kvsstore_db.h"
@@ -198,7 +197,7 @@ int KvsStoreDB::read_block(const ghobject_t &oid, const int blockindex, char *da
 
 	if (ret == 0) {
         nread = value.length;
-        TR << "data read = " << ceph_str_hash_linux(data, nread) << ", nread = " << nread;
+        TR << "data read pgid = " << blockindex << ", hash = " << ceph_str_hash_linux(data, KVS_OBJECT_SPLIT_SIZE) << ", nread = " << KVS_OBJECT_SPLIT_SIZE;
     }
 	else {
 	    TR << "read failed";
@@ -274,7 +273,7 @@ void KvsStoreDB::add_coll(KvsIoContext *ctx, const coll_t &cid, bufferlist &bl) 
 		return l;
 	};
 	ctx->add_to_journal(KEYSPACE_COLLECTION, KVS_JOURNAL_ENTRY_COLL, &bl, keyfunc);
-	ctx->add_pending_meta(KEYSPACE_COLLECTION, bl, keyfunc);
+    ctx->add_pending_bl(KEYSPACE_COLLECTION, bl, keyfunc);
 
 }
 
@@ -304,7 +303,7 @@ void KvsStoreDB::add_onode(KvsIoContext *ctx,const ghobject_t &oid, bufferlist &
 
 	ctx->add_to_journal(space_id, KVS_JOURNAL_ENTRY_ONODE, &bl, keygen);
 
-	ctx->add_pending_meta(space_id, bl, keygen);
+    ctx->add_pending_bl(space_id, bl, keygen);
 }
 
 void KvsStoreDB::rm_onode(KvsIoContext *ctx,const ghobject_t& oid){
@@ -316,6 +315,14 @@ void KvsStoreDB::rm_onode(KvsIoContext *ctx,const ghobject_t& oid){
 
 	ctx->add_to_journal(space_id, KVS_JOURNAL_ENTRY_ONODE, 0, keygen);
 	ctx->add_pending_remove(space_id, keygen);
+}
+
+void KvsStoreDB::add_userdata(KvsIoContext *ctx,const ghobject_t& oid, bufferlist &bl, int pageid){
+    FTRACE
+    //TR << "add userdata: oid = " << oid << ", length = " << length << ", pageid " << pageid ;
+    ctx->add_pending_bl(KEYSPACE_DATA, bl, [&] (void *buffer)->uint8_t {
+        return construct_object_key(cct, oid, buffer, pageid);
+    });
 }
 
 void KvsStoreDB::add_userdata(KvsIoContext *ctx,const ghobject_t& oid, char *page, int length, int pageid){
@@ -336,10 +343,10 @@ void KvsStoreDB::rm_data(KvsIoContext *ctx,const ghobject_t& oid, int blockid){
 void KvsStoreDB::add_omap(KvsIoContext *ctx,const ghobject_t& oid, uint64_t index, const std::string &strkey, bufferlist &bl)
 {
     FTRACE
-    TR << "add omap: oid = " << oid << ", index = " << index << ", strkey = " << strkey << ", bl = " << ceph_str_hash_linux(bl.c_str(), bl.length());
-	ctx->add_pending_meta(KEYSPACE_DATA, bl, [&] (void *buffer)->uint8_t {
-		return construct_omapkey_impl(buffer, index, strkey.c_str(), strkey.length(), KEYSPACE_OMAP);
-	});
+    TR << "add omap: oid = " << oid << ", index = " << index << ", strkey = " << strkey << ", bl = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", bl length = " << bl.length();
+    ctx->add_pending_bl(KEYSPACE_DATA, bl, [&](void *buffer) -> uint8_t {
+        return construct_omapkey_impl(buffer, index, strkey.c_str(), strkey.length(), KEYSPACE_OMAP);
+    });
 }
 
 void KvsStoreDB::rm_omap(KvsIoContext *ctx,const ghobject_t& oid, uint64_t index, const std::string &strkey)
