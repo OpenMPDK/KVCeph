@@ -197,10 +197,11 @@ int KvsStoreDB::read_block(const ghobject_t &oid, const int blockindex, char *da
 
 	if (ret == 0) {
         nread = value.length;
-        TR << "data read pgid = " << blockindex << ", hash = " << ceph_str_hash_linux(data, KVS_OBJECT_SPLIT_SIZE) << ", nread = " << KVS_OBJECT_SPLIT_SIZE;
+        //TR << "data read pgid = " << blockindex << ", hash = " << ceph_str_hash_linux(data, KVS_OBJECT_SPLIT_SIZE) << ", nread = " << KVS_OBJECT_SPLIT_SIZE;
     }
 	else {
-	    TR << "read failed";
+        nread = 0;
+	    //TR << "read failed";
 	}
 
 	return ret;

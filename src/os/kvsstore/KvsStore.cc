@@ -2570,7 +2570,7 @@ void KvsStore::_do_read_stripe(OnodeRef o, uint64_t offset, bufferlist *pbl)
 
         char *dst = bp.c_str();
         int r = db.read_block(o->oid, pgid, dst, nread);
-        TR << "bp content: pg " << pgid << ", bytes = " << nread << ", content = " << std::string(bp.c_str(), nread);
+        //TR << "bp content: pg " << pgid << ", bytes = " << nread << ", content = " << std::string(bp.c_str(), nread);
         if (r != 0) {
             TR << "read failure";
             pbl->clear();
@@ -2585,18 +2585,18 @@ void KvsStore::_do_read_stripe(OnodeRef o, uint64_t offset, bufferlist *pbl)
         }
 */
         bp.set_length(nread);
-        TR << "bp content: pg " << pgid << ", bytes = " << bp.length() << ", content = " << std::string(bp.c_str(),bp.length());
+  //      TR << "bp content: pg " << pgid << ", bytes = " << bp.length() << ", content = " << std::string(bp.c_str(),bp.length());
 
         pbl->push_back(std::move(bp));
 
 
-        TR << "pbl content: pg " << pgid << ", bytes = " << pbl->length() << ", content = " << std::string(pbl->c_str(),pbl->length());
+//        TR << "pbl content: pg " << pgid << ", bytes = " << pbl->length() << ", content = " << std::string(pbl->c_str(),pbl->length());
 
         //pbl->append(std::move(ptr));
         o->pending_stripes[offset] = *pbl;
     } else {
         *pbl = p->second;
-        TR << "cached pbl content: bytes = " << pbl->length() << ", content = " << std::string(pbl->c_str(),pbl->length());
+        //TR << "cached pbl content: bytes = " << pbl->length() << ", content = " << std::string(pbl->c_str(),pbl->length());
     }
 }
 void KvsStore::_do_write_stripe(KvsTransContext *txc, OnodeRef o,
@@ -2606,7 +2606,7 @@ void KvsStore::_do_write_stripe(KvsTransContext *txc, OnodeRef o,
     bufferlist &newbl = o->pending_stripes[offset];
     const int pgid = (offset >> KVS_OBJECT_SPLIT_SHIFT);
     db.add_userdata(&txc->ioc, o->oid, newbl.c_str(), newbl.length(), pgid);
-    TR << "write content: pg " <<  pgid  << ", bytes = " << newbl.length() << ", content = " << std::string(newbl.c_str(), newbl.length());
+    TR << "write content: pg " <<  pgid  << ", bytes = " << newbl.length() << ", content = " << std::string(newbl.c_str(), std::min(10, (int)newbl.length()));
 }
 
 

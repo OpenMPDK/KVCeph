@@ -751,7 +751,6 @@ void iter_callback(kv_io_context &op, void* private_data)
 	ctx->retcode = op.retcode;
 	ctx->byteswritten = op.hiter.byteswritten;
 	if (ctx->parent) {
-        TRIO << "iter_callback: ret = " << ctx->retcode << ", is_end  " << ctx->end << "\n";
         ((KvsAioContext<kv_iter_context> *) ctx->parent)->fire_event(ctx);
     }
 }
