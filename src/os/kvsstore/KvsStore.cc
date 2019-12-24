@@ -2603,9 +2603,10 @@ void KvsStore::_do_write_stripe(KvsTransContext *txc, OnodeRef o,
                                 uint64_t offset, bufferlist& bl)
 {
     o->pending_stripes[offset] = bl;
+    bufferlist &newbl = o->pending_stripes[offset];
     const int pgid = (offset >> KVS_OBJECT_SPLIT_SHIFT);
-    db.add_userdata(&txc->ioc, o->oid, bl.c_str(), bl.length(), pgid);
-    TR << "write content: pg " <<  pgid  << ", bytes = " << bl.length() << ", content = " << std::string(bl.c_str(), bl.length());
+    db.add_userdata(&txc->ioc, o->oid, newbl.c_str(), newbl.length(), pgid);
+    TR << "write content: pg " <<  pgid  << ", bytes = " << newbl.length() << ", content = " << std::string(newbl.c_str(), newbl.length());
 }
 
 

@@ -328,6 +328,8 @@ void KvsStoreDB::add_userdata(KvsIoContext *ctx,const ghobject_t& oid, bufferlis
 void KvsStoreDB::add_userdata(KvsIoContext *ctx,const ghobject_t& oid, char *page, int length, int pageid){
     FTRACE
     //TR << "add userdata: oid = " << oid << ", length = " << length << ", pageid " << pageid ;
+    if (length == 14)
+        TRIO << "add_userdata - content = " << std::string((const char*)page, length);
 	ctx->add_pending_data(KEYSPACE_DATA, page, length, [&] (void *buffer)->uint8_t {
 		return construct_object_key(cct, oid, buffer, pageid);
 	});
@@ -422,7 +424,10 @@ int KvsStoreDB::aio_submit(KvsTransContext *txc)
                 } else {
                     set_kv_value(&value, ior->raw_data, ior->raw_data_length);
                 }
-
+                if (value.length == 14) {
+                    TRIO << "DEBUG before submit - content = " << std::string((const char*)ior->raw_data, ior->raw_data_length);
+                    TRIO << "DEBUG before submit - content = " << std::string((const char*)value.value, value.length);
+                }
                 res = kadi.kv_store_aio(ior->spaceid, ior->key, &value, { txc_data_callback, static_cast<void*>(txc) });
 
                 //TR << "{AIO SUBMIT} STORE txc = " << (void *)txc  << print_kvssd_key(ior->key->key, ior->key->length) << ", value length = " << value.length << ", spaceid = " << (int)ior->spaceid << ", retcode = " << res ;
@@ -445,8 +450,8 @@ uint64_t KvsStoreDB::compact() {
 	FTRACE
 	uint64_t processed_keys = 0;
 
-	bptree onode_tree(&kadi.adi, 6, GROUP_PREFIX_ONODE);
-	bptree  coll_tree(&kadi.adi, 6, GROUP_PREFIX_COLL);
+	bptree onode_tree(&kadi.adi, 1, GROUP_PREFIX_ONODE);
+	bptree  coll_tree(&kadi.adi, 1, GROUP_PREFIX_COLL);
 	bptree *tree;
 
 	processed_keys = list_oplog(KEYSPACE_ONODE, 0xffffffff,

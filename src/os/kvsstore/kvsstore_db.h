@@ -13,7 +13,7 @@ class KvsStoreDB
 	KADIWrapper kadi;
 	std::mutex compact_lock;
 	std::condition_variable compact_cond;
-	static const int skip_skp = 6;
+	static const int skip_skp = 1;
 public:
 	KvsStoreDB(CephContext *cct_): cct(cct_), kadi(cct) {}
 
