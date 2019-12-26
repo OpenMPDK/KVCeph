@@ -739,7 +739,7 @@ int KADI::iter_read_aio(int space_id, unsigned char handle, void *buf, uint32_t 
 #endif
     return 0;
 }
-
+ 
 
 /// A callback function for an asynchronous iterator
 /// ---------------------------------------------------

@@ -470,7 +470,7 @@ uint64_t KvsStoreDB::compact() {
 				return;
 			}
 
-            //TR  << "opcode = " << opcode << ", key = " << print_key((const char*)key, length) << ", length = " << length ;
+            TR  << "found: opcode = " << opcode << ", key = " << print_key((const char*)key, length) << ", length = " << length ;
 
 			if (opcode == nvme_cmd_kv_store) {
                 //TR << "tree-insert " << treename << ", key: " << print_kvssd_key(std::string((char*)key,length)) ;
@@ -482,13 +482,13 @@ uint64_t KvsStoreDB::compact() {
 
 			//cout << "read: group"  << groupid << ", seq " << sequence << ", " << print_key((const char*)key, length) << ", length = " << length << endl;
 	});
-    //TR << "1. found and read " << processed_keys << " oplog pages" ;
+    TR << "compaction 1: found and read " << processed_keys << " oplog pages" ;
 
     onode_tree.flush();
 
     coll_tree.flush();
 
-    //TR << "2. updated the index structure " ;
+    TR << "compaction 2: updated the index structure " ;
 
 	return processed_keys;
 }

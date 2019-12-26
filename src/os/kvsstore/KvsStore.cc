@@ -241,15 +241,18 @@ int KvsStore::_collection_list(KvsCollection *c, const ghobject_t &start,
 		std::unique_lock<std::mutex> lck(compact_lock,std::defer_lock);
 
 		if (lck.try_lock()) {
+
+		    TR << "compact begins .......................";
 			db.compact();
+            TR << "compact finished .......................";
 		} else {
 			lck.lock();
 		}
 
-        /*TR << " range " << print_kvssd_key(temp_start_key.key, temp_start_key.length)
+        TR << " range " << print_kvssd_key(temp_start_key.key, temp_start_key.length)
            << " to " << print_kvssd_key(temp_end_key.key, temp_end_key.length) << " and "
            << print_kvssd_key(start_key.key, start_key.length) << " to "
-           << print_kvssd_key(end_key.key, end_key.length) << " start " << start;*/
+           << print_kvssd_key(end_key.key, end_key.length) << " start " << start;
         {
             auto it = db.get_iterator(GROUP_PREFIX_ONODE);
             //int index = 0;
@@ -2525,7 +2528,7 @@ int KvsStore::getattrs(CollectionHandle &c_, const ghobject_t &oid,
 int KvsStore::read(CollectionHandle &c_, const ghobject_t &oid, uint64_t offset,
 		size_t length, bufferlist &bl, uint32_t op_flags) {
 	FTRACE
-    //TR << "read: oid " << oid << ", offset " << offset << ", length " << length ;
+    TR << "read: oid " << oid << ", offset " << offset << ", length " << length ;
 
 	KvsCollection *c = static_cast<KvsCollection*>(c_.get());
 
@@ -2602,11 +2605,16 @@ void KvsStore::_do_read_stripe(OnodeRef o, uint64_t offset, bufferlist *pbl)
 void KvsStore::_do_write_stripe(KvsTransContext *txc, OnodeRef o,
                                 uint64_t offset, bufferlist& bl)
 {
-    o->pending_stripes[offset] = bl;
-    bufferlist &newbl = o->pending_stripes[offset];
+    static const char *empty = "";
+    //o->pending_stripes[offset] = bl;
+    bufferlist *newbl = &o->pending_stripes[offset];
+    newbl->claim(bl);
+
+    const char *data = (newbl->length() == 0)? empty:newbl->c_str();
+    //bufferlist &newbl = o->pending_stripes[offset];
     const int pgid = (offset >> KVS_OBJECT_SPLIT_SHIFT);
-    db.add_userdata(&txc->ioc, o->oid, newbl.c_str(), newbl.length(), pgid);
-    TR << "write content: pg " <<  pgid  << ", bytes = " << newbl.length() << ", content = " << std::string(newbl.c_str(), std::min(10, (int)newbl.length()));
+    db.add_userdata(&txc->ioc, o->oid, (char*)data, newbl->length(), pgid);
+    TR << "write content: pg " <<  pgid  << ", bytes = " << newbl->length() << ", content = " << std::string(newbl->c_str(), std::min(10, (int)newbl->length()));
 }
 
 
