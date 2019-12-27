@@ -116,13 +116,8 @@ void KvsStore::_kv_index_thread() {
 	derr << "index thread..." << dendl;
 	// load pages from the AOL
 	static double index_interval_us = 1000000.0; // 1 second
-	std::unique_lock<std::mutex> lck(compact_lock,std::defer_lock);
-
 	while(true) {
-		if (lck.try_lock()) {
-			//db.compact();
-			lck.unlock();
-		}
+	    //db.compact();
 
         {
             std::unique_lock l (kv_lock );
@@ -150,24 +145,24 @@ static void get_coll_key_range(const coll_t& cid, int bits, kv_key *temp_start, 
 	s_key->prefix = GROUP_PREFIX_ONODE;
 	e_key->prefix = GROUP_PREFIX_ONODE;
 	temp_s_key->prefix = GROUP_PREFIX_ONODE;
-	temp_s_key->prefix = GROUP_PREFIX_ONODE;
+	temp_e_key->prefix = GROUP_PREFIX_ONODE;
 
 	spg_t pgid;
 	if (cid.is_pg(&pgid)) {
 		// shard id
 
-		s_key->shardid 	    = int8_t(pgid.shard);
+		s_key->shardid 	    = int8_t(pgid.shard) + 0x80;
 		e_key->shardid 		= s_key->shardid;
 		temp_s_key->shardid = s_key->shardid;
-		temp_e_key->shardid = temp_s_key->shardid;
+		temp_e_key->shardid = s_key->shardid;
 
 		// poolid
 		s_key->poolid = pgid.pool() + 0x8000000000000000ull;
 		e_key->poolid = s_key->poolid;
 		temp_s_key->poolid = (-2ll - pgid.pool()) + 0x8000000000000000ull;
-		temp_e_key->poolid = temp_s_key->poolid;
+        temp_e_key->poolid = temp_s_key->poolid;
 
-		// hash, start key
+        // hash, start key
 		uint32_t reverse_hash = hobject_t::_reverse_bits(pgid.ps());
 		s_key->bitwisekey = reverse_hash;
 		temp_s_key->bitwisekey = reverse_hash;
@@ -183,7 +178,7 @@ static void get_coll_key_range(const coll_t& cid, int bits, kv_key *temp_start, 
 
 	} else {
 		// shardid
-		s_key->shardid 	    = int8_t(shard_id_t::NO_SHARD);
+		s_key->shardid 	    = int8_t(shard_id_t::NO_SHARD) + 0x80;
 		e_key->shardid 		= s_key->shardid;
 
 		// poolid
@@ -238,26 +233,19 @@ int KvsStore::_collection_list(KvsCollection *c, const ghobject_t &start,
 						<< print_kvssd_key(end_key.key, end_key.length) << " start " << start << dendl;
 
 	{
-		std::unique_lock<std::mutex> lck(compact_lock,std::defer_lock);
-
-		if (lck.try_lock()) {
-		    TR << "compact begins .......................";
-			db.compact();
-            TR << "compact finished .......................";
-		} else {
-			lck.lock();
-		}
+        db.compact();
 
         TR << " range " << print_kvssd_key(temp_start_key.key, temp_start_key.length)
            << " to " << print_kvssd_key(temp_end_key.key, temp_end_key.length) << " and "
            << print_kvssd_key(start_key.key, start_key.length) << " to "
            << print_kvssd_key(end_key.key, end_key.length) << " start " << start;
-        /*{
+		/*
+        {
             auto it = db.get_iterator(GROUP_PREFIX_ONODE);
-            //int index = 0;
+            int index = 0;
             bool a = false,b = false, c = false, d = false;
             while (it->valid()) {
-                //kv_key key = it->key();
+                kv_key key = it->key();
 
                 if (!a && db.is_key_ge(it->key(), temp_start_key)) {
                     //TR << "range temp start key " << print_kvssd_key(temp_start_key.key, temp_start_key.length);
@@ -279,9 +267,9 @@ int KvsStore::_collection_list(KvsCollection *c, const ghobject_t &start,
                     d = true;
                 }
 
-                //ghobject_t oid;
-                //construct_onode_ghobject_t(cct, key, &oid);
-                //TR << "iter  keys #"<< index++ << "= " << print_kvssd_key(key.key, key.length) << ", oid = " << oid;
+                ghobject_t oid;
+                construct_onode_ghobject_t(cct, key, &oid);
+                TR << "iter  keys #"<< index++ << "= " << print_kvssd_key(key.key, key.length) << ", oid = " << oid;
 
                 it->next();
             }
@@ -341,12 +329,13 @@ int KvsStore::_collection_list(KvsCollection *c, const ghobject_t &start,
 				}
 				break;
 			}
-            TR << __func__ << " key " << it->key().key << ", length " << it->key().length;
+            TR << __func__ << " key " << it->key().key << ", length " << (int)it->key().length;
 			TR << __func__ << " key " << print_kvssd_key(it->key().key, it->key().length);
 			kv_key key = it->key();
 			if (key.length > 0) {
                 ghobject_t oid;
                 construct_onode_ghobject_t(cct, key, &oid);
+                TR << __func__ << " oid = " << oid << max;
                 //TR << "object hash = " << oid.get_nibblewise_key_u32() << ", end hash " << 67108864 << " ok? " << (oid.get_nibblewise_key_u32() < 67108864);
                 ceph_assert(r == 0);
                 if (ls->size() >= (unsigned) max) {
@@ -357,7 +346,7 @@ int KvsStore::_collection_list(KvsCollection *c, const ghobject_t &start,
                 }
                 ls->push_back(oid);
             }
-            //TR << __func__ << "ls size = " << ls->size() << "\n";
+            TR << __func__ << "ls size = " << ls->size() << "\n";
 			it->next();
 		}
 	}
@@ -373,13 +362,8 @@ static int open_count =0;
 int KvsStore::_open_collections() {
 
 	FTRACE
-	std::unique_lock<std::mutex> lck(compact_lock,std::defer_lock);
 
-	if (lck.try_lock()) {
-		db.compact();
-	} else {
-		lck.lock();
-	}
+	db.compact();
 
     KvsIterator *it = db.get_iterator(GROUP_PREFIX_COLL);
     for (it->begin(); it->valid(); it->next()) {
@@ -2068,20 +2052,18 @@ int KvsStore::_open_db(bool create) {
         return -1;
     }
 
-    { // workaround for fw issue
-        bptree onode_tree(&db.get_adi()->adi, 1, GROUP_PREFIX_ONODE);
-        onode_tree.remove_all();
-        bptree coll_tree(&db.get_adi()->adi, 1, GROUP_PREFIX_COLL);
-        coll_tree.remove_all();
-    }
-
-
     this->db.close_iterators();
 
 	kv_callback_thread.create("kvscallback");
 	kv_index_thread.create("kvsindex");
 	kv_finalize_thread.create("kvsfinalize");
 
+    if (create) { // workaround for fw issue
+        bptree onode_tree(&db.get_adi()->adi, 1, GROUP_PREFIX_ONODE);
+        onode_tree.remove_all();
+        bptree coll_tree(&db.get_adi()->adi, 1, GROUP_PREFIX_COLL);
+        coll_tree.remove_all();
+    }
 
 	return 0;
 }

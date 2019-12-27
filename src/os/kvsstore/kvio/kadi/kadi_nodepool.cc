@@ -19,10 +19,13 @@ adi(adi_), ksid_skp(ksid_skp_), prefix(prefix_), param(param_)
 void bptree_pool::remove_all() {
     for (const auto &pair : pool) {
         auto p = pair.second;
-        adi->kv_delete_sync(ksid_skp, [&](struct nvme_passthru_kv_cmd &cmd) {
+        p->set_invalid();
+        /*adi->kv_delete_sync(ksid_skp, [&](struct nvme_passthru_kv_cmd &cmd) {
             cmd.key_length = fill_cmdkey_for_index_nodes(cmd.key, p->addr);
-        });
+        });*/
     }
+
+    _flush_dirtylist();
 }
 
 void bptree_pool::remove_treenode(bptree_node *node) {

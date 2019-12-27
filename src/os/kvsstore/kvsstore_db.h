@@ -2,7 +2,7 @@
 #define SRC_OS_KVSSTORE_KVSSTORE_KVCMDS_H_
 
 #include <map>
-
+#include <atomic>
 #include "kvsstore_types.h"
 #include "kvio/kvio.h"
 
@@ -11,11 +11,13 @@ class KvsStoreDB
 {
 	CephContext *cct;
 	KADIWrapper kadi;
+	bool compaction_started;
+	//std::atomic_bool is_compaction_started;
 	std::mutex compact_lock;
 	std::condition_variable compact_cond;
 	static const int skip_skp = 1;
 public:
-	KvsStoreDB(CephContext *cct_): cct(cct_), kadi(cct) {}
+	KvsStoreDB(CephContext *cct_): cct(cct_), kadi(cct), compaction_started(false) {}
 
 	KADIWrapper *get_adi() { return &kadi; }
 	inline int open(const std::string &devpath) {return kadi.open(devpath, 0);	}

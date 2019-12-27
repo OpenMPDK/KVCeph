@@ -10,6 +10,354 @@
 template<typename T, typename FUNC>
 inline void assert_eq(T a, T b, const FUNC &c) { if (a != b) return c(a, b); }
 
+template<typename T, typename O>
+inline void list_objects_in_collection(O &store, T ch){
+    vector<ghobject_t> objects;
+    int r = store->collection_list(ch, ghobject_t(), ghobject_t::get_max(), INT_MAX, &objects, 0);
+    ASSERT_EQ(r, 0);
+    for (vector<ghobject_t>::iterator i = objects.begin(); i != objects.end(); ++i) {
+        TR << "found: " << (*i) ;
+    }
+}
+template<class InputIt1, class InputIt2>
+inline int kvkey_lex_compare2(InputIt1 first1, InputIt1 last1, InputIt2 first2, InputIt2 last2)
+{
+    for ( ; (first1 != last1) && (first2 != last2); ++first1, (void) ++first2 ) {
+        if (*first1 < *first2) return -1;
+        if (*first2 < *first1) return +1;
+    }
+
+    if (first1 == last1) {
+        if (first2 == last2) return 0;
+        return -1;
+    }
+
+    return +1;
+}
+
+TEST_P(KvsStoreTest, SimpleWriteCollectionList2)
+{
+    int r;
+    coll_t cid(spg_t(pg_t(0, 1), shard_id_t(-1)));
+    auto cha = open_collection_safe(cid);
+    int NUM_OBJS = 10;
+    int WRITE_SIZE = 10;
+    set<ghobject_t> created;
+    string base = "";
+
+    bufferlist bl1;
+    for (int i = 0; i < WRITE_SIZE; i++)
+        bl1.append("a");
+
+    {
+
+        cerr << " write objects to collection" << std::endl;
+        ObjectStore::Transaction t;
+        for (int i = 0; i < NUM_OBJS; i++)
+        {
+            // cerr << "Object " << i << std::endl;
+            char buf[100];
+            snprintf(buf, sizeof(buf), "%d", i);
+            ghobject_t hoid(hobject_t(sobject_t(string(buf) + base, CEPH_NOSNAP)));
+            TR << "create object: shard id = " << (int) hoid.shard_id;
+            created.insert(hoid);
+
+            t.write(cid, hoid, 0, bl1.length(), bl1);
+            if (i % 100)
+            {
+                r = queue_transaction(store, cha, std::move(t));
+                ASSERT_EQ(r, 0);
+                t = ObjectStore::Transaction();
+            }
+        }
+        r = queue_transaction(store, cha, std::move(t));
+        ASSERT_EQ(r, 0);
+    }
+    ASSERT_EQ(created.size(), NUM_OBJS);
+    cerr << " ALL objects written to collection" << std::endl;
+    cha->flush();
+
+    cerr << " Checking all objects" << std::endl;
+    vector<ghobject_t> objects;
+    r = store->collection_list(cha, ghobject_t(), ghobject_t::get_max(), INT_MAX, &objects, 0);
+    ASSERT_EQ(r, 0);
+    std::cerr << "Number of objects read = " << objects.size() << ", actual number = " << NUM_OBJS << std::endl;
+    for (vector<ghobject_t>::iterator hoid_iter = objects.begin();
+         hoid_iter != objects.end();
+         ++hoid_iter)
+    {
+        cerr << "  Object returned = " << *hoid_iter << std::endl;
+    }
+    ASSERT_EQ(objects.size(), created.size());
+
+    {
+        cerr << " reading all objects " << std::endl;
+
+        for (vector<ghobject_t>::iterator hoid_iter = objects.begin();
+             hoid_iter != objects.end();
+             ++hoid_iter)
+        {
+            bufferlist in;
+            cerr << " Reading Object = " << *hoid_iter << std::endl;
+            r = store->read(cha, *hoid_iter, 0, bl1.length(), in);
+            ASSERT_EQ(bl1.length(), r);
+            ASSERT_EQ(bl1.length(), in.length());
+            ASSERT_EQ(ceph_str_hash_linux(bl1.c_str(), bl1.length()), ceph_str_hash_linux(in.c_str(), in.length()));
+            in.clear();
+        }
+        bl1.clear();
+        cerr << " ALL OBJECTS READ " << std::endl;
+    }
+}
+
+
+TEST_P(KvsStoreTest, SimpleWriteCollectionList) {
+    int r;
+    coll_t cid;//(spg_t(pg_t(0, 5), shard_id_t(1)));
+    auto cha = open_collection_safe(cid);
+    int NUM_OBJS = 1;
+    int WRITE_SIZE = 10;
+    set<ghobject_t> created;
+    string base = "";
+
+    bufferlist bl1;
+    for (int i = 0; i<WRITE_SIZE; i++)
+        bl1.append("a");
+
+    {
+
+        cerr << " write objects to collection" << std::endl;
+        ObjectStore::Transaction t;
+        for (int i = 0; i < NUM_OBJS; i++){
+            cerr << "Object " << i << std::endl;
+            char buf[100];
+            snprintf(buf, sizeof(buf), "%d", i);
+            ghobject_t hoid(hobject_t(sobject_t(string(buf) + base, CEPH_NOSNAP)));
+            created.insert(hoid);
+
+            t.write(cid, hoid, 0, bl1.length(), bl1);
+            if (i % 100) {
+                r = queue_transaction(store, cha, std::move(t));
+                ASSERT_EQ(r, 0);
+                t = ObjectStore::Transaction();
+            }
+        }
+        r = queue_transaction(store, cha, std::move(t));
+        ASSERT_EQ(r, 0);
+    }
+    ASSERT_EQ(created.size(), NUM_OBJS);
+    cerr << " ALL objects written to collection" << std::endl;
+
+    cerr << " Checking all objects" << std::endl;
+    vector<ghobject_t> objects;
+    r = store->collection_list(cha, ghobject_t(), ghobject_t::get_max(), INT_MAX, &objects, 0);
+    ASSERT_EQ(r, 0);
+    ASSERT_EQ(objects.size(), created.size());
+
+
+    {
+        cerr << " reading all objects " << std::endl;
+
+        for(vector<ghobject_t>::iterator hoid_iter = objects.begin();
+            hoid_iter != objects.end();
+            ++hoid_iter)
+        {
+            bufferlist in;
+            cerr << " Reading Object = " << *hoid_iter << std::endl;
+            r = store->read(cha, *hoid_iter, 0, bl1.length(), in);
+            ASSERT_EQ(bl1.length(),r);
+            ASSERT_EQ(bl1.length(),in.length());
+            ASSERT_EQ(ceph_str_hash_linux(bl1.c_str(), bl1.length()), ceph_str_hash_linux(in.c_str(), in.length()));
+            in.clear();
+
+        }
+        bl1.clear();
+        cerr << " ALL OBJECTS READ " << std::endl;
+    }
+
+    exit(1);
+}
+
+
+TEST_P(KvsStoreTest, PartialWriteTest){
+    coll_t cid(spg_t(pg_t(0, 1), shard_id_t(1)));// Added for iterator bug in FW
+    int r;
+    bufferlist bl1;
+    bl1.append_zero(8192*2);
+    memset(bl1.c_str(), '1', 8192*2);
+    bl1.append("helloworld");
+
+    TR << "original hash = " << ceph_str_hash_linux(bl1.c_str(), bl1.length());
+    TR << "original content 1st page = " << std::string(bl1.c_str(), 14);
+    TR << "original content 2nd page = " << std::string(bl1.c_str()+8192, 14);
+    TR << "original content 3rd page = " << std::string(bl1.c_str()+16384, 14);
+
+
+
+
+    // open collection
+    auto ch = open_collection_safe(cid);
+
+    ghobject_t hoid(hobject_t(sobject_t("large object", CEPH_NOSNAP)));
+
+    { std::cerr << "test: remove " << std::endl;
+
+        // write a multi-page object
+        ObjectStore::Transaction t;
+        t.remove(cid, hoid);
+        r = queue_transaction(store, ch, std::move(t));
+    }
+
+    { std::cerr << "test: multi-page write" << std::endl;
+
+        // write a multi-page object
+        ObjectStore::Transaction t;
+        t.write(cid, hoid, 0, bl1.length(), bl1);
+        r = queue_transaction(store, ch, std::move(t));
+        ASSERT_EQ(r, 0);
+
+        list_objects_in_collection(store, ch);
+
+        bufferlist out;
+        r = store->read(ch, hoid, 0, bl1.length(), out);
+        ASSERT_EQ(r, 16394);
+        TR << "original " << std::string(bl1.c_str(), bl1.length());
+        TR << "content  " << std::string(out.c_str(), out.length());
+        ASSERT_EQ(ceph_str_hash_linux(bl1.c_str(), bl1.length()), ceph_str_hash_linux(out.c_str(), out.length()));
+        TR << "read content = " << std::string(out.c_str()+16384, 10);
+    }
+/*
+    { std::cerr << "test: partial write 0 ~ 4096" << std::endl;
+
+        bufferlist bl2;
+        bl2.append_zero(4096);
+        // partial update 0 - 4096
+        ObjectStore::Transaction t;
+        t.write(cid, hoid, 0, 4096, bl2);
+        r = queue_transaction(store, ch, std::move(t));
+        ASSERT_EQ(r, 0);
+
+        bufferlist out;
+        r = store->read(ch, hoid, 0, 4096, out);
+        ASSERT_EQ(r, 4096);
+        ASSERT_EQ(out.length(), 4096);
+        ASSERT_EQ(ceph_str_hash_linux(bl1.c_str(), out.length()), ceph_str_hash_linux(out.c_str(), out.length()));
+
+        bufferlist out2;
+        r = store->read(ch, hoid, 4096, 8192, out2);
+        ASSERT_EQ(r, 8192);
+        ASSERT_EQ(out2.length(), 8192);
+        ASSERT_EQ(ceph_str_hash_linux(bl1.c_str()+4096, out2.length()), ceph_str_hash_linux(out2.c_str(), out2.length()));
+    }*/
+    { std::cerr << "test: append 4B" << std::endl;
+
+        int originallength = bl1.length();
+        TR << "original hash = " << ceph_str_hash_linux(bl1.c_str(), bl1.length());
+        TR << "original content = " << std::string(bl1.c_str()+16384, 14);
+
+        bufferlist bl2;
+        bl2.append("test");
+
+        bufferlist out;
+        r = store->read(ch, hoid, 0, bl1.length(), out);
+        ASSERT_EQ(r, 16394);
+        ASSERT_TRUE(ceph_str_hash_linux(out.c_str(), out.length()) != 0);
+        TR << "original read hash = " << ceph_str_hash_linux(out.c_str(), out.length());
+        TR << "original read content = " << std::string(out.c_str()+16384, 10);
+
+        bl1.append(bl2);
+
+        // append 4B
+        ObjectStore::Transaction t;
+        t.write(cid, hoid, originallength, 4, bl2);
+        r = queue_transaction(store, ch, std::move(t));
+        ASSERT_EQ(r, 0);
+
+        out.clear();
+        r = store->read(ch, hoid, 0, bl1.length(), out);
+        ASSERT_EQ(r, bl1.length());
+        ASSERT_EQ(out.length(), bl1.length());
+        TR << "written content = " << std::string(out.c_str()+16384, 14);
+
+
+        /*for (int i =0 ;i < originallength; i++) {
+            , originallength)
+        }
+*/
+        ASSERT_EQ(ceph_str_hash_linux(bl1.c_str(), bl1.length()), ceph_str_hash_linux(out.c_str(), out.length()));
+    }
+
+    std::cerr << "done" << std::endl;
+
+}
+
+TEST_P(KvsStoreTest, OpenCollectionTest2) {
+    coll_t cid;
+    ghobject_t hoid(hobject_t(sobject_t("Object 1", CEPH_NOSNAP)));
+    ghobject_t hoid2(hobject_t(sobject_t("Object 2", CEPH_NOSNAP)));
+    bufferlist bl;
+    bl.append("1234512345");
+    int r;
+
+    TR << "test starts";
+    auto ch = open_collection_safe(cid);
+    {
+        cerr << "create collection + write" << std::endl;
+        ObjectStore::Transaction t;
+        // t.create_collection(cid, 0);
+        t.write(cid, hoid, 0, bl.length(), bl);
+        r = queue_transaction(store, ch, std::move(t));
+        ASSERT_EQ(r, 0);
+    }
+    ch.reset();
+    r = store->umount();
+    ASSERT_EQ(0, r);
+    r = store->mount();
+    ASSERT_EQ(0, r);
+    ch = store->open_collection(cid);
+    {
+        ObjectStore::Transaction t;
+        t.write(cid, hoid2, 0, bl.length(), bl);
+        r = queue_transaction(store, ch, std::move(t));
+        ASSERT_EQ(r, 0);
+    }
+    {
+        ObjectStore::Transaction t;
+        t.remove(cid, hoid);
+        t.remove(cid, hoid2);
+        t.remove_collection(cid);
+        cerr << "remove collection" << std::endl;
+        r = queue_transaction(store, ch, std::move(t));
+        ASSERT_EQ(r, 0);
+    }
+    ch.reset();
+    r = store->umount();
+    ASSERT_EQ(0, r);
+    r = store->mount();
+    ASSERT_EQ(0, r);
+
+    ch = open_collection_safe(cid);
+    {
+        ObjectStore::Transaction t;
+        //t.create_collection(cid, 0);
+        r = queue_transaction(store, ch, std::move(t));
+        ASSERT_EQ(r, 0);
+        bool exists = store->exists(ch, hoid);
+        ASSERT_TRUE(!exists);
+    }
+    {
+        ObjectStore::Transaction t;
+        t.remove_collection(cid);
+        cerr << "remove collection 2" << std::endl;
+        r = queue_transaction(store, ch, std::move(t));
+        ASSERT_EQ(r, 0);
+    }
+}
+
+
+
+
+
 TEST_P(KvsStoreTest, BasicWriteCloneTest) {
   int r;
   coll_t cid(spg_t(pg_t(0, 2), shard_id_t(1)));
@@ -299,117 +647,6 @@ TEST_P(KvsStoreTest, SimpleWriteReadTest1){
 }
 
 
-TEST_P(KvsStoreTest, PartialWriteTest){
-    coll_t cid(spg_t(pg_t(0, 1), shard_id_t(1)));// Added for iterator bug in FW
-    int r;
-    bufferlist bl1;
-    bl1.append_zero(8192*2);
-    memset(bl1.c_str(), '1', 8192*2);
-    bl1.append("helloworld");
-
-    TR << "original hash = " << ceph_str_hash_linux(bl1.c_str(), bl1.length());
-    TR << "original content 1st page = " << std::string(bl1.c_str(), 14);
-    TR << "original content 2nd page = " << std::string(bl1.c_str()+8192, 14);
-    TR << "original content 3rd page = " << std::string(bl1.c_str()+16384, 14);
-
-
-
-
-    // open collection
-    auto ch = open_collection_safe(cid);
-
-    ghobject_t hoid(hobject_t(sobject_t("large object", CEPH_NOSNAP)));
-
-    { std::cerr << "test: remove " << std::endl;
-
-        // write a multi-page object
-        ObjectStore::Transaction t;
-        t.remove(cid, hoid);
-        r = queue_transaction(store, ch, std::move(t));
-    }
-
-    { std::cerr << "test: multi-page write" << std::endl;
-
-        // write a multi-page object
-        ObjectStore::Transaction t;
-        t.write(cid, hoid, 0, bl1.length(), bl1);
-        r = queue_transaction(store, ch, std::move(t));
-        ASSERT_EQ(r, 0);
-
-        bufferlist out;
-        r = store->read(ch, hoid, 0, bl1.length(), out);
-        ASSERT_EQ(r, 16394);
-        TR << "original " << std::string(bl1.c_str(), bl1.length());
-        TR << "content  " << std::string(out.c_str(), out.length());
-        ASSERT_EQ(ceph_str_hash_linux(bl1.c_str(), bl1.length()), ceph_str_hash_linux(out.c_str(), out.length()));
-        TR << "read content = " << std::string(out.c_str()+16384, 10);
-    }
-/*
-    { std::cerr << "test: partial write 0 ~ 4096" << std::endl;
-
-        bufferlist bl2;
-        bl2.append_zero(4096);
-        // partial update 0 - 4096
-        ObjectStore::Transaction t;
-        t.write(cid, hoid, 0, 4096, bl2);
-        r = queue_transaction(store, ch, std::move(t));
-        ASSERT_EQ(r, 0);
-
-        bufferlist out;
-        r = store->read(ch, hoid, 0, 4096, out);
-        ASSERT_EQ(r, 4096);
-        ASSERT_EQ(out.length(), 4096);
-        ASSERT_EQ(ceph_str_hash_linux(bl1.c_str(), out.length()), ceph_str_hash_linux(out.c_str(), out.length()));
-
-        bufferlist out2;
-        r = store->read(ch, hoid, 4096, 8192, out2);
-        ASSERT_EQ(r, 8192);
-        ASSERT_EQ(out2.length(), 8192);
-        ASSERT_EQ(ceph_str_hash_linux(bl1.c_str()+4096, out2.length()), ceph_str_hash_linux(out2.c_str(), out2.length()));
-    }*/
-    { std::cerr << "test: append 4B" << std::endl;
-
-        int originallength = bl1.length();
-        TR << "original hash = " << ceph_str_hash_linux(bl1.c_str(), bl1.length());
-        TR << "original content = " << std::string(bl1.c_str()+16384, 14);
-
-        bufferlist bl2;
-        bl2.append("test");
-
-        bufferlist out;
-        r = store->read(ch, hoid, 0, bl1.length(), out);
-        ASSERT_EQ(r, 16394);
-        ASSERT_TRUE(ceph_str_hash_linux(out.c_str(), out.length()) != 0);
-        TR << "original read hash = " << ceph_str_hash_linux(out.c_str(), out.length());
-        TR << "original read content = " << std::string(out.c_str()+16384, 10);
-
-        bl1.append(bl2);
-        TR << "new bl1 hash = " << ceph_str_hash_linux(bl1.c_str(), bl1.length());
-        TR << "new bl1 content = " << std::string(bl1.c_str()+16384, 14);
-        TR << "<new bl1 content = " << std::string(bl1.c_str(), bl1.length());
-
-        // append 4B
-        ObjectStore::Transaction t;
-        t.write(cid, hoid, originallength, 4, bl2);
-        r = queue_transaction(store, ch, std::move(t));
-        ASSERT_EQ(r, 0);
-
-        out.clear();
-        r = store->read(ch, hoid, 0, bl1.length(), out);
-        ASSERT_EQ(r, bl1.length());
-        ASSERT_EQ(out.length(), bl1.length());
-        TR << "written content = " << std::string(out.c_str()+16384, 14);
-
-
-        /*for (int i =0 ;i < originallength; i++) {
-            , originallength)
-        }
-*/
-        ASSERT_EQ(ceph_str_hash_linux(bl1.c_str(), bl1.length()), ceph_str_hash_linux(out.c_str(), out.length()));
-    }
-
-    std::cerr << "done" << std::endl;
-}
 
 TEST_P(KvsStoreTest, WriteTransactionTest){
     coll_t cid(spg_t(pg_t(0, 1), shard_id_t(1)));// Added for iterator bug in FW
@@ -3632,7 +3869,7 @@ int main(int argc, char **argv)
 
     // make sure we can adjust any config settings
     g_ceph_context->_conf._clear_safe_to_start_threads();
-    g_ceph_context->_conf.set_val_or_die("kvsstore_dev_path", "/dev/nvme2n1");
+
     g_ceph_context->_conf.set_val_or_die("osd_journal_size", "400");
     g_ceph_context->_conf.set_val_or_die("filestore_index_retry_probability", "0.5");
     g_ceph_context->_conf.set_val_or_die("filestore_op_thread_timeout", "1000");

@@ -449,6 +449,15 @@ KvsIterator *KvsStoreDB::get_iterator(uint32_t prefix)
 
 uint64_t KvsStoreDB::compact() {
 	FTRACE
+    {
+        std::unique_lock<std::mutex> cl (compact_lock);
+        if (compaction_started) {
+            compact_cond.wait(cl);
+            return 0;
+        } else {
+            compaction_started = true;
+        }
+    };
 	uint64_t processed_keys = 0;
 
 	bptree onode_tree(&kadi.adi, 1, GROUP_PREFIX_ONODE);
@@ -489,6 +498,12 @@ uint64_t KvsStoreDB::compact() {
     coll_tree.flush();
 
     TR << "compaction 2: updated the index structure " ;
+
+    {
+        std::unique_lock<std::mutex> cl (compact_lock);
+        compaction_started = false;
+        compact_cond.notify_all();
+    };
 
 	return processed_keys;
 }

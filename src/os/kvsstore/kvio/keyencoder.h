@@ -195,7 +195,7 @@ inline bool construct_onode_ghobject_t(CephContext* cct, char *key, int keylengt
     struct kvs_onode_key* kvskey = (struct kvs_onode_key*)key;
     if (kvskey->prefix != GROUP_PREFIX_ONODE && kvskey->prefix != GROUP_PREFIX_DATA) return false;
 
-    oid->shard_id.id = kvskey->shardid;
+    oid->shard_id.id = kvskey->shardid - 0x80;
     oid->hobj.pool = kvskey->poolid - 0x8000000000000000ull;
     oid->hobj.set_bitwise_key_u32(kvskey->bitwisekey);
     oid->hobj.snap.val = kvskey->snapid;
@@ -218,7 +218,7 @@ inline uint8_t construct_object_key(CephContext* cct, const ghobject_t& oid, voi
     char *name_loc = (char*)keybuffer + sizeof(kvs_object_key);
 
     kvskey->group = GROUP_PREFIX_DATA;
-    kvskey->shardid = int8_t(oid.shard_id);
+    kvskey->shardid = int8_t(oid.shard_id) + 0x80;
     kvskey->poolid  = oid.hobj.pool + 0x8000000000000000ull;
     kvskey->bitwisekey = oid.hobj.get_bitwise_key_u32();
     kvskey->snapid = uint64_t(oid.hobj.snap);
@@ -247,11 +247,13 @@ inline uint8_t construct_onode_key(CephContext* cct, const ghobject_t& oid, void
     char *name_loc = (char*)keybuffer + sizeof(kvs_onode_key);
 
     kvskey->prefix  = GROUP_PREFIX_ONODE;
-    kvskey->shardid = int8_t(oid.shard_id);
+    kvskey->shardid = int8_t(oid.shard_id) + 0x80;
     kvskey->poolid  = oid.hobj.pool + 0x8000000000000000ull;
     kvskey->bitwisekey = oid.hobj.get_bitwise_key_u32();
     kvskey->snapid = uint64_t(oid.hobj.snap);
     kvskey->genid = (uint64_t)oid.generation;
+
+    TR << "construct onode key: shard id = " << (int)int8_t(oid.shard_id) << ", encoded = " << (int)kvskey->shardid;
 
     const char *pos = encode_nspace_oid(oid.hobj.nspace, oid.hobj.get_key(), oid.hobj.oid.name, name_loc);
     const int total_keylength = (pos - name_loc) + sizeof(kvs_onode_key);
