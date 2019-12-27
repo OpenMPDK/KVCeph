@@ -252,17 +252,21 @@ public:
 	{
 	    FTRACE
 
+	    TR << "fetch meta";
 		// create or fetch root node
 		meta = pool.get_meta();
 		if (meta->isnew) {
 			root = 0;
 		}
 		else {
+            TR << "meta node is fetched";
 			root = pool.fetch_tree_node(pool.get_meta()->get_root_addr());
 			if (root == 0) {
 			    std::cerr << "cannot find the root node" << std::endl;
 			}
 		}
+
+        TR << "fetch meta done";
 
 	}
 

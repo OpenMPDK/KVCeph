@@ -253,12 +253,12 @@ int KvsStore::_collection_list(KvsCollection *c, const ghobject_t &start,
            << " to " << print_kvssd_key(temp_end_key.key, temp_end_key.length) << " and "
            << print_kvssd_key(start_key.key, start_key.length) << " to "
            << print_kvssd_key(end_key.key, end_key.length) << " start " << start;
-        {
+        /*{
             auto it = db.get_iterator(GROUP_PREFIX_ONODE);
             //int index = 0;
             bool a = false,b = false, c = false, d = false;
             while (it->valid()) {
-                kv_key key = it->key();
+                //kv_key key = it->key();
 
                 if (!a && db.is_key_ge(it->key(), temp_start_key)) {
                     //TR << "range temp start key " << print_kvssd_key(temp_start_key.key, temp_start_key.length);
@@ -286,7 +286,7 @@ int KvsStore::_collection_list(KvsCollection *c, const ghobject_t &start,
 
                 it->next();
             }
-        }
+        }*/
 		it = db.get_iterator(GROUP_PREFIX_ONODE);
 		if (start == ghobject_t() || start == c->cid.get_min_hobj()) {
 			it->upper_bound(temp_start_key);
@@ -386,9 +386,9 @@ int KvsStore::_open_collections() {
     for (it->begin(); it->valid(); it->next()) {
         coll_t cid;
         kv_key collkey = it->key();
-        //TR << "returned key : " << print_kvssd_key(std::string((char *) collkey.key, collkey.length)) ;
+        TR << "returned key : " << print_kvssd_key(std::string((char *) collkey.key, collkey.length)) ;
         std::string name((char *) collkey.key + sizeof(kvs_coll_key), collkey.length - sizeof(kvs_coll_key));
-        //TR << "found collection: " << name ;
+        TR << "found collection: " << name ;
         if (cid.parse(name)) {
             //TR << "CID parse" ;
             auto c = ceph::make_ref<KvsCollection>(this,
@@ -2610,10 +2610,8 @@ void KvsStore::_do_write_stripe(KvsTransContext *txc, OnodeRef o,
     static const char *empty = "";
     //o->pending_stripes[offset] = bl;
     bufferlist *newbl = &o->pending_stripes[offset];
-    newbl->claim(bl);
-
+    newbl->claim_append(bl);
     const char *data = (newbl->length() == 0)? empty:newbl->c_str();
-    //bufferlist &newbl = o->pending_stripes[offset];
     const int pgid = (offset >> KVS_OBJECT_SPLIT_SHIFT);
     db.add_userdata(&txc->ioc, o->oid, (char*)data, newbl->length(), pgid);
     TR << "write content: pg " <<  pgid  << ", bytes = " << newbl->length() << ", content = " << std::string(newbl->c_str(), std::min(10, (int)newbl->length()));
@@ -3301,6 +3299,7 @@ int KvsStore::_do_write(KvsTransContext *txc,
             bufferlist bl;
             bl.substr_of(orig_bl, bl_off, stripe_size);
             dout(30) << __func__ << " full stripe " << offset << dendl;
+            TR << "_do_write_stripe 1:" << bl.length() << ", str = " << std::string(bl.c_str(), 1);
             _do_write_stripe(txc, o, offset, bl);
             offset += stripe_size;
             length -= stripe_size;
@@ -3309,7 +3308,7 @@ int KvsStore::_do_write(KvsTransContext *txc,
         }
         uint64_t stripe_off = offset - offset_rem;
         bufferlist prev;
-
+        prev.clear();
         TR << "stript off " << stripe_off << ", length " << length;
         //bool noread = (offset == 0 && o->onode.size == length) || (o->onode.size == offset);
         if (stripe_off < o->onode.size && (stripe_off > 0 || (length < stripe_size))) {
@@ -3339,6 +3338,7 @@ int KvsStore::_do_write(KvsTransContext *txc,
         bufferlist t;
         t.substr_of(orig_bl, bl_off, use);
         bl.claim_append(t);
+        TR << "claim append 2:" << bl.length() << ", str = " << std::string(bl.c_str(), 1) ;
         bl_off += use;
         if (end_rem) {
             if (end_rem < prev.length()) {
@@ -3346,12 +3346,16 @@ int KvsStore::_do_write(KvsTransContext *txc,
                 dout(20) << __func__ << " reuse trailing " << l << " bytes" << dendl;
                 bufferlist t;
                 t.substr_of(prev, end_rem, l);
+                TR << "claim append 3:" << bl.length() ;
                 bl.claim_append(t);
             }
         }
         dout(30) << " writing:\n";
                 bl.hexdump(*_dout);
                 *_dout << dendl;
+
+
+                TR << "_do_write_stripe 3:" << bl.length() << ", str = " << std::string(bl.c_str(), 1) ;
         _do_write_stripe(txc, o, stripe_off, bl);
         offset += use;
         length -= use;
