@@ -406,6 +406,9 @@ int KvsStore::_open_collections() {
             } catch (buffer::error &e) {
                 derr << __func__ << " failed to decode cnode, key:"
                      << print_kvssd_key((char *) collkey.key, collkey.length) << dendl;
+                //workaround for fw issue
+                if (1) continue;
+
                 if (it) delete it;
                 return -EIO;
             }
@@ -414,9 +417,11 @@ int KvsStore::_open_collections() {
             coll_map[cid] = c;
 
         } else {
+
             derr << __func__ << " unrecognized collection " << print_kvssd_key(it->key().key, it->key().length)
                  << dendl;
-            ceph_abort_msg("unrecognized collection");
+            //ceph_abort_msg("unrecognized collection");
+            // workaround for fw issue
         }
     }
     if (it) delete it;
@@ -735,6 +740,10 @@ void KvsStore::_txc_release_alloc(KvsTransContext *txc) {
 
             if (ior->data != 0) {
                 delete ior->data;
+            }
+
+            if (ior->raw_data) {
+                free(ior->raw_data);
             }
 
             if (ior->key) {
@@ -2607,14 +2616,21 @@ void KvsStore::_do_read_stripe(OnodeRef o, uint64_t offset, bufferlist *pbl)
 void KvsStore::_do_write_stripe(KvsTransContext *txc, OnodeRef o,
                                 uint64_t offset, bufferlist& bl)
 {
-    static const char *empty = "";
-    //o->pending_stripes[offset] = bl;
-    bufferlist *newbl = &o->pending_stripes[offset];
-    newbl->claim_append(bl);
-    const char *data = (newbl->length() == 0)? empty:newbl->c_str();
+    o->pending_stripes[offset] = bl;
+
     const int pgid = (offset >> KVS_OBJECT_SPLIT_SHIFT);
-    db.add_userdata(&txc->ioc, o->oid, (char*)data, newbl->length(), pgid);
-    TR << "write content: pg " <<  pgid  << ", bytes = " << newbl->length() << ", content = " << std::string(newbl->c_str(), std::min(10, (int)newbl->length()));
+
+    char *data = (char*)malloc(bl.length());
+    if (bl.length() > 0) {
+        memcpy(data, bl.c_str(), bl.length());
+    }
+
+    db.add_userdata(&txc->ioc, o->oid, (char*)data, bl.length(), pgid);
+
+    //newbl->claim_append(bl);
+    //const char *data = (newbl->length() == 0)? empty:newbl->c_str();
+
+    //TR << "write content: pg " <<  pgid  << ", bytes = " << newbl->length() << ", content = " << std::string(newbl->c_str(), std::min(14, (int)newbl->length()));
 }
 
 
