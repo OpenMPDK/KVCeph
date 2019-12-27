@@ -24,7 +24,7 @@
 
 #define ENABLE_FTRACE
 //#define ENABLE_FUNCTION_TRACE
-//#define ENABLE_IOTRACE
+#define ENABLE_IOTRACE
 //#define IOTRACE_MINIMAL
 
 

@@ -218,7 +218,7 @@ public:
 	KvsSlottedPage *create_data_node();
 	bool fetch_key(const bp_addr_t &addr, char **key, int &length);
 	void flush(const bp_addr_t &newrootaddr);
-
+    void remove_all();
 
 private:
 

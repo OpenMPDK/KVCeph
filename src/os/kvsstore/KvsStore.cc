@@ -241,7 +241,6 @@ int KvsStore::_collection_list(KvsCollection *c, const ghobject_t &start,
 		std::unique_lock<std::mutex> lck(compact_lock,std::defer_lock);
 
 		if (lck.try_lock()) {
-
 		    TR << "compact begins .......................";
 			db.compact();
             TR << "compact finished .......................";
@@ -2069,12 +2068,19 @@ int KvsStore::_open_db(bool create) {
         return -1;
     }
 
+    { // workaround for fw issue
+        bptree onode_tree(&db.get_adi()->adi, 1, GROUP_PREFIX_ONODE);
+        onode_tree.remove_all();
+        bptree coll_tree(&db.get_adi()->adi, 1, GROUP_PREFIX_COLL);
+        coll_tree.remove_all();
+    }
+
+
     this->db.close_iterators();
 
 	kv_callback_thread.create("kvscallback");
 	kv_index_thread.create("kvsindex");
 	kv_finalize_thread.create("kvsfinalize");
-
 
 
 	return 0;
