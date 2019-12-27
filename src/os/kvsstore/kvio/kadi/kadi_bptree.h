@@ -261,11 +261,10 @@ public:
 		else {
             TR << "meta node is fetched";
             root = 0;
-            /*
 			root = pool.fetch_tree_node(pool.get_meta()->get_root_addr());
 			if (root == 0) {
 			    std::cerr << "cannot find the root node" << std::endl;
-			}*/
+			}
 		}
 
         TR << "fetch meta done";
@@ -1340,7 +1339,7 @@ private:
 		virtual void upper_bound(const char *key, int length) {
 			if (is_end() || tree->root == 0) { reset(); }
             if (tree == 0) return;
-            
+
 			bool same;
 			bptree_node *node = tree->root;
 			keyindex = -1;
