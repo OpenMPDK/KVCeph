@@ -260,10 +260,12 @@ public:
 		}
 		else {
             TR << "meta node is fetched";
+            root = 0;
+            /*
 			root = pool.fetch_tree_node(pool.get_meta()->get_root_addr());
 			if (root == 0) {
 			    std::cerr << "cannot find the root node" << std::endl;
-			}
+			}*/
 		}
 
         TR << "fetch meta done";
@@ -1222,14 +1224,24 @@ private:
 	friend class bptree_iterator_impl;
 
 	class bptree_iterator_impl: public bptree_iterator {
+        bp_addr_t root_addr;
+        bptree *root_tree;
 	public:
 		bptree_iterator_impl(bptree *tree_, int keyindex_ = 0, bp_addr_t nodeaddr_ = 0):
 			bptree_iterator(tree_, keyindex_, nodeaddr_)
 		{
 		    //TR << "bptree iterator: index = " << keyindex << ", nodeaddr == " << nodeaddr ;
+            root_tree = tree_;
+            root_addr = nodeaddr_;
 		    if (nodeaddr == 0) {
 		        end();
 		    }
+		}
+
+		inline void reset() {
+            tree = root_tree;
+            nodeaddr = root_addr;
+            keyindex = 0;
 		}
 
 		virtual void move_next(const long int movement) {
@@ -1280,6 +1292,9 @@ private:
 
 		virtual void begin() {
 		    //TR<< "BEGIN" ;
+            reset();
+            if (tree == 0) return;
+
 			lower_bound("", 0);
 		}
 
@@ -1289,7 +1304,8 @@ private:
 
 
 		virtual void lower_bound(const char *key, int length) {
-			if (is_end() || tree->root == 0 ) { end(); return; }
+			if (is_end() || tree->root == 0 ) { reset(); }
+            if (tree == 0) return;
 
 			bptree_node *node = tree->root;
 			keyindex = -1;
@@ -1322,7 +1338,9 @@ private:
 		}
 
 		virtual void upper_bound(const char *key, int length) {
-			if (is_end() || tree->root == 0) { end(); return; }
+			if (is_end() || tree->root == 0) { reset(); }
+            if (tree == 0) return;
+            
 			bool same;
 			bptree_node *node = tree->root;
 			keyindex = -1;
