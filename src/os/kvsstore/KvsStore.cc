@@ -3320,9 +3320,11 @@ int KvsStore::_do_write(KvsTransContext *txc,
             dout(20) << __func__ << " read previous stripe " << stripe_off
                      << ", got " << prev.length() << dendl;
 
-            if (prev.length() > 0)
-                TR << "read stripe content = " << std::string(prev.c_str(), prev.length()) << ", length = " << prev.length();
+            TR << "read stripe content: length = " << prev.length();
         }
+
+        TR << "prev length == " << prev.length();
+
         bufferlist bl;
         if (offset_rem) {
             unsigned p = std::min<uint64_t>(prev.length(), offset_rem);

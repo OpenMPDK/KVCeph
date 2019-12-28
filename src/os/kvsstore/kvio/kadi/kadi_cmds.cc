@@ -208,7 +208,7 @@ int KADI::kv_store_aio(uint8_t space_id, kv_value *value, const kv_cb& cb, const
         return -1;
     }
 
-#ifdef ENABLE_IOTRACE
+#ifdef ENABLE_IOTRACE_SUBMIT
     void *keyptr = 0;
     if (ioctx->cmd.key_length <= KVCMD_INLINE_KEY_MAX) {
         keyptr = (void*)ioctx->cmd.key;
@@ -255,7 +255,7 @@ int KADI::kv_store_aio(uint8_t space_id, kv_key *key, kv_value *value, const kv_
         return -1;
     }
 
-#ifdef ENABLE_IOTRACE
+#ifdef ENABLE_IOTRACE_SUBMIT
     void *keyptr = 0;
     if (ioctx->cmd.key_length <= KVCMD_INLINE_KEY_MAX) {
         keyptr = (void*)ioctx->cmd.key;
@@ -305,7 +305,7 @@ int KADI::kv_retrieve_aio(uint8_t space_id, kv_key *key, kv_value *value, const 
         return -1;
     }
 
-#ifdef ENABLE_IOTRACE
+#ifdef ENABLE_IOTRACE_SUBMIT
     void *keyptr = 0;
     if (ioctx->cmd.key_length <= KVCMD_INLINE_KEY_MAX) {
         keyptr = (void*)ioctx->cmd.key;
@@ -516,7 +516,7 @@ int KADI::kv_delete_aio(uint8_t space_id, const kv_cb& cb, const std::function< 
         return -1;
     }
 
-#ifdef ENABLE_IOTRACE
+#ifdef ENABLE_IOTRACE_SUBMIT
     void *keyptr = 0;
     if (ioctx->cmd.key_length <= KVCMD_INLINE_KEY_MAX) {
         keyptr = (void*)ioctx->cmd.key;
@@ -596,7 +596,7 @@ int KADI::kv_delete_aio(uint8_t space_id, kv_key *key, const kv_cb& cb) {
         return -1;
     }
 
-#ifdef ENABLE_IOTRACE
+#ifdef ENABLE_IOTRACE_SUBMIT
     void *keyptr = 0;
     if (ioctx->cmd.key_length <= KVCMD_INLINE_KEY_MAX) {
         keyptr = (void*)ioctx->cmd.key;
@@ -730,7 +730,7 @@ int KADI::iter_read_aio(int space_id, unsigned char handle, void *buf, uint32_t 
         derr << "fail to send aio command ret = " << ret << dendl;
         return -1;
     }
-#ifdef ENABLE_IOTRACE
+#ifdef ENABLE_IOTRACE_SUBMIT
     if (ret == 0) {
         TRIO << "{iter_read_aio} OK" ;
     } else {
@@ -1178,6 +1178,7 @@ kv_result KADI::fill_ioresult(const aio_cmd_ctx &ioctx, const struct nvme_aioeve
     memcpy(&ioresult.key, &ioctx.key, sizeof(ioctx.key));
     memcpy(&ioresult.value, &ioctx.value, sizeof(ioctx.value));
 
+
     //ioresult.latency = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - ioctx.t1).count();
 
     // exceptions
@@ -1211,21 +1212,21 @@ kv_result KADI::fill_ioresult(const aio_cmd_ctx &ioctx, const struct nvme_aioeve
                 TRIO << "<STORE AIO> " << print_kvssd_key(std::string((const char*)ioresult.key.key, ioresult.key.length))
                    << ", value length = " << ioctx.value.length
                    << ", hash " << ceph_str_hash_linux((const char*)ioresult.value.value, ioresult.value.length)
+                   << ", spaceid = " << ioctx.cmd.cdw3
                    << " OK" ;
-                if (ioctx.value.length == 14) {
-                    TRIO << "DEBUG content = " << std::string((const char*)ioresult.value.value, ioresult.value.length);
-                }
             } else {
                 TR << "<STORE AIO> " << print_kvssd_key(std::string((const char*)ioresult.key.key, ioresult.key.length))
+                   << ", spaceid = " << ioctx.cmd.cdw3
                    << ", retcode = " << ioresult.retcode << ", FAILED" ;
             }
             break;
         case nvme_cmd_kv_retrieve:
             if (ioresult.retcode == 0) {
                     TRIO << "<READ AIO> " << print_kvssd_key(std::string((const char*)ioresult.key.key, ioresult.key.length))
-                    << ", value = " << std::min(event.result, ioctx.value.length) << ", actual = " << (event.result & 0xffff) << ", hash " << ceph_str_hash_linux((const char*)ioresult.value.value, ioresult.value.length);
+                    << ", value = " << std::min(event.result, ioctx.value.length) << ", actual = " << (event.result & 0xffff) << ", hash " << ceph_str_hash_linux((const char*)ioresult.value.value, ioresult.value.length) << ", spaceid =" << ioctx.cmd.cdw3;
             } else {
                 TR << "<READ AIO> " << print_kvssd_key(std::string((const char*)ioresult.key.key, ioresult.key.length))
+                   << ", spaceid = " << ioctx.cmd.cdw3
                    << ", retcode = " << ioresult.retcode << ", FAILED" ;
             }
             break;

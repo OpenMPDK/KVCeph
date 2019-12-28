@@ -259,8 +259,7 @@ public:
 			root = 0;
 		}
 		else {
-            TR << "meta node is fetched";
-            root = 0;
+            TR << "meta node is being fetched: " << pool.get_meta()->get_root_addr();
 			root = pool.fetch_tree_node(pool.get_meta()->get_root_addr());
 			if (root == 0) {
 			    std::cerr << "cannot find the root node" << std::endl;
