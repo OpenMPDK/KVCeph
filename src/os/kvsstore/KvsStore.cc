@@ -2604,6 +2604,7 @@ int KvsStore::_do_read(OnodeRef o,uint64_t offset,size_t length,bufferlist& bl,u
         bool cachehit;
 
         kvs_stripe *stripe = get_stripe_for_read(o, offset - stripe_off, cachehit);
+        if (stripe == 0) return -ENOENT;
 
         TR << "_do_read - read stripe: hash = " << ceph_str_hash_linux(stripe->buffer, stripe->length()) <<", length = " << stripe->length();
 
