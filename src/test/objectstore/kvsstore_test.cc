@@ -154,7 +154,7 @@ TEST_P(KvsStoreTest, QuickReadTouchTest)
     int NUM_OBJS = 1;
     int NUM_UPDATES = 1;
     set<ghobject_t> created;
-    string base = "";
+    string base = "touch";
     auto ch = open_collection_safe(cid);
 
     {
@@ -184,7 +184,7 @@ TEST_P(KvsStoreTest, QuickReadTouchTest)
                      << " read 0 bytes: " << in.length()
                      << std::endl;
 
-                ASSERT_EQ(0, r);
+                ASSERT_EQ(0 , r);
 
                 in.clear();
             }
