@@ -713,6 +713,13 @@ void KvsStore::_txc_finish(KvsTransContext *txc) {
 void KvsStore::_txc_release_alloc(KvsTransContext *txc) {
 	FTRACE
 	KvsIoContext *ioc = &txc->ioc;
+
+
+	for (const auto &onode :txc->onodes) {
+	    for(const auto &stripe :onode->pending_stripes) {
+	        delete stripe.second;
+	    };
+	}
 	{
 		std::unique_lock<std::mutex> lk ( ioc->running_aio_lock );
 		// release memory
@@ -725,9 +732,9 @@ void KvsStore::_txc_release_alloc(KvsTransContext *txc) {
                 delete ior->data;
             }
 
-            if (ior->raw_data) {
-                free(ior->raw_data);
-            }
+            //if (ior->raw_data) {
+            //    free(ior->raw_data);
+            //}
 
             if (ior->key) {
                 free(ior->key->key);
@@ -1426,6 +1433,7 @@ int KvsStore::_remove_collection(KvsTransContext *txc, const coll_t &cid,
 	FTRACE
 	int r;
     if (*c == 0) return 0;
+
 	(*c)->flush_all_but_last();
 	{
 		std::unique_lock l(coll_lock);
@@ -2058,12 +2066,12 @@ int KvsStore::_open_db(bool create) {
 	kv_index_thread.create("kvsindex");
 	kv_finalize_thread.create("kvsfinalize");
 
-    if (create) { // workaround for fw issue
+    /*if (create) { // workaround for fw issue
         bptree onode_tree(&db.get_adi()->adi, 1, GROUP_PREFIX_ONODE);
         onode_tree.remove_all();
         bptree coll_tree(&db.get_adi()->adi, 1, GROUP_PREFIX_COLL);
         coll_tree.remove_all();
-    }
+    }*/
 
 	return 0;
 }
@@ -2560,71 +2568,16 @@ int KvsStore::read(CollectionHandle &c_, const ghobject_t &oid, uint64_t offset,
 
 }
 
-void KvsStore::_do_read_stripe(OnodeRef o, uint64_t offset, bufferlist *pbl)
-{
-    map<uint64_t,bufferlist>::iterator p = o->pending_stripes.find(offset);
-    if (p == o->pending_stripes.end()) {
-        const int pgid = offset >> KVS_OBJECT_SPLIT_SHIFT;
-        uint32_t nread = KVS_OBJECT_SPLIT_SIZE;
-
-
-        buffer::ptr bp = buffer::create_malloc(nread);
-
-        char *dst = bp.c_str();
-        int r = db.read_block(o->oid, pgid, dst, nread);
-        //TR << "bp content: pg " << pgid << ", bytes = " << nread << ", content = " << std::string(bp.c_str(), nread);
-        if (r != 0) {
-            TR << "read failure";
-            pbl->clear();
-            return;
-        }
-/*
-        // append zeros
-        const int rem = KVS_OBJECT_SPLIT_SIZE - nread;
-        if (rem > 0) {
-            TR << "zeroed";
-            memset(dst + nread, 0, rem);
-        }
-*/
-        bp.set_length(nread);
-  //      TR << "bp content: pg " << pgid << ", bytes = " << bp.length() << ", content = " << std::string(bp.c_str(),bp.length());
-
-        pbl->push_back(std::move(bp));
-
-
-//        TR << "pbl content: pg " << pgid << ", bytes = " << pbl->length() << ", content = " << std::string(pbl->c_str(),pbl->length());
-
-        //pbl->append(std::move(ptr));
-        o->pending_stripes[offset] = *pbl;
-    } else {
-        *pbl = p->second;
-        //TR << "cached pbl content: bytes = " << pbl->length() << ", content = " << std::string(pbl->c_str(),pbl->length());
-    }
-}
-void KvsStore::_do_write_stripe(KvsTransContext *txc, OnodeRef o,
-                                uint64_t offset, bufferlist& bl)
-{
-    o->pending_stripes[offset] = bl;
-
-    const int pgid = (offset >> KVS_OBJECT_SPLIT_SHIFT);
-
-    char *data = (char*)malloc(bl.length());
-    if (bl.length() > 0) {
-        memcpy(data, bl.c_str(), bl.length());
-    }
-
-    db.add_userdata(&txc->ioc, o->oid, (char*)data, bl.length(), pgid);
-
-    //newbl->claim_append(bl);
-    //const char *data = (newbl->length() == 0)? empty:newbl->c_str();
-
-    //TR << "write content: pg " <<  pgid  << ", bytes = " << newbl->length() << ", content = " << std::string(newbl->c_str(), std::min(14, (int)newbl->length()));
-}
-
 
 void KvsStore::_do_remove_stripe(KvsTransContext *txc, OnodeRef o, uint64_t offset)
 {
-    o->pending_stripes.erase(offset);
+    auto it = o->pending_stripes.find(offset);
+    if (it != o->pending_stripes.end()) {
+        kvs_stripe *stripe = it->second;
+        o->pending_stripes.erase(it);
+        delete stripe;
+    }
+
     db.rm_data(&txc->ioc, o->oid, (offset >> KVS_OBJECT_SPLIT_SHIFT));
 }
 
@@ -2654,26 +2607,21 @@ int KvsStore::_do_read(OnodeRef o,uint64_t offset,size_t length,bufferlist& bl,u
 
     stripe_off = offset % stripe_size;
     while (length > 0) {
-        bufferlist stripe;
-        _do_read_stripe(o, offset - stripe_off, &stripe);
-        TR << "_do_read - read stripe: hash = " << ceph_str_hash_linux(stripe.c_str(), stripe.length()) <<", length = " << stripe.length();
-        if (stripe.length() < 20) {
-            TR << "DEBUG - read stripe content = " <<  std::string(stripe.c_str(), stripe.length());
-        }
-        dout(30) << __func__ << " stripe " << offset - stripe_off << " got "
-                 << stripe.length() << dendl;
+
+        kvs_stripe *stripe = get_stripe_for_read(o, offset - stripe_off);
+
+        TR << "_do_read - read stripe: hash = " << ceph_str_hash_linux(stripe->buffer, stripe->length()) <<", length = " << stripe->length();
+
         unsigned swant = std::min<unsigned>(stripe_size - stripe_off, length);
-        if (stripe.length()) {
-            if (swant == stripe.length()) {
-                bl.claim_append(stripe);
+        if (stripe->length()) {
+            if (swant == stripe->length()) {
+                bl.append(stripe->buffer, swant);
                 dout(30) << __func__ << " taking full stripe" << dendl;
             } else {
                 unsigned l = 0;
-                if (stripe_off < stripe.length()) {
-                    l = std::min<uint64_t>(stripe.length() - stripe_off, swant);
-                    bufferlist t;
-                    t.substr_of(stripe, stripe_off, l);
-                    bl.claim_append(t);
+                if (stripe_off < stripe->length()) {
+                    l = std::min<uint64_t>(stripe->length() - stripe_off, swant);
+                    bl.append(stripe->buffer + stripe_off, l);
                     dout(30) << __func__ << " taking " << stripe_off << "~" << l << dendl;
                 }
                 if (l < swant) {
@@ -2685,6 +2633,7 @@ int KvsStore::_do_read(OnodeRef o,uint64_t offset,size_t length,bufferlist& bl,u
             dout(30) << __func__ << " generating " << swant << " zeros" << dendl;
             bl.append_zero(swant);
         }
+        delete stripe;
         offset += swant;
         length -= swant;
         stripe_off = 0;
@@ -3276,12 +3225,63 @@ int KvsStore::_write(KvsTransContext *txc, CollectionRef &c, OnodeRef &o,
 	return r;
 }
 
+kvs_stripe* KvsStore::get_stripe_for_write(OnodeRef o,int stripe_off) {
+    auto it = o->pending_stripes.find(stripe_off);
+    if (it == o->pending_stripes.end()) {
+        kvs_stripe *stripe = new kvs_stripe((stripe_off >> KVS_OBJECT_SPLIT_SHIFT));
+        o->pending_stripes[stripe_off] = stripe;
+        return stripe;
+    } else {
+        return it->second;
+    }
+}
+
+kvs_stripe* KvsStore::get_stripe_for_read(OnodeRef o, int stripe_off) {
+    auto it = o->pending_stripes.find(stripe_off);
+    if (it == o->pending_stripes.end()) {
+        kvs_stripe *stripe = new kvs_stripe((stripe_off >> KVS_OBJECT_SPLIT_SHIFT));
+        int r = db.read_block(o->oid, stripe->pgid, stripe->buffer, stripe->len);
+        if (r != 0) {
+            delete stripe;
+            return 0;
+        }
+
+        return stripe;
+    } else {
+        return it->second;
+    }
+}
+
+
+kvs_stripe* KvsStore::get_stripe_for_rmw(OnodeRef o, int stripe_off) {
+    auto it = o->pending_stripes.find(stripe_off);
+    if (it == o->pending_stripes.end()) {
+        kvs_stripe *stripe = new kvs_stripe((stripe_off >> KVS_OBJECT_SPLIT_SHIFT));
+        int r = db.read_block(o->oid, stripe->pgid, stripe->buffer, stripe->len);
+        if (r != 0) {
+            stripe->clear();
+        }
+
+        o->pending_stripes[stripe_off] = stripe;
+        return stripe;
+    } else {
+        return it->second;
+    }
+}
+
+void KvsStore::_do_write_stripe(KvsTransContext *txc, OnodeRef o, kvs_stripe *stripe)
+{
+    db.add_userdata(&txc->ioc, o->oid, stripe->buffer, stripe->get_pos(), stripe->pgid);
+}
+
 int KvsStore::_do_write(KvsTransContext *txc,
                       OnodeRef o,
                       uint64_t offset, uint64_t length,
                       bufferlist& orig_bl,
                       uint32_t fadvise_flags)
 {
+    static const uint64_t stripe_size = KVS_OBJECT_SPLIT_SIZE;
+
     int r = 0;
 
     TR << o->oid << " " << offset << "~" << length<< " - have " << o->onode.size
@@ -3293,76 +3293,68 @@ int KvsStore::_do_write(KvsTransContext *txc,
         return 0;
     }
 
-    const uint64_t stripe_size = KVS_OBJECT_SPLIT_SIZE;
-
     unsigned bl_off = 0;
     while (length > 0) {
         uint64_t offset_rem = offset % stripe_size;     // remaining data
         uint64_t end_rem = (offset + length) % stripe_size;
         if (offset_rem == 0 && end_rem == 0) {  // offset & length are aligned
-            bufferlist bl;
-            bl.substr_of(orig_bl, bl_off, stripe_size);
-            dout(30) << __func__ << " full stripe " << offset << dendl;
-            TR << "_do_write_stripe 1:" << bl.length() << ", str = " << std::string(bl.c_str(), 1);
-            _do_write_stripe(txc, o, offset, bl);
+            kvs_stripe *stripe = get_stripe_for_write(o, bl_off);
+            stripe->substr_of(orig_bl, bl_off, stripe_size);
+            _do_write_stripe(txc, o, stripe);
             offset += stripe_size;
             length -= stripe_size;
             bl_off += stripe_size;
             continue;
         }
-        uint64_t stripe_off = offset - offset_rem;
-        bufferlist prev;
-        prev.clear();
-        TR << "stript off " << stripe_off << ", length " << length;
-        //bool noread = (offset == 0 && o->onode.size == length) || (o->onode.size == offset);
-        if (stripe_off < o->onode.size && (stripe_off > 0 || (length < stripe_size))) {
-            _do_read_stripe(o, stripe_off, &prev);
-            dout(20) << __func__ << " read previous stripe " << stripe_off
-                     << ", got " << prev.length() << dendl;
 
-            TR << "read stripe content: length = " << prev.length();
+        uint64_t stripe_off = offset - offset_rem;
+        kvs_stripe *stripe = 0;
+        TR << "stript off " << stripe_off << ", length " << length;
+
+        if (stripe_off < o->onode.size && (stripe_off > 0 || (length < stripe_size))) {
+            stripe = get_stripe_for_rmw(o, stripe_off);
+            if (stripe->length() != stripe_size)
+                throw "invalid stripe size";
+        } else {
+            stripe = get_stripe_for_write(o, stripe_off);
         }
 
-        TR << "prev length == " << prev.length();
+        TR << "prev length == " << stripe->length();
 
-        bufferlist bl;
+        stripe->set_pos(0);
+
         if (offset_rem) {
-            unsigned p = std::min<uint64_t>(prev.length(), offset_rem);
+            // start_offset > 0 --> reuse ( 0 ~ start offset )
+            unsigned p = std::min<uint64_t>(stripe->length(), offset_rem);
             if (p) {
                 TR << __func__ << " reuse leading " << p << " bytes";
-                bl.substr_of(prev, 0, p);
+                stripe->set_pos(p);
             }
             if (p < offset_rem) {
                 TR << __func__ << " add leading " << offset_rem - p << " zeros" ;
-                bl.append_zero(offset_rem - p);
+                stripe->append_zero(offset_rem - p);
             }
         }
+
+        // update bytes between start_offset ~ end_offset
         unsigned use = stripe_size - offset_rem;
         if (use > length)
             use -= stripe_size - end_rem;
-        dout(20) << __func__ << " using " << use << " for this stripe" << dendl;
-        bufferlist t;
-        t.substr_of(orig_bl, bl_off, use);
-        bl.claim_append(t);
-        TR << "claim append 2:" << bl.length() << ", str = " << std::string(bl.c_str(), 1) ;
+
+        stripe->append(orig_bl, bl_off, use);
+
         bl_off += use;
+
         if (end_rem) {
-            if (end_rem < prev.length()) {
-                unsigned l = prev.length() - end_rem;
-                dout(20) << __func__ << " reuse trailing " << l << " bytes" << dendl;
-                bufferlist t;
-                t.substr_of(prev, end_rem, l);
-                TR << "claim append 3:" << bl.length() ;
-                bl.claim_append(t);
+            // end_offset > 0 --> reuse ( end_offset ~ length )
+            if (end_rem < stripe->length()) {
+                unsigned l = stripe->length() - end_rem;
+                stripe->inc_pos(l);
             }
         }
-        dout(30) << " writing:\n";
-                bl.hexdump(*_dout);
-                *_dout << dendl;
 
+        _do_write_stripe(txc, o, stripe);
 
-                TR << "_do_write_stripe 3:" << bl.length() << ", str = " << std::string(bl.c_str(), 1) ;
-        _do_write_stripe(txc, o, stripe_off, bl);
         offset += use;
         length -= use;
     }
@@ -3391,29 +3383,23 @@ int KvsStore::_do_zero(KvsTransContext *txc, CollectionRef &c, OnodeRef &o,
         uint64_t stripe_off = pos % stripe_size;
         while (pos < offset + length) {
             if (stripe_off || end - pos < stripe_size) {
-                bufferlist stripe;
-                _do_read_stripe(o, pos - stripe_off, &stripe);
-                dout(30) << __func__ << " stripe " << pos - stripe_off << " got "
-                         << stripe.length() << dendl;
-                bufferlist bl;
-                bl.substr_of(stripe, 0, std::min<uint64_t>(stripe.length(), stripe_off));
+
+                kvs_stripe *stripe = get_stripe_for_rmw(o, pos - stripe_off);
+
+                stripe->set_pos(std::min<uint32_t>(stripe->length(), (uint32_t)stripe_off));
+
                 if (end >= pos - stripe_off + stripe_size ||
                     end >= o->onode.size) {
-                    dout(20) << __func__ << " truncated stripe " << pos - stripe_off
-                             << " to " << bl.length() << dendl;
                 } else {
-                    auto len = end - (pos - stripe_off + bl.length());
-                    bl.append_zero(len);
-                    dout(20) << __func__ << " adding " << len << " of zeros" << dendl;
-                    if (stripe.length() > bl.length()) {
-                        unsigned l = stripe.length() - bl.length();
-                        bufferlist t;
-                        t.substr_of(stripe, stripe.length() - l, l);
-                        dout(20) << __func__ << " keeping tail " << l << " of stripe" << dendl;
-                        bl.claim_append(t);
+
+                    auto len = end - (pos - stripe_off + stripe->get_pos());
+                    stripe->append_zero(len);
+                    if (stripe->length() > stripe->get_pos()) {
+                        unsigned l = stripe->length() - stripe->get_pos();
+                        stripe->inc_pos(l);
                     }
                 }
-                _do_write_stripe(txc, o, pos - stripe_off, bl);
+                _do_write_stripe(txc, o, stripe);
                 pos += stripe_size - stripe_off;
                 stripe_off = 0;
             } else {
@@ -3452,15 +3438,12 @@ int KvsStore::_do_truncate(KvsTransContext *txc,  OnodeRef o,
         uint64_t stripe_off = pos % stripe_size;
         while (pos < o->onode.size) {
             if (stripe_off) {
-                bufferlist stripe;
-                _do_read_stripe(o, pos - stripe_off, &stripe);
-                dout(30) << __func__ << " stripe " << pos - stripe_off << " got "
-                         << stripe.length() << dendl;
-                bufferlist t;
-                t.substr_of(stripe, 0, std::min<uint64_t>(stripe_off, stripe.length()));
-                _do_write_stripe(txc, o, pos - stripe_off, t);
-                dout(20) << __func__ << " truncated stripe " << pos - stripe_off
-                         << " to " << t.length() << dendl;
+                kvs_stripe *stripe = get_stripe_for_rmw(o, pos - stripe_off);
+
+                stripe->set_pos(std::min<uint32_t>(stripe_off, stripe->length()));
+
+                _do_write_stripe(txc, o, stripe);
+
                 pos += stripe_size - stripe_off;
                 stripe_off = 0;
             } else {

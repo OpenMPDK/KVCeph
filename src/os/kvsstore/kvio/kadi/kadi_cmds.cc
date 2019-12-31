@@ -1230,7 +1230,16 @@ kv_result KADI::fill_ioresult(const aio_cmd_ctx &ioctx, const struct nvme_aioeve
                    << ", retcode = " << ioresult.retcode << ", FAILED" ;
             }
             break;
-
+        case nvme_cmd_kv_delete:
+            if (ioresult.retcode == 0) {
+                TRIO << "<DELETE AIO> " << print_kvssd_key(std::string((const char*)ioresult.key.key, ioresult.key.length))
+                     << ", spaceid =" << ioctx.cmd.cdw3 << ", OK";
+            } else {
+                TR << "<DELETE AIO> " << print_kvssd_key(std::string((const char*)ioresult.key.key, ioresult.key.length))
+                   << ", spaceid = " << ioctx.cmd.cdw3
+                   << ", retcode = " << ioresult.retcode << ", FAILED" ;
+            }
+            break;
         case nvme_cmd_kv_iter_req:
             {
                 std::string type = "ITER_CLOSE";

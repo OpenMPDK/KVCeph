@@ -81,6 +81,71 @@ enum KVS_JOURNAL_ENTRY {
 
 inline int align_4B(uint32_t length) { return ((length - 1) / 4 + 1)*4;   }
 
+class kvs_stripe {
+
+public:
+    uint32_t len;
+    uint32_t pos;
+    char *buffer;
+    int pgid;
+
+    kvs_stripe(int pgid_): len(KVS_OBJECT_SPLIT_SIZE), pos(0), pgid(pgid_) {
+        allocate();
+    }
+    ~kvs_stripe() {
+        release();
+    }
+
+    void allocate() {
+        buffer = (char*)malloc(len);
+    }
+
+    void set_moved() {
+        buffer = 0;
+    }
+
+    void release() {
+        free (buffer);
+        buffer = 0;
+    }
+
+    inline uint32_t length() { return len; }
+
+    inline void clear() {
+        pos = 0;
+    }
+
+    inline void inc_pos(uint32_t newpos) {
+        pos += newpos;
+    }
+    inline void set_pos(uint32_t newpos) {
+        pos = newpos;
+    }
+
+    inline uint32_t get_pos() { return pos; }
+
+
+    inline void append_zero(uint32_t l) {
+        if (l + pos > KVS_OBJECT_SPLIT_SIZE) throw "end of buffer";
+        if (l == 0) return;
+        memset(buffer + pos, 0, l);
+        inc_pos(l);
+    }
+
+    inline void append(const bufferlist& other, unsigned off, unsigned l) {
+        if (l + pos > KVS_OBJECT_SPLIT_SIZE) throw "end of buffer";
+        if (l == 0) return;
+        other.copy(off, l, buffer + pos);  inc_pos(l);
+    }
+
+    inline void substr_of(const bufferlist& other, unsigned off, unsigned l)
+    {
+        clear();
+        append(other, off, l);
+    }
+
+};
+
 ///  ====================================================
 ///  ONODE
 ///  ====================================================
@@ -107,7 +172,7 @@ struct KvsOnode {
     std::mutex flush_lock; // = ceph::make_mutex("KvsStore::flush_lock");  ///< protect flush_txns
     std::condition_variable flush_cond;   ///< wait here for uncommitted txns
 
-    map<uint64_t,bufferlist> pending_stripes;
+    map<uint64_t,kvs_stripe*> pending_stripes;
     void clear_pending_stripes() {
         pending_stripes.clear();
     }
@@ -654,6 +719,7 @@ public:
 
     void flush_all_but_last() {
       std::unique_lock<std::mutex> l(qlock);
+      if (q.size() == 0) return;
       assert (q.size() >= 1);
       while (true) {
 		// set flag before the check because the condition
@@ -690,7 +756,6 @@ static inline void intrusive_ptr_add_ref(KvsOpSequencer *o) {
 static inline void intrusive_ptr_release(KvsOpSequencer *o) {
     o->put();
 }
-
 
 
 #endif /* SRC_OS_KVSSTORE_KVSSTORE_TYPES_H_ */

@@ -70,14 +70,15 @@ KvsSlottedPage *bptree_pool::create_data_node() {
 void bptree_pool::flush(const bp_addr_t &newrootaddr) {
     if (newrootaddr == invalid_key_addr) return;
 
+
 	meta->set_next_pgid(next_pgid);
 	meta->set_root_addr(newrootaddr);
-    //TR << "FLUSH meta root->addr = " << desc(meta->get_root_addr()) << " next pgid  = " << next_pgid ;
-
+    TR << "FLUSH meta root->addr = " << desc(meta->get_root_addr()) << " next pgid  = " << next_pgid ;
+    meta->isnew = false;
 	meta->set_dirty();
 
 
-    //TR << "Nodepool Flush - set meta - rootaddr = " << newrootaddr << ", get_root_addr = " << meta->get_root_addr() << ", meta addr = " << meta->addr;
+    TR << "Nodepool Flush - set meta - rootaddr = " << newrootaddr << ", get_root_addr = " << meta->get_root_addr() << ", meta addr = " << meta->addr;
 	_flush_dirtylist();
 }
 
@@ -107,16 +108,22 @@ bptree_meta *bptree_pool::_fetch_meta() {
 
 kv_indexnode *bptree_pool::_fetch_node(const bp_addr_t &addr) {
 	// search the cache
-	if (addr == invalid_key_addr) return 0;
+	if (addr == invalid_key_addr) {
+        TR << "invalid key addr = " << addr;
+	    return 0;
+	}
 
 	auto it = pool.find(addr);
 	if (it != pool.end()) {
-		if (it->second->is_invalid()) return 0; // deleted
+		if (it->second->is_invalid()) {
+            TR << "marked as invalid (deleted) = " << addr;
+            return 0; // deleted
+		}
 		return it->second;
 	}
 
 	// load from the disk
-	if (bpaddr_pageid(addr) < meta->get_last_pgid() && !meta->isnew) {
+	if (bpaddr_pageid(addr) <= meta->get_last_pgid() && !meta->isnew) {
 
 		void *data = malloc(param->datanode_block_size);
 		int nread = read_page(addr, data, param->datanode_block_size);
@@ -138,6 +145,10 @@ kv_indexnode *bptree_pool::_fetch_node(const bp_addr_t &addr) {
 			return n;
 		}
 		free(data);
+	} else {
+        TR << "given pgid = " << bpaddr_pageid(addr);
+        TR << "last pgid  = " << meta->get_last_pgid();
+        TR << "isnew = " << meta->isnew;
 	}
 
 	return 0;
