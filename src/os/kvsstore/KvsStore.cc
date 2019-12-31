@@ -489,6 +489,10 @@ void KvsStore::_txc_write_nodes(KvsTransContext *txc) {
 		db.add_onode(&txc->ioc, o->oid, bl);
 
 		o->flushing_count++;
+        {
+            std::lock_guard<std::mutex> l(o->flush_lock);
+            o->flush_txns.insert(txc);
+        }
 	}
 
 	// objects we modified but didn't affect the onode
@@ -496,6 +500,10 @@ void KvsStore::_txc_write_nodes(KvsTransContext *txc) {
 	while (p != txc->modified_objects.end()) {
 		if (txc->onodes.count(*p) == 0) {
 			(*p)->flushing_count++;
+            {
+                std::lock_guard<std::mutex> l((*p)->flush_lock);
+                (*p)->flush_txns.insert(txc);
+            }
 			++p;
 		} else {
 			// remove dups with onodes list to avoid problems in _txc_finish
@@ -510,16 +518,6 @@ void KvsStore::_txc_write_nodes(KvsTransContext *txc) {
 		ceph_abort();
 	}
 
-	// decrease flushing count
-	for (auto ls : { &txc->onodes, &txc->modified_objects }) {
-		for (auto& o : *ls) {
-		  dout(20) << __func__ << " onode " << o << " had " << o->flushing_count << dendl;
-		  if (--o->flushing_count == 0 && o->waiting_count.load()) {
-			std::lock_guard l(o->flush_lock);
-			o->flush_cond.notify_all();
-		  }
-		}
-	}
 
 }
 
@@ -715,12 +713,7 @@ void KvsStore::_txc_release_alloc(KvsTransContext *txc) {
 	KvsIoContext *ioc = &txc->ioc;
 
 
-	for (const auto &onode :txc->onodes) {
 
-	    for(const auto &stripe :onode->pending_stripes) {
-	        delete stripe.second;
-	    };
-	}
 	{
 		std::unique_lock<std::mutex> lk ( ioc->running_aio_lock );
 		// release memory
@@ -2609,6 +2602,7 @@ int KvsStore::_do_read(OnodeRef o,uint64_t offset,size_t length,bufferlist& bl,u
     stripe_off = offset % stripe_size;
     while (length > 0) {
         bool cachehit;
+
         kvs_stripe *stripe = get_stripe_for_read(o, offset - stripe_off, cachehit);
 
         TR << "_do_read - read stripe: hash = " << ceph_str_hash_linux(stripe->buffer, stripe->length()) <<", length = " << stripe->length();
@@ -2636,6 +2630,8 @@ int KvsStore::_do_read(OnodeRef o,uint64_t offset,size_t length,bufferlist& bl,u
         }
         if (!cachehit)
             delete stripe;
+        else
+            o->flush_lock.unlock();
         offset += swant;
         length -= swant;
         stripe_off = 0;
@@ -2954,8 +2950,22 @@ void KvsStore::_kv_finalize_thread() {
 				KvsTransContext *txc = ordered_txc.front();
 
 				// clear write buffers
-                for (set<OnodeRef>::iterator p = txc->onodes.begin(); p != txc->onodes.end();++p) {
-                    (*p)->clear_pending_stripes();
+
+                // decrease flushing count
+                for (auto ls : { &txc->onodes, &txc->modified_objects }) {
+                    for (auto& o : *ls) {
+                        {
+                            std::lock_guard<std::mutex> l(o->flush_lock);
+                            o->flush_txns.erase(txc);
+                        }
+
+                        dout(20) << __func__ << " onode " << o << " had " << o->flushing_count << dendl;
+                        if (--o->flushing_count == 0 && o->waiting_count.load()) {
+                            std::lock_guard l(o->flush_lock);
+                            o->flush_cond.notify_all();
+                            o->clear_pending_stripes();
+                        }
+                    }
                 }
 
                 //TR << "transactions " << (void*)txc << ":  clean up ";
@@ -3251,6 +3261,7 @@ kvs_stripe* KvsStore::get_stripe_for_read(OnodeRef o, int stripe_off, bool &cach
         return stripe;
     } else {
         cachehit = true;
+        o->flush_lock.lock();
         return it->second;
     }
 }

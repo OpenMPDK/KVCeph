@@ -82,7 +82,6 @@ enum KVS_JOURNAL_ENTRY {
 inline int align_4B(uint32_t length) { return ((length - 1) / 4 + 1)*4;   }
 
 class kvs_stripe {
-
 public:
     uint32_t len;
     uint32_t pos;
@@ -95,6 +94,8 @@ public:
     ~kvs_stripe() {
         release();
     }
+
+
 
     void allocate() {
         buffer = (char*)malloc(len);
@@ -171,10 +172,14 @@ struct KvsOnode {
 
     std::mutex flush_lock; // = ceph::make_mutex("KvsStore::flush_lock");  ///< protect flush_txns
     std::condition_variable flush_cond;   ///< wait here for uncommitted txns
+    set<KvsTransContext*> flush_txns;
 
     map<uint64_t,kvs_stripe*> pending_stripes;
     void clear_pending_stripes() {
-        pending_stripes.clear();
+       for(const auto &stripe : pending_stripes) {
+            delete stripe.second;
+       };
+       pending_stripes.clear();
     }
     KvsOnode(KvsCollection *c, const ghobject_t& o)
             : nref(0),
