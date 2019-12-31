@@ -35,6 +35,84 @@ inline int kvkey_lex_compare2(InputIt1 first1, InputIt1 last1, InputIt2 first2, 
     return +1;
 }
 
+TEST_P(KvsStoreTest, SimpleWriteAllReadTest)
+{
+    coll_t cid(spg_t(pg_t(0, 1), shard_id_t(1))); // Added for iterator bug in FW
+
+    int r;
+    int NUM_OBJS = 1000;
+    int WRITE_SIZE = 850;
+    set<ghobject_t> created;
+    string base = "";
+
+    bufferlist bl1;
+    for (int i = 0; i < WRITE_SIZE; i++)
+        bl1.append("a");
+
+    auto cha = open_collection_safe(cid);
+    {
+
+        cerr << " write objects to collection" << std::endl;
+        ObjectStore::Transaction t;
+        for (int i = 0; i < NUM_OBJS; i++)
+        {
+            cerr << "Object " << i << std::endl;
+            char buf[100];
+            snprintf(buf, sizeof(buf), "%d", i);
+            ghobject_t hoid(hobject_t(sobject_t(string(buf) + base, CEPH_NOSNAP)));
+            created.insert(hoid);
+
+            t.write(cid, hoid, 0, bl1.length(), bl1);
+            if (i % 100)
+            {
+                r = queue_transaction(store, cha, std::move(t));
+                ASSERT_EQ(r, 0);
+                t = ObjectStore::Transaction();
+            }
+        }
+        r = queue_transaction(store, cha, std::move(t));
+        ASSERT_EQ(r, 0);
+    }
+    cerr << " ALL objects written to collection" << std::endl;
+
+    {
+        cerr << " reading all objects " << std::endl;
+
+        for (set<ghobject_t>::iterator hoid_iter = created.begin();
+             hoid_iter != created.end();
+             ++hoid_iter)
+        {
+            bufferlist in;
+            cerr << " Reading Object = " << *hoid_iter << std::endl;
+            r = store->read(cha, *hoid_iter, 0, bl1.length(), in);
+            ASSERT_EQ(bl1.length(), r);
+            ASSERT_EQ(bl1.length(), in.length());
+            ASSERT_EQ(ceph_str_hash_linux(bl1.c_str(), bl1.length()), ceph_str_hash_linux(in.c_str(), in.length()));
+            in.clear();
+        }
+        bl1.clear();
+        cerr << " ALL OBJECTS READ " << std::endl;
+    }
+#if 0
+    {
+    ObjectStore::Transaction t;
+    for (int i = 0; i < NUM_OBJS; i++){
+        cerr << "Removing Object " << i << std::endl;
+        char buf[100];
+        snprintf(buf, sizeof(buf), "%d", i);
+
+        ghobject_t hoid(hobject_t(sobject_t(string(buf) + base, CEPH_NOSNAP)));
+        t.remove(cid, hoid);
+        r = queue_transaction(store, ch, std::move(t));
+        ASSERT_EQ(r, 0);
+    }
+    t.remove_collection(cid);
+    r = queue_transaction(store, ch, std::move(t));
+    ASSERT_EQ(r, 0);
+  }
+#endif
+    cerr << " ALL CLEAR " << std::endl;
+}
 // Class 1 -  Trivial Mount, ReMount Tests
 TEST_P(KvsStoreTest, Trivial) {
 }
@@ -212,84 +290,6 @@ TEST_P(KvsStoreTest, QuickReadWriteTest)
 }
 
 
-TEST_P(KvsStoreTest, SimpleWriteAllReadTest)
-{
-    coll_t cid(spg_t(pg_t(0, 1), shard_id_t(1))); // Added for iterator bug in FW
-
-    int r;
-    int NUM_OBJS = 1000;
-    int WRITE_SIZE = 850;
-    set<ghobject_t> created;
-    string base = "";
-
-    bufferlist bl1;
-    for (int i = 0; i < WRITE_SIZE; i++)
-        bl1.append("a");
-
-    auto cha = open_collection_safe(cid);
-    {
-
-        cerr << " write objects to collection" << std::endl;
-        ObjectStore::Transaction t;
-        for (int i = 0; i < NUM_OBJS; i++)
-        {
-            cerr << "Object " << i << std::endl;
-            char buf[100];
-            snprintf(buf, sizeof(buf), "%d", i);
-            ghobject_t hoid(hobject_t(sobject_t(string(buf) + base, CEPH_NOSNAP)));
-            created.insert(hoid);
-
-            t.write(cid, hoid, 0, bl1.length(), bl1);
-            if (i % 100)
-            {
-                r = queue_transaction(store, cha, std::move(t));
-                ASSERT_EQ(r, 0);
-                t = ObjectStore::Transaction();
-            }
-        }
-        r = queue_transaction(store, cha, std::move(t));
-        ASSERT_EQ(r, 0);
-    }
-    cerr << " ALL objects written to collection" << std::endl;
-
-    {
-        cerr << " reading all objects " << std::endl;
-
-        for (set<ghobject_t>::iterator hoid_iter = created.begin();
-             hoid_iter != created.end();
-             ++hoid_iter)
-        {
-            bufferlist in;
-            cerr << " Reading Object = " << *hoid_iter << std::endl;
-            r = store->read(ch, *hoid_iter, 0, bl1.length(), in);
-            ASSERT_EQ(bl1.length(), r);
-            ASSERT_EQ(bl1.length(), in.length());
-            ASSERT_EQ(ceph_str_hash_linux(bl1.c_str(), bl1.length()), ceph_str_hash_linux(in.c_str(), in.length()));
-            in.clear();
-        }
-        bl1.clear();
-        cerr << " ALL OBJECTS READ " << std::endl;
-    }
-#if 0
-  {
-    ObjectStore::Transaction t;
-    for (int i = 0; i < NUM_OBJS; i++){
-        cerr << "Removing Object " << i << std::endl;       
-        char buf[100];
-        snprintf(buf, sizeof(buf), "%d", i);
-
-        ghobject_t hoid(hobject_t(sobject_t(string(buf) + base, CEPH_NOSNAP)));       
-        t.remove(cid, hoid);        
-        r = queue_transaction(store, ch, std::move(t));
-        ASSERT_EQ(r, 0);
-    }
-    t.remove_collection(cid);
-    r = queue_transaction(store, ch, std::move(t));
-    ASSERT_EQ(r, 0);
-  }
-#endif
-    cerr << " ALL CLEAR " << std::endl;
-}
 
 
 TEST_P(KvsStoreTest, ZeroVsObjectSize) {
@@ -4550,6 +4550,7 @@ int main(int argc, char **argv)
     // make sure we can adjust any config settings
     g_ceph_context->_conf._clear_safe_to_start_threads();
 
+    g_ceph_context->_conf.set_val_or_die("kvsstore_dev_path", "/dev/nvme3n1");
     g_ceph_context->_conf.set_val_or_die("osd_journal_size", "400");
     g_ceph_context->_conf.set_val_or_die("filestore_index_retry_probability", "0.5");
     g_ceph_context->_conf.set_val_or_die("filestore_op_thread_timeout", "1000");
