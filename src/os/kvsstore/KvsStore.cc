@@ -716,6 +716,7 @@ void KvsStore::_txc_release_alloc(KvsTransContext *txc) {
 
 
 	for (const auto &onode :txc->onodes) {
+
 	    for(const auto &stripe :onode->pending_stripes) {
 	        delete stripe.second;
 	    };
@@ -2607,8 +2608,8 @@ int KvsStore::_do_read(OnodeRef o,uint64_t offset,size_t length,bufferlist& bl,u
 
     stripe_off = offset % stripe_size;
     while (length > 0) {
-
-        kvs_stripe *stripe = get_stripe_for_read(o, offset - stripe_off);
+        bool cachehit;
+        kvs_stripe *stripe = get_stripe_for_read(o, offset - stripe_off, cachehit);
 
         TR << "_do_read - read stripe: hash = " << ceph_str_hash_linux(stripe->buffer, stripe->length()) <<", length = " << stripe->length();
 
@@ -2633,7 +2634,8 @@ int KvsStore::_do_read(OnodeRef o,uint64_t offset,size_t length,bufferlist& bl,u
             dout(30) << __func__ << " generating " << swant << " zeros" << dendl;
             bl.append_zero(swant);
         }
-        delete stripe;
+        if (!cachehit)
+            delete stripe;
         offset += swant;
         length -= swant;
         stripe_off = 0;
@@ -3236,7 +3238,7 @@ kvs_stripe* KvsStore::get_stripe_for_write(OnodeRef o,int stripe_off) {
     }
 }
 
-kvs_stripe* KvsStore::get_stripe_for_read(OnodeRef o, int stripe_off) {
+kvs_stripe* KvsStore::get_stripe_for_read(OnodeRef o, int stripe_off, bool &cachehit) {
     auto it = o->pending_stripes.find(stripe_off);
     if (it == o->pending_stripes.end()) {
         kvs_stripe *stripe = new kvs_stripe((stripe_off >> KVS_OBJECT_SPLIT_SHIFT));
@@ -3245,9 +3247,10 @@ kvs_stripe* KvsStore::get_stripe_for_read(OnodeRef o, int stripe_off) {
             delete stripe;
             return 0;
         }
-
+        cachehit = false;
         return stripe;
     } else {
+        cachehit = true;
         return it->second;
     }
 }

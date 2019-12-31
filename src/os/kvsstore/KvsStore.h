@@ -334,7 +334,7 @@ public:
 
     kvs_stripe* get_stripe_for_write(OnodeRef o,int stripe_off);
     kvs_stripe* get_stripe_for_rmw(OnodeRef o, int stripe_off);
-    kvs_stripe* get_stripe_for_read(OnodeRef o, int stripe_off);
+    kvs_stripe* get_stripe_for_read(OnodeRef o, int stripe_off, bool &cachehit);
 
     void _do_remove_stripe(KvsTransContext *txc, OnodeRef o, uint64_t offset);
 
