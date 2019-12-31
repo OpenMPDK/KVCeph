@@ -234,12 +234,12 @@ public:
             : StoreTestFixture(GetParam())
     {}
 
-    inline ObjectStore::CollectionHandle open_collection_safe(coll_t &cid) {
+    inline ObjectStore::CollectionHandle open_collection_safe(coll_t &cid, unsigned bits = 0) {
         auto ch = store->open_collection(cid);
         if (!ch) {
             ch = store->create_new_collection(cid);
             ObjectStore::Transaction t;
-            t.create_collection(cid,0);
+            t.create_collection(cid,bits);
             int r = queue_transaction(store, ch, std::move(t));
             if (r != 0) {
                 std::cerr << "error: create collection" <<std::endl;

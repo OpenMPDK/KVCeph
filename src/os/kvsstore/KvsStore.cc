@@ -2607,14 +2607,18 @@ void KvsStore::_do_write_stripe(KvsTransContext *txc, OnodeRef o,
     o->pending_stripes[offset] = bl;
 
     const int pgid = (offset >> KVS_OBJECT_SPLIT_SHIFT);
-
+    TR << " pgid = " << pgid << ", bl.length() " << bl.length();
     char *data = (char*)malloc(bl.length());
+    TR << " after malloc pgid = " << pgid << ", bl.length() " << bl.length()
+    	<< ", data = " << data;
     if (bl.length() > 0) {
+    	TR << " before memcpy pgid = " << pgid << ", bl.length() " << bl.length();
         memcpy(data, bl.c_str(), bl.length());
+        TR << " after memcpy pgid = " << pgid << ", bl.length() " << bl.length();
     }
-
+ TR << " before add_userdata  pgid = " << pgid << ", bl.length() " << bl.length();
     db.add_userdata(&txc->ioc, o->oid, (char*)data, bl.length(), pgid);
-
+TR << " after add_userdata  pgid = " << pgid << ", bl.length() " << bl.length();
     //newbl->claim_append(bl);
     //const char *data = (newbl->length() == 0)? empty:newbl->c_str();
 
