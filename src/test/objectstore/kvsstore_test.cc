@@ -35,15 +35,73 @@ inline int kvkey_lex_compare2(InputIt1 first1, InputIt1 last1, InputIt2 first2, 
     return +1;
 }
 
+TEST_P(KvsStoreTest, ZeroLengthZero1) {
+  int r;
+  coll_t cid;
+  ghobject_t hoid(hobject_t(sobject_t("soo", CEPH_NOSNAP)));
+  auto ch = open_collection_safe(cid, 6); // added for iterator bug
+  {
+    ObjectStore::Transaction t;
+   // t.create_collection(cid, 0);
+    t.touch(cid, hoid);
+    r = queue_transaction(store, ch, std::move(t));
+    ASSERT_EQ(0, r);
+  }
+  {
+    ObjectStore::Transaction t;
+    t.zero(cid, hoid, 1048576, 0);
+    r = queue_transaction(store, ch, std::move(t));
+    ASSERT_EQ(0, r);
+  }
+  struct stat stat;
+  r = store->stat(ch, hoid, &stat);
+  ASSERT_EQ(0, r);
+  ASSERT_EQ(0, stat.st_size);
+
+  bufferlist newdata;
+  r = store->read(ch, hoid, 0, 1048576, newdata);
+  ASSERT_EQ(0, r);
+}
+
+
+TEST_P(KvsStoreTest, ZeroLengthWrite1) {
+  int r;
+  coll_t cid(spg_t(pg_t(0, 1), shard_id_t(1))); // bits added due to iterator bug
+  ghobject_t hoid(hobject_t(sobject_t("foo", CEPH_NOSNAP)));
+   auto ch = open_collection_safe(cid, 3); // bits added due to iterator bug
+  {
+    ObjectStore::Transaction t;
+  //  t.create_collection(cid, 0);
+    t.touch(cid, hoid);
+    r = queue_transaction(store, ch, std::move(t));
+    ASSERT_EQ(r, 0);
+  }
+  {
+    ObjectStore::Transaction t;
+    bufferlist empty;
+    t.write(cid, hoid, 1048576, 0, empty);
+    r = queue_transaction(store, ch, std::move(t));
+    ASSERT_EQ(r, 0);
+  }
+  struct stat stat;
+  r = store->stat(ch, hoid, &stat);
+  ASSERT_EQ(0, r);
+  ASSERT_EQ(0, stat.st_size);
+
+  bufferlist newdata;
+  r = store->read(ch, hoid, 0, 1048576, newdata);
+  ASSERT_EQ(0, r);
+}
+
 TEST_P(KvsStoreTest, SimpleWriteAllReadTest)
 {
-    coll_t cid(spg_t(pg_t(0, 1), shard_id_t(1))); // Added for iterator bug in FW
+    coll_t cid; // Added for iterator bug in FW
 
     int r;
     int NUM_OBJS = 1000;
     int WRITE_SIZE = 850;
     set<ghobject_t> created;
-    string base = "";
+    string base = "wa";
 
     bufferlist bl1;
     for (int i = 0; i < WRITE_SIZE; i++)
@@ -149,7 +207,7 @@ TEST_P(KvsStoreTest, WriteTransactionTest)
 
 TEST_P(KvsStoreTest, QuickReadTouchTest)
 {
-    coll_t cid(spg_t(pg_t(0, 1), shard_id_t(1))); // Added for iterator bug in FW
+    coll_t cid;
     int r;
     int NUM_OBJS = 1;
     int NUM_UPDATES = 1;
@@ -214,15 +272,16 @@ TEST_P(KvsStoreTest, QuickReadTouchTest)
     cerr << " ALL clear" << std::endl;
 }
 
+
 TEST_P(KvsStoreTest, QuickReadWriteTest)
 {
-    coll_t cid(spg_t(pg_t(0, 1), shard_id_t(1))); // Added for iterator bug in FW
+    coll_t cid; // Added for iterator bug in FW
     int r;
     int NUM_OBJS = 1;
     int WRITE_SIZE = 850;
     int NUM_UPDATES = 1;
     set<ghobject_t> created;
-    string base = "";
+    string base = "rw";
     auto ch = open_collection_safe(cid);
 
     {
@@ -343,9 +402,9 @@ TEST_P(KvsStoreTest, ZeroVsObjectSize) {
 
 TEST_P(KvsStoreTest, ZeroLengthWrite) {
   int r;
-  coll_t cid;
-  ghobject_t hoid(hobject_t(sobject_t("foo", CEPH_NOSNAP)));
-   auto ch = open_collection_safe(cid);
+  coll_t cid; // bits added due to iterator bug
+  ghobject_t hoid(hobject_t(sobject_t("poo", CEPH_NOSNAP)));
+   auto ch = open_collection_safe(cid, 4); // bits added due to iterator bug
   {
     ObjectStore::Transaction t;
   //  t.create_collection(cid, 0);
@@ -373,8 +432,8 @@ TEST_P(KvsStoreTest, ZeroLengthWrite) {
 TEST_P(KvsStoreTest, ZeroLengthZero) {
   int r;
   coll_t cid;
-  ghobject_t hoid(hobject_t(sobject_t("foo", CEPH_NOSNAP)));
-  auto ch = open_collection_safe(cid);
+  ghobject_t hoid(hobject_t(sobject_t("soo", CEPH_NOSNAP)));
+  auto ch = open_collection_safe(cid, 6); // added for iterator bug
   {
     ObjectStore::Transaction t;
    // t.create_collection(cid, 0);
@@ -400,7 +459,7 @@ TEST_P(KvsStoreTest, ZeroLengthZero) {
 
 
 TEST_P(KvsStoreTest, SimpleRemount) {
-  coll_t cid;// Added for iterator bug in FW
+  coll_t cid;
   ghobject_t hoid(hobject_t(sobject_t("Object 1", CEPH_NOSNAP)));
   ghobject_t hoid2(hobject_t(sobject_t("Object 2", CEPH_NOSNAP)));
   bufferlist bl;
@@ -918,7 +977,7 @@ TEST_P(KvsStoreTest, SimpleWriteCollectionList) {
     int NUM_OBJS = 1;
     int WRITE_SIZE = 10;
     set<ghobject_t> created;
-    string base = "";
+    string base = "wc";
 
     bufferlist bl1;
     for (int i = 0; i<WRITE_SIZE; i++)
@@ -984,7 +1043,7 @@ TEST_P(KvsStoreTest, SimpleWriteCollectionList2)
     int NUM_OBJS = 10;
     int WRITE_SIZE = 10;
     set<ghobject_t> created;
-    string base = "";
+    string base = "wc2";
 
     bufferlist bl1;
     for (int i = 0; i < WRITE_SIZE; i++)
@@ -3928,7 +3987,7 @@ TEST_P(KvsStoreTest, ManyObjectTest) {
   int NUM_OBJS = 2000;
   int r = 0;
   coll_t cid;
-  string base = "";
+  string base = "manyobjs";
   for (int i = 0; i < 100; ++i) base.append("aa");
   set<ghobject_t> created;
   auto ch = open_collection_safe(cid);
@@ -4092,7 +4151,7 @@ TEST_P(KvsStoreTest, HashCollisionTest) {
     r = queue_transaction(store, ch, std::move(t));
     ASSERT_EQ(r, 0);
   }
-  string base = "";
+  string base = "hashcoll";
   for (int i = 0; i < 100; ++i) base.append("aa");
   set<ghobject_t> created;
   for (int n = 0; n < 10; ++n) {
@@ -4550,7 +4609,7 @@ int main(int argc, char **argv)
     // make sure we can adjust any config settings
     g_ceph_context->_conf._clear_safe_to_start_threads();
 
-    g_ceph_context->_conf.set_val_or_die("kvsstore_dev_path", "/dev/nvme3n1");
+    g_ceph_context->_conf.set_val_or_die("kvsstore_dev_path", "/dev/nvme2n1");
     g_ceph_context->_conf.set_val_or_die("osd_journal_size", "400");
     g_ceph_context->_conf.set_val_or_die("filestore_index_retry_probability", "0.5");
     g_ceph_context->_conf.set_val_or_die("filestore_op_thread_timeout", "1000");

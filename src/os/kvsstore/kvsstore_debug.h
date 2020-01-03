@@ -22,7 +22,7 @@
 
 #define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 
-//#define ENABLE_FTRACE
+#define ENABLE_FTRACE
 //#define ENABLE_FUNCTION_TRACE
 #define ENABLE_IOTRACE
 //#define ENABLE_IOTRACE_SUBMIT

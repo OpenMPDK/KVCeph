@@ -118,11 +118,13 @@ int KADI::kv_store_sync(uint8_t space_id, kv_key *key, kv_value *value) {
     std::string itermsg = (cmd.cdw4 == OPTION_NOLOGGING)? "NOAOL":"AOL";
     if (ret == 0) {
         TRIO << "<kv_store_sync> " << print_kvssd_key(std::string((const char*)key->key, key->length))
+             << " space_id = " << space_id
            << ", value = " << value->value << ", value offset = " << value->offset << ", value length = " << value->length << ", LOG? " << itermsg << ", hash " << ceph_str_hash_linux((const char*)value->value, value->length) << " OK" ;
 
     } else {
         TR << "<kv_store_sync> " << print_kvssd_key(std::string((const char*)key->key, key->length))
            << ", value = " << value->value << ", value offset = " << value->offset << ", value length = " << value->length
+           << " space_id = " << space_id
            << ", retcode = " << ret << ", FAILED" ;
     }
 #endif
