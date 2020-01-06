@@ -1149,6 +1149,7 @@ int KvsStore::_zero(KvsTransContext *txc, CollectionRef &c, OnodeRef &o,
 	dout(15) << __func__ << " " << c->cid << " " << o->oid << " 0x"
 						<< std::hex << offset << "~" << length << std::dec
 						<< dendl;
+
 	int r = _do_zero(txc, c, o, offset, length);
 	dout(10) << __func__ << " " << c->cid << " " << o->oid << " 0x"
 						<< std::hex << offset << "~" << length << std::dec
@@ -2426,6 +2427,7 @@ int KvsStore::stat(CollectionHandle &c_, const ghobject_t &oid, struct stat *st,
 		if (!o || !o->exists)
 			return -ENOENT;
 		st->st_size = o->onode.size;
+		derr << __func__ << " onode size = " << o->onode.size << dendl;
 		st->st_blksize = 4096;
 		st->st_blocks = (st->st_size + st->st_blksize - 1) / st->st_blksize;
 		st->st_nlink = 1;
@@ -3425,7 +3427,7 @@ int KvsStore::_do_zero(KvsTransContext *txc, CollectionRef &c, OnodeRef &o,
             }
         }
     }
-    if (offset + length > o->onode.size) {
+    if (length > 0 && offset + length > o->onode.size) {
         o->onode.size = offset + length;
         dout(20) << __func__ << " extending size to " << offset + length
                  << dendl;
