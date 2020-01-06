@@ -3258,6 +3258,7 @@ kvs_stripe* KvsStore::get_stripe_for_read(OnodeRef o, int stripe_off, bool &cach
             delete stripe;
             return 0;
         }
+
         cachehit = false;
         return stripe;
     } else {
