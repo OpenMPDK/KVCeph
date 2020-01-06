@@ -35,6 +35,197 @@ inline int kvkey_lex_compare2(InputIt1 first1, InputIt1 last1, InputIt2 first2, 
     return +1;
 }
 
+
+TEST_P(KvsStoreTest, BasicTouchPoolStatFSTest){
+  int r = 0;
+  int poolid = 4373;
+  coll_t cid = coll_t(spg_t(pg_t(0, poolid), shard_id_t::NO_SHARD));
+  ghobject_t hoid(hobject_t(sobject_t("Object 1", CEPH_NOSNAP),
+                            string(),
+          0,
+          poolid,
+          string()));
+  ghobject_t hoid2 = hoid;
+  hoid2.hobj.snap = 1; 
+  
+  {
+    cerr << " Creating collection" << std::endl;
+    auto ch = open_collection_safe(cid);
+
+  } 
+
+  {
+    ObjectStore::Transaction t;
+    t.touch(cid, hoid);
+    cerr << "Creating object " << hoid << std::endl;
+    r = queue_transaction(store, ch, std::move(t));
+    ASSERT_EQ(r, 0);
+  }
+
+  {
+    struct store_statfs_t statfs;
+    int r = store->statfs(&statfs);
+    ASSERT_EQ(r, 0);
+    ASSERT_EQ( 0u, statfs.allocated);
+    ASSERT_EQ( 0u, statfs.data_stored);
+    struct store_statfs_t statfs_pool;
+    bool per_pool_omap;
+    r = store->pool_statfs(poolid, &statfs_pool, &per_pool_omap);
+    ASSERT_EQ(r, 0);
+    ASSERT_EQ( 0u, statfs_pool.allocated);
+    ASSERT_EQ( 0u, statfs_pool.data_stored);
+  }
+
+}
+
+TEST_P(KvsStoreTest, BasicUnknownPoolPoolStatFSTest){
+  int r = 0;
+  int poolid = 4373;
+  coll_t cid = coll_t(spg_t(pg_t(0, poolid), shard_id_t::NO_SHARD));
+  ghobject_t hoid(hobject_t(sobject_t("Object 1", CEPH_NOSNAP),
+                            string(),
+          0,
+          poolid,
+          string()));
+  ghobject_t hoid2 = hoid;
+  hoid2.hobj.snap = 1; 
+  
+  {
+    cerr << " Creating collection" << std::endl;
+    auto ch = open_collection_safe(cid);
+
+  } 
+
+  {
+    struct store_statfs_t statfs_pool;
+    bool per_pool_omap;
+
+    // accessing unknown pool
+    r = store->pool_statfs(poolid + 1, &statfs_pool, &per_pool_omap);
+    ASSERT_EQ(r, 0);
+    ASSERT_EQ(0, statfs_pool.data_stored);
+    ASSERT_EQ(0, statfs_pool.allocated);
+    ASSERT_EQ(0, statfs_pool.data_compressed);
+    ASSERT_EQ(0, statfs_pool.data_compressed_original);
+    ASSERT_EQ(0, statfs_pool.data_compressed_allocated); 
+    ch.reset();
+  }
+}
+
+
+TEST_P(KvsStoreTest, BasicWritePoolStatFSTest){
+  int r = 0;
+  int poolid = 4373;
+  coll_t cid = coll_t(spg_t(pg_t(0, poolid), shard_id_t::NO_SHARD));
+  ghobject_t hoid(hobject_t(sobject_t("Object 1", CEPH_NOSNAP),
+                            string(),
+          0,
+          poolid,
+          string()));
+  ghobject_t hoid2 = hoid;
+  hoid2.hobj.snap = 1; 
+  
+  {
+    cerr << " Creating collection" << std::endl;
+    auto ch = open_collection_safe(cid);
+
+  } 
+
+  {
+    ObjectStore::Transaction t;
+    bufferlist bl;
+    bl.append("abcde");
+    t.write(cid, hoid, 0, 5, bl);
+    cerr << "Append 5 bytes" << std::endl;
+    r = queue_transaction(store, ch, std::move(t));
+    ASSERT_EQ(r, 0);
+
+    struct store_statfs_t statfs;
+    r = store->statfs(&statfs);
+    ASSERT_EQ(r, 0);
+    ASSERT_EQ(5, statfs.data_stored);
+    ASSERT_EQ(0x10000, statfs.allocated);
+    ASSERT_EQ(0, statfs.data_compressed);
+    ASSERT_EQ(0, statfs.data_compressed_original);
+    ASSERT_EQ(0, statfs.data_compressed_allocated);
+
+
+    cerr << " Now pool statfs " << std::endl;
+    struct store_statfs_t statfs_pool;
+    bool per_pool_omap;
+    r = store->pool_statfs(poolid, &statfs_pool, &per_pool_omap);
+    ASSERT_EQ(r, 0);
+    ASSERT_EQ(5, statfs_pool.data_stored);
+    ASSERT_EQ(0x10000, statfs_pool.allocated);
+    ASSERT_EQ(0, statfs_pool.data_compressed);
+    ASSERT_EQ(0, statfs_pool.data_compressed_original);
+    ASSERT_EQ(0, statfs_pool.data_compressed_allocated);
+    ch.reset();
+  }  
+
+}
+
+
+
+TEST_P(KvsStoreTest, UnknownPoolPoolStatFSTest){
+  int r = 0;
+  int poolid = 4373;
+  coll_t cid = coll_t(spg_t(pg_t(0, poolid), shard_id_t::NO_SHARD));
+  ghobject_t hoid(hobject_t(sobject_t("Object 1", CEPH_NOSNAP),
+                            string(),
+          0,
+          poolid,
+          string()));
+  ghobject_t hoid2 = hoid;
+  hoid2.hobj.snap = 1; 
+  
+  {
+    cerr << " Creating collection" << std::endl;
+    auto ch = open_collection_safe(cid);
+
+  } 
+
+  {
+    ObjectStore::Transaction t;
+    bufferlist bl;
+    bl.append("abcde");
+    t.write(cid, hoid, 0, 5, bl);
+    cerr << "Append 5 bytes" << std::endl;
+    r = queue_transaction(store, ch, std::move(t));
+    ASSERT_EQ(r, 0);
+
+    struct store_statfs_t statfs;
+    r = store->statfs(&statfs);
+    ASSERT_EQ(r, 0);
+    ASSERT_EQ(5, statfs.data_stored);
+    ASSERT_EQ(0x10000, statfs.allocated);
+    ASSERT_EQ(0, statfs.data_compressed);
+    ASSERT_EQ(0, statfs.data_compressed_original);
+    ASSERT_EQ(0, statfs.data_compressed_allocated);
+
+    struct store_statfs_t statfs_pool;
+    bool per_pool_omap;
+    r = store->pool_statfs(poolid, &statfs_pool, &per_pool_omap);
+    ASSERT_EQ(r, 0);
+    ASSERT_EQ(5, statfs_pool.data_stored);
+    ASSERT_EQ(0x10000, statfs_pool.allocated);
+    ASSERT_EQ(0, statfs_pool.data_compressed);
+    ASSERT_EQ(0, statfs_pool.data_compressed_original);
+    ASSERT_EQ(0, statfs_pool.data_compressed_allocated);
+
+    // accessing unknown pool
+    r = store->pool_statfs(poolid + 1, &statfs_pool, &per_pool_omap);
+    ASSERT_EQ(r, 0);
+    ASSERT_EQ(0, statfs_pool.data_stored);
+    ASSERT_EQ(0, statfs_pool.allocated);
+    ASSERT_EQ(0, statfs_pool.data_compressed);
+    ASSERT_EQ(0, statfs_pool.data_compressed_original);
+    ASSERT_EQ(0, statfs_pool.data_compressed_allocated); 
+    ch.reset();
+  }
+}
+
+
 TEST_P(KvsStoreTest, ZeroLengthZero1) {
   int r;
   coll_t cid;
@@ -858,7 +1049,7 @@ TEST_P(KvsStoreTest, SimpleCollectionList)
 }
 
 TEST_P(KvsStoreTest, CollectionEmptyTest) {
-  int r;
+  int r = 0;
   coll_t cid;
   ghobject_t hoid(hobject_t(sobject_t("attr object 1", CEPH_NOSNAP)));
   bufferlist val, val2;
@@ -877,7 +1068,7 @@ TEST_P(KvsStoreTest, CollectionEmptyTest) {
   //}
   {
     bool empty;
-    int r = store->collection_empty(ch, &empty);
+    r = store->collection_empty(ch, &empty);
     ASSERT_EQ(0, r);
     ASSERT_TRUE(empty);
   }
@@ -4581,7 +4772,6 @@ TEST_P(KvsStoreTest, TryMoveRename) {
   ASSERT_EQ(store->stat(ch, hoid, &st), -ENOENT);
   ASSERT_EQ(store->stat(ch, hoid2, &st), 0);
 }
-
 
 
 
