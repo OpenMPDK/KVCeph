@@ -45,6 +45,47 @@ ghobject_t generate_long_name(unsigned i)
   return hoid;
 }
 
+TEST_P(KvsStoreTest, TestOffsetWrites) {
+    int r;
+    coll_t cid;
+    auto ch = open_collection_safe(cid);
+    ghobject_t hoid(hobject_t(sobject_t("foo1", CEPH_NOSNAP)));
+    {
+        // delete if exists
+        ObjectStore::Transaction t;
+        t.remove(cid, hoid);
+        r = queue_transaction(store, ch, std::move(t));
+    }
+    /*
+        if write zeros
+        case 0: object size = 0,  offset = 0  && length = 10   |0000000000                     |  len = 10
+        case 1: object size = 10, offset = 15 && length = 5    |0000000000     00000           |  len = 20
+        case 2: object size = 20, offset = 10 && length = 20   |000000000000000000000000000000 |  len = 30
+        case 3: object size = 30, offset = 30 && length = 8192 |30zero<8162zero>|<30zero>      |  len = 8192+30
+        case 4: object size = 8222, offset = 8300 && length = 8192*2-8300  |8192zero|8192zero|    len = 8192*2
+        case 5: object size = 8192*2, offset = 0, length = 8192 |newdata|zeros                    len = 8192*2
+    */
+
+    bufferlist a;
+    a.append("0123456789");
+    // case0
+    {
+        // 1. create empty object
+        ObjectStore::Transaction t;
+        t.touch(cid, hoid);
+        r = queue_transaction(store, ch, std::move(t));
+        ASSERT_EQ(r, 0);
+
+        // 2. write offset 10,
+        ObjectStore::Transaction t;
+        t.write(cid, hoid, 0, 10, a);
+        r = queue_transaction(store, ch, std::move(t));
+        ASSERT_EQ(r, 0);
+
+    }
+
+    exit(0);
+}
 
 TEST_P(KvsStoreTest, OffsetWrites) {
   int r;

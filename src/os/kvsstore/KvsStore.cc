@@ -307,6 +307,7 @@ int KvsStore::_collection_list(KvsCollection *c, const ghobject_t &start,
 
 		while (true) {
 			if (!it->valid() || db.is_key_ge(it->key(), pend)) {
+                TR << "iter: key not valid ";
 				if (!it->valid())
 					dout(20) << __func__ << " iterator not valid (end of db?)" << dendl;
 				else {
@@ -318,7 +319,7 @@ int KvsStore::_collection_list(KvsCollection *c, const ghobject_t &start,
 					if (end.hobj.is_temp()) {
 						break;
 					}
-
+                    TR << "upper bound normal key  ";
 					dout(30) << __func__ << " switch to non-temp namespace" << dendl;
 
 					temp = false;
@@ -327,6 +328,7 @@ int KvsStore::_collection_list(KvsCollection *c, const ghobject_t &start,
 					dout(30) << __func__ << " pend " << print_kvssd_key(pend.key, pend.length) << dendl;
 					continue;
 				}
+                TR << "iter: exit ";
 				break;
 			}
             TR << __func__ << " key " << it->key().key << ", length " << (int)it->key().length;
@@ -349,8 +351,10 @@ int KvsStore::_collection_list(KvsCollection *c, const ghobject_t &start,
             TR << __func__ << "ls size = " << ls->size() << "\n";
 			it->next();
 		}
+        TR << __func__ << "iter finished" << "\n";
 	}
 out:
+    TR << __func__ << "iter returns" << "\n";
 	if (!set_next) {
 		*pnext = ghobject_t::get_max();
 	}
