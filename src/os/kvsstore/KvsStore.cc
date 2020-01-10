@@ -2403,7 +2403,7 @@ int KvsStore::statfs(struct store_statfs_t *buf, osd_alert_list_t *alerts) {
 	double utilization;
 
 	this->db.get_freespace(bytesused, capacity, utilization);
-	buf->total = capacity;
+	buf->total = capacity ;
 	buf->available = capacity - bytesused;
 
 	//TR << "total = " << buf->total << ", available " << buf->available ;
@@ -2427,7 +2427,6 @@ int KvsStore::stat(CollectionHandle &c_, const ghobject_t &oid, struct stat *st,
 		if (!o || !o->exists)
 			return -ENOENT;
 		st->st_size = o->onode.size;
-		derr << __func__ << " onode size = " << o->onode.size << dendl;
 		st->st_blksize = 4096;
 		st->st_blocks = (st->st_size + st->st_blksize - 1) / st->st_blksize;
 		st->st_nlink = 1;
