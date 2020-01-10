@@ -3342,7 +3342,7 @@ int KvsStore::_do_write(KvsTransContext *txc,
     		
     		// Case 3: offset & length are aligned
     		if (offset_rem == 0 && end_rem == 0){ // 
-    			kvs_stripe *stripe = get_stripe_for_write(o, bl_off); // new stripe
+    			kvs_stripe *stripe = get_stripe_for_write(o, holebl_off); // new stripe
     			stripe->set_pos(0);
     			stripe->append_zero(stripe_size);
     			//stripe->substr_of(hole_bf, holebl_off, stripe_size);
