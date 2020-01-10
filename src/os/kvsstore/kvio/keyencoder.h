@@ -16,9 +16,9 @@
 //# encoders & decoders
 //----------------------
 
-void append_escaped(const string &in, string *out);
-char *append_escaped(const string &in, char *key);
-int decode_escaped(const char *p, string *out);
+void append_escaped(const std::string &in, std::string *out);
+char *append_escaped(const std::string &in, char *key);
+int decode_escaped(const char *p, std::string *out);
 char *encode_nspace_oid(const std::string &nspace, const std::string &oidkey, const std::string &oidname, char *pos);
 int decode_nspace_oid(char *p, ghobject_t* oid);
 
@@ -269,7 +269,7 @@ inline uint8_t construct_onode_key(CephContext* cct, const ghobject_t& oid, void
 // Encoders and Decoders
 // ------------------------
 
-inline void append_escaped(const string &in, string *out)
+inline void append_escaped(const std::string &in, std::string *out)
 {
     char hexbyte[8];
     for (string::const_iterator i = in.begin(); i != in.end(); ++i) {
@@ -287,7 +287,7 @@ inline void append_escaped(const string &in, string *out)
 }
 
 
-inline char *append_escaped(const string &in, char *key)
+inline char *append_escaped(const std::string &in, char *key)
 {
     char *pos = key;
     for (string::const_iterator i = in.begin(); i != in.end(); ++i) {
@@ -306,7 +306,7 @@ inline char *append_escaped(const string &in, char *key)
     return pos;
 }
 
-inline int decode_escaped(const char *p, string *out)
+inline int decode_escaped(const char *p, std::string *out)
 {
     const char *orig_p = p;
     while (*p && *p != '!') {

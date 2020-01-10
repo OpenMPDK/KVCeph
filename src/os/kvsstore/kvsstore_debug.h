@@ -25,7 +25,7 @@
 #define ENABLE_FTRACE
 //#define ENABLE_FUNCTION_TRACE
 #define ENABLE_IOTRACE
-#define ENABLE_IOTRACE_SUBMIT
+//#define ENABLE_IOTRACE_SUBMIT
 //#define IOTRACE_MINIMAL
 
 
@@ -157,8 +157,10 @@ struct FtraceObject {
 #define LOGEND ""
 
 #define FTRACE FtraceObject fobj(__FUNCTION__, __LINE__);
-#define TR FLOG << pthread_self() << "[" << __FILENAME__ << ":"  << __LINE__ << "] "
-#define TRERR FLOG << pthread_self() << "[" << __FILENAME__ << ":"  << __LINE__ << "] ERR: "
+#define TR FLOG << pthread_self() << " "
+#define TRERR FLOG << pthread_self() << " "
+//#define TR FLOG << pthread_self() << "[" << __FILENAME__ << ":"  << __LINE__ << "] "
+//#define TRERR FLOG << pthread_self() << "[" << __FILENAME__ << ":"  << __LINE__ << "] ERR: "
 #define TRBACKTRACE { ostringstream oss; oss << BackTrace(1); FLOG << pthread_self() << "[" << __FILENAME__ << ":"  << __LINE__ << "] " << "Backtrace: " << oss.str(); }
 #else
 #define TRERR FLOG << pthread_self() << "[" << __FILENAME__ << ":"  << __LINE__ << "] ERR: "

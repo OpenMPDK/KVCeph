@@ -535,7 +535,7 @@ void KvsStore::_txc_state_proc(KvsTransContext *txc) {
 		switch (txc->state) {
 
 		case KvsTransContext::STATE_PREPARE:
-            TR << "TXC" << (void*) txc << ", STATE: PREPARE";
+            TR << "TXC " << (void*) txc << ", STATE: PREPARE";
             txc->state = KvsTransContext::STATE_AIO_WAIT;
             //TR << "txc " << (void*)txc << ", state = " << txc->state ;
 
@@ -543,14 +543,14 @@ void KvsStore::_txc_state_proc(KvsTransContext *txc) {
 				_txc_aio_submit(txc);
 				return;
 			} else {
-                TR << "TXC" << (void*) txc << "is EMPTY";
+                TR << "TXC " << (void*) txc << "is EMPTY";
 			}
 
 			break; // fall through
 
 		case KvsTransContext::STATE_AIO_WAIT:
 			// io finished
-            TR << "TXC" << (void*) txc << ", STATE: IOFINISHED -> FINALIZE";
+            TR << "TXC " << (void*) txc << ", STATE: IOFINISHED -> FINALIZE";
             {
                 std::unique_lock l(kv_finalize_lock);
                 kv_committing_to_finalize.push_back(txc);
@@ -2942,7 +2942,7 @@ void KvsStore::_kv_finalize_thread() {
 			kv_committed.swap(kv_committing_to_finalize);
 			l.unlock();
 
-            TR << "kv_finalize-start: # of transactions " << kv_committed.size();
+            //TR << "kv_finalize-start: # of transactions " << kv_committed.size();
             //int num = 0;
             for (KvsTransContext *txc: kv_committed) {
                 //TR << "transaction #" << num++ << ", " << (void*) txc << ": IO finished";
@@ -3235,11 +3235,11 @@ int KvsStore::_write(KvsTransContext *txc, CollectionRef &c, OnodeRef &o,
 		uint64_t offset, size_t length, bufferlist &bl, uint32_t fadvise_flags) {
 	FTRACE
 
-	TR << "_write: start - oid " << o->oid << ", onode size " << o->onode.size << ", offset " << offset << ", length " << length << ", hash = " << ceph_str_hash_linux(bl.c_str(), bl.length());
+	TR << ">> write: start - oid " << o->oid << ", onode size " << o->onode.size << ", offset " << offset << ", length " << length << ", hash = " << ceph_str_hash_linux(bl.c_str(), bl.length());
     int r = _do_write(txc, o, offset, length, bl, fadvise_flags);
     txc->write_onode(o);
 
-    TR << "_write: finished - oid " << o->oid << ", onode size " << o->onode.size << ", offset " << offset << ", length " << length << ", hash = " << ceph_str_hash_linux(bl.c_str(), bl.length());
+    TR << ">> write: finished - oid " << o->oid << ", onode size " << o->onode.size << ", offset " << offset << ", length " << length << ", hash = " << ceph_str_hash_linux(bl.c_str(), bl.length());
 	return r;
 }
 
@@ -3278,9 +3278,11 @@ kvs_stripe* KvsStore::get_stripe_for_rmw(OnodeRef o, int stripe_off) {
     auto it = o->pending_stripes.find(stripe_off);
     if (it == o->pending_stripes.end()) {
         kvs_stripe *stripe = new kvs_stripe((stripe_off >> KVS_OBJECT_SPLIT_SHIFT));
-        int r = db.read_block(o->oid, stripe->pgid, stripe->buffer, stripe->len);
+        int r = db.read_block(o->oid, stripe->pgid, stripe->buffer, stripe->pos);
         if (r != 0) {
             stripe->clear();
+        } else {
+
         }
 
         o->pending_stripes[stripe_off] = stripe;
@@ -3292,6 +3294,7 @@ kvs_stripe* KvsStore::get_stripe_for_rmw(OnodeRef o, int stripe_off) {
 
 void KvsStore::_do_write_stripe(KvsTransContext *txc, OnodeRef o, kvs_stripe *stripe)
 {
+    TR << "write stripe: pageid = " << stripe->pgid << ", pos = " << stripe->get_pos();
     db.add_userdata(&txc->ioc, o->oid, stripe->buffer, stripe->get_pos(), stripe->pgid);
 }
 
@@ -3305,8 +3308,7 @@ int KvsStore::_do_write(KvsTransContext *txc,
 
     int r = 0;
 
-    TR << o->oid << " " << offset << "~" << length<< " - have " << o->onode.size
-             << " bytes, oid " << o->oid;
+    TR << "do_write: " << o->oid << " off " << offset << "~ len " << length<< " cursize " << o->onode.size;
 
     o->exists = true;
 
@@ -3321,9 +3323,8 @@ int KvsStore::_do_write(KvsTransContext *txc,
     uint64_t desired_offset = offset;
 
     int64_t hole_size = (desired_offset - prev_offset);
-    TR << o->oid  << " 1";
     if (hole_size > 0){
-    	TR << o->oid  << " 2. ";
+    	TR << o->oid  << " hole size = " << hole_size;
     	//bufferlist hole_bf;   // Intitalize hole bufferlist 00000000000000000//
     	//hole_bf.append_zero(hole_size); 
 		int64_t holebl_off = 0;  // offset of the hole bufferlist
@@ -3358,10 +3359,8 @@ int KvsStore::_do_write(KvsTransContext *txc,
     		kvs_stripe *stripe = 0; 
 
     		// Case 1 : Stripe already exists
-    		if (stripe_off < o->onode.size && (stripe_off > 0 || hole_size < stripe_size)){
+    		if (stripe_off < o->onode.size && (stripe_off > 0 || hole_size < (int64_t)stripe_size)){
             	stripe = get_stripe_for_rmw(o, stripe_off);
-            	if (stripe->length() != stripe_size)
-                	throw "invalid stripe size";    			
     		}
     		else{ // create new stripe
     			stripe = get_stripe_for_write(o, stripe_off);
@@ -3391,7 +3390,6 @@ int KvsStore::_do_write(KvsTransContext *txc,
     	TR << o->oid  << " 5 hole filled";
     } // end of hole 
 
-    TR << o->oid  << " 6 length = " << length;
     while (length > 0) {
         uint64_t offset_rem = offset % stripe_size;     // remaining data
         uint64_t end_rem = (offset + length) % stripe_size;
@@ -3407,7 +3405,7 @@ int KvsStore::_do_write(KvsTransContext *txc,
 
         uint64_t stripe_off = offset - offset_rem;
         kvs_stripe *stripe = 0;
-        TR << "stripe_off " << stripe_off << ", length " << length;
+        //TR << "stripe_off " << stripe_off << ", length " << length;
 
         if (stripe_off < o->onode.size && (stripe_off > 0 || (length < stripe_size))) {
             stripe = get_stripe_for_rmw(o, stripe_off);
@@ -3417,7 +3415,7 @@ int KvsStore::_do_write(KvsTransContext *txc,
             stripe = get_stripe_for_write(o, stripe_off);
         }
 
-        TR << "prev length == " << stripe->length();
+        //TR << "prev length == " << stripe->length() << "pos = " << stripe->get_pos();
 
         stripe->set_pos(0);
 
@@ -3448,13 +3446,13 @@ int KvsStore::_do_write(KvsTransContext *txc,
        
         bl_off += use;
 
-        if (end_rem) {
+        /*if (end_rem) {
             // end_offset > 0 --> reuse ( end_offset ~ length )
             if (end_rem < stripe->length()) {
                 unsigned l = stripe->length() - end_rem;
                 stripe->inc_pos(l);
             }
-        }
+        }*/
 
         _do_write_stripe(txc, o, stripe);
 

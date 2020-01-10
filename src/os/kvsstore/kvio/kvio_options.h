@@ -8,6 +8,7 @@
 #ifndef SRC_OS_KVSSTORE_KVSSTORE_OPTIONS_H_
 #define SRC_OS_KVSSTORE_KVSSTORE_OPTIONS_H_
 
+#include <string>
 typedef unsigned __int128 uint128_t;
 
 //# BATCH
@@ -37,6 +38,14 @@ typedef unsigned __int128 uint128_t;
 #define GROUP_PREFIX_DATA  	  0x2
 #define GROUP_PREFIX_JOURNAL  0x3
 #define GROUP_PREFIX_OMAP     0x4
+
+inline std::string prefix_to_str(uint32_t prefix) {
+    static const char *strs[] = { "ONODE", "COLL", "DATA", "JOURNAL", "OMAP" };
+    if (prefix < 5)
+        return strs[prefix];
+    else
+        return "DATA";
+}
 
 
 //# SIZE

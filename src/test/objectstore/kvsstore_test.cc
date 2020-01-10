@@ -66,8 +66,6 @@ TEST_P(KvsStoreTest, TestOffsetWrites) {
         case 5: object size = 8192*2, offset = 0, length = 8192 |newdata|zeros                    len = 8192*2
     */
 
-    bufferlist a;
-    a.append("0123456789");
     // case0
     {
         // 1. create empty object
@@ -75,6 +73,10 @@ TEST_P(KvsStoreTest, TestOffsetWrites) {
         t.touch(cid, hoid);
         r = queue_transaction(store, ch, std::move(t));
         ASSERT_EQ(r, 0);
+    }
+    {
+        bufferlist a;
+        a.append("0123456789");
 
         // 2. write offset 10,
         ObjectStore::Transaction t;
@@ -82,8 +84,42 @@ TEST_P(KvsStoreTest, TestOffsetWrites) {
         r = queue_transaction(store, ch, std::move(t));
         ASSERT_EQ(r, 0);
 
+        bufferlist in;
+        r = store->read(ch, hoid, 0, 0x4000, in);
+        ASSERT_EQ(10, r);
+
+        if (ceph_str_hash_linux(a.c_str(), a.length()) !=
+            ceph_str_hash_linux(in.c_str(), in.length())) {
+            std::cerr << "hash mismatch\n";
+        }
+        ASSERT_TRUE(bl_eq(a, in));
     }
 
+    //case 1: object size = 10, offset = 15 && length = 5    |0000000000     00000           |  len = 20
+
+    {
+        bufferlist add;
+        add.append("01234");
+        ObjectStore::Transaction t;
+        t.write(cid, hoid, 15, 5, add);
+        r = queue_transaction(store, ch, std::move(t));
+        ASSERT_EQ(r, 0);
+
+        bufferlist a;
+        a.append("0123456789");
+        a.append_zero(5);
+        a.append("01234");
+
+        bufferlist in;
+        r = store->read(ch, hoid, 0, 0x4000, in);
+        ASSERT_EQ(20, r);
+
+        if (ceph_str_hash_linux(a.c_str(), a.length()) !=
+            ceph_str_hash_linux(in.c_str(), in.length())) {
+            std::cerr << "hash mismatch\n";
+        }
+        ASSERT_TRUE(bl_eq(a, in));
+    }
     exit(0);
 }
 
