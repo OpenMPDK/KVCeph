@@ -127,14 +127,14 @@ public:
 
 
     inline void append_zero(uint32_t l) {
-        if (l + pos > KVS_OBJECT_SPLIT_SIZE) throw "end of buffer";
+        if (l + pos > KVS_OBJECT_SPLIT_SIZE) throw "end of buffer -- 1";
         if (l == 0) return;
         memset(buffer + pos, 0, l);
         inc_pos(l);
     }
 
     inline void append(const bufferlist& other, unsigned off, unsigned l) {
-        if (l + pos > KVS_OBJECT_SPLIT_SIZE) throw "end of buffer";
+        if (l + pos > KVS_OBJECT_SPLIT_SIZE) throw "end of buffer -- 2";
         if (l == 0) return;
         other.copy(off, l, buffer + pos);  inc_pos(l);
     }

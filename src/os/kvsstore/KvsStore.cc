@@ -3312,6 +3312,83 @@ int KvsStore::_do_write(KvsTransContext *txc,
     }
 
     unsigned bl_off = 0;
+
+    // First fill the holes i.e. if offset > o->onode.size -- that is if its a hole.
+    uint64_t prev_offset = o->onode.size; // size of object
+    uint64_t desired_offset = offset;
+
+    int64_t hole_size = (desired_offset - prev_offset);
+    TR << o->oid  << " 1";
+    if (hole_size > 0){
+    	TR << o->oid  << " 2. ";
+    	//bufferlist hole_bf;   // Intitalize hole bufferlist 00000000000000000//
+    	//hole_bf.append_zero(hole_size); 
+		int64_t holebl_off = 0;  // offset of the hole bufferlist
+    	
+    	// Now fill the hole in the stripes
+ 		/* 
+			Case 1: hole_size <= end of current stripe  | aaaa0000 |
+			Case 2: hole_size > end of current stripe   | aaaa0000 | 00 
+			Case 3: hole starts in a new stripe and end in boundary |aaaaaaaa|0000000|0000000|
+			Case 4: hole starts in a new stripe and ends in new     |aaaaaaaa|0000000|00000  |
+ 		*/
+    	while (hole_size > 0){
+    		TR << o->oid  << " 3.";
+    		uint64_t offset_rem = prev_offset % stripe_size; // Offset in the current stripe from where writing is allowed if offset_rem = 0, it means new stripe should be created
+    		uint64_t end_rem = (prev_offset + hole_size) % stripe_size; // end offset in the stripe where it ends, end_rem = 0 means the stripe is to completely filled
+    		
+    		// Case 3: offset & length are aligned
+    		if (offset_rem == 0 && end_rem == 0){ // 
+    			kvs_stripe *stripe = get_stripe_for_write(o, bl_off); // new stripe
+    			stripe->set_pos(0);
+    			stripe->append_zero(stripe_size);
+    			//stripe->substr_of(hole_bf, holebl_off, stripe_size);
+    			_do_write_stripe(txc, o, stripe);
+    			// update hole offset, size of object, size of hole
+    			holebl_off += stripe_size;
+    			prev_offset += stripe_size; // size of obj
+    			hole_size -= stripe_size;
+    			continue;
+    		} // end of if
+
+    		uint64_t stripe_off = prev_offset - offset_rem; // beginning offset of the current stripe, if offset #5, stripe_off = 5*8192
+    		kvs_stripe *stripe = 0; 
+
+    		// Case 1 : Stripe already exists
+    		if (stripe_off < o->onode.size && (stripe_off > 0 || hole_size < stripe_size)){
+            	stripe = get_stripe_for_rmw(o, stripe_off);
+            	if (stripe->length() != stripe_size)
+                	throw "invalid stripe size";    			
+    		}
+    		else{ // create new stripe
+    			stripe = get_stripe_for_write(o, stripe_off);
+    		}
+    		TR << o->oid  << " 4.";
+    		stripe->set_pos(0);
+    		// Now we know which stripe to write
+    		int64_t total_usable = stripe_size - offset_rem; // total usable in cur stripe
+    		
+    		// if stripe has already been written to
+    		stripe->set_pos(offset_rem);
+ 			
+ 			int64_t total_zerofill = total_usable;
+ 			if (hole_size <= total_usable){
+ 				total_zerofill = hole_size;
+ 			}
+
+    		stripe->append_zero(total_zerofill);
+    		_do_write_stripe(txc, o, stripe);
+    		holebl_off += total_zerofill;
+    		prev_offset += total_zerofill;
+    		hole_size -= total_zerofill;
+    	} // end of while
+    	TR << o->oid  << " 5 offset = " << offset << ", prev_offset = " << prev_offset 
+    	   << ", holebl_off = " << holebl_off ;
+    	offset = prev_offset;
+    	TR << o->oid  << " 5 hole filled";
+    } // end of hole 
+
+    TR << o->oid  << " 6 length = " << length;
     while (length > 0) {
         uint64_t offset_rem = offset % stripe_size;     // remaining data
         uint64_t end_rem = (offset + length) % stripe_size;
@@ -3327,7 +3404,7 @@ int KvsStore::_do_write(KvsTransContext *txc,
 
         uint64_t stripe_off = offset - offset_rem;
         kvs_stripe *stripe = 0;
-        TR << "stript off " << stripe_off << ", length " << length;
+        TR << "stripe_off " << stripe_off << ", length " << length;
 
         if (stripe_off < o->onode.size && (stripe_off > 0 || (length < stripe_size))) {
             stripe = get_stripe_for_rmw(o, stripe_off);
@@ -3348,19 +3425,24 @@ int KvsStore::_do_write(KvsTransContext *txc,
                 TR << __func__ << " reuse leading " << p << " bytes";
                 stripe->set_pos(p);
             }
-            if (p < offset_rem) {
-                TR << __func__ << " add leading " << offset_rem - p << " zeros" ;
-                stripe->append_zero(offset_rem - p);
-            }
-        }
+           // if (p < offset_rem) {
+           //     TR << __func__ << " add leading " << offset_rem - p << " zeros" ;
+           //     stripe->append_zero(offset_rem - p);
+           // }
+    
+        } 
 
         // update bytes between start_offset ~ end_offset
         unsigned use = stripe_size - offset_rem;
         if (use > length)
             use -= stripe_size - end_rem;
 
+ 		//TR << " before stripe->append , bl_off= " << bl_off;
         stripe->append(orig_bl, bl_off, use);
-
+       // cout << "-- after:\n";
+      //  orig_bl.hexdump(cout);
+       // TR << " after stripe->append ";
+       
         bl_off += use;
 
         if (end_rem) {
@@ -3382,7 +3464,8 @@ int KvsStore::_do_write(KvsTransContext *txc,
                  << dendl;
         o->onode.size = offset;
     }
-
+  TR << " END-- " << o->oid << " " << offset << "~" << length<< " - have " << o->onode.size
+             << " bytes, oid " << o->oid;   
     return r;
 
 }
