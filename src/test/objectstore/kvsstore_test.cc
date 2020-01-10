@@ -51,13 +51,15 @@ TEST_P(KvsStoreTest, OffsetWrites) {
   coll_t cid;
   auto ch = open_collection_safe(cid);
   ghobject_t hoid(hobject_t(sobject_t("foo", CEPH_NOSNAP)));
-  //{
-    //ObjectStore::Transaction t;
-    //t.create_collection(cid, 0);
-    //cerr << "Creating collection " << cid << std::endl;
-    //r = queue_transaction(store, ch, std::move(t));
-    //ASSERT_EQ(r, 0);
-  //}
+  /**
+  {
+    ObjectStore::Transaction t;
+    t.create_collection(cid, 0);
+    cerr << "Creating collection " << cid << std::endl;
+    r = queue_transaction(store, ch, std::move(t));
+    ASSERT_EQ(r, 0);
+  }
+  **/
   bufferlist a;
   bufferptr ap(0x1000);
   memset(ap.c_str(), 'a', 0x1000);
@@ -129,23 +131,9 @@ TEST_P(KvsStoreTest, OffsetWrites) {
     derr << " Last write hash = " << ceph_str_hash_linux(exp.c_str(), exp.length())
          << " read hash = " <<  ceph_str_hash_linux(in.c_str(), in.length())<< dendl;
      
-   cout << "--- expected:\n";
-   exp.hexdump(cout);
-   cout << "--- actual:\n";
-   in.hexdump(cout);
 
     ASSERT_EQ(ceph_str_hash_linux(exp.c_str(), exp.length()), 
               ceph_str_hash_linux(in.c_str(), in.length()));
-  #if 0
-    ASSERT_EQ(ceph_str_hash_linux(exp.c_str(), 0x1000), 
-              ceph_str_hash_linux(in.c_str(), 0x1000)); 
-    ASSERT_EQ(ceph_str_hash_linux(exp.c_str(), 0x2000), 
-              ceph_str_hash_linux(in.c_str(), 0x2000));  
-    ASSERT_EQ(ceph_str_hash_linux(exp.c_str(), 0x3000), 
-              ceph_str_hash_linux(in.c_str(), 0x3000)); 
-    ASSERT_EQ(ceph_str_hash_linux(exp.c_str(), 0x4000), 
-              ceph_str_hash_linux(in.c_str(), 0x4000));        
-  #endif
 
     ASSERT_TRUE(bl_eq(exp, in));
   }
@@ -188,7 +176,6 @@ TEST_P(KvsStoreTest, OffsetWrites) {
     r = queue_transaction(store, ch, std::move(t));
     ASSERT_EQ(r, 0);
   }
-  exit(0);
 }
 
 
@@ -210,7 +197,7 @@ TEST_P(KvsStoreTest, BigRGWObjectName2)
     ghobject_t oidhead(oid);
     oidhead.generation = ghobject_t::NO_GEN;
 
-    auto ch = open_collection_safe(cid, 5);
+    auto ch = open_collection_safe(cid);
 
     int r;
     {
