@@ -3409,8 +3409,6 @@ int KvsStore::_do_write(KvsTransContext *txc,
 
         if (stripe_off < o->onode.size && (stripe_off > 0 || (length < stripe_size))) {
             stripe = get_stripe_for_rmw(o, stripe_off);
-            if (stripe->length() != stripe_size)
-                throw "invalid stripe size";
         } else {
             stripe = get_stripe_for_write(o, stripe_off);
         }
