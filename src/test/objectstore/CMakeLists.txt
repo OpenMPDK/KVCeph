@@ -23,6 +23,22 @@ target_link_libraries(ceph_test_objectstore
 install(TARGETS ceph_test_objectstore
   DESTINATION ${CMAKE_INSTALL_BINDIR})
 
+add_executable(ceph_test_kvsbuflist
+        bufferlist_test.cc
+        $<TARGET_OBJECTS:store_test_fixture>)
+
+target_link_libraries(ceph_test_kvsbuflist
+        os
+        ceph-common
+        ${UNITTEST_LIBS}
+        global
+        ${EXTRALIBS}
+        ${BLKID_LIBRARIES}
+        ${CMAKE_DL_LIBS}
+        )
+install(TARGETS ceph_test_kvsbuflist
+        DESTINATION ${CMAKE_INSTALL_BINDIR})
+
 #ceph_test_kvsstore
 add_executable(ceph_test_kvsstore
   kvsstore_test.cc

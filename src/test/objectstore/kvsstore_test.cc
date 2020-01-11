@@ -74,8 +74,9 @@ TEST_P(KvsStoreTest, TestOffsetWrites) {
         r = queue_transaction(store, ch, std::move(t));
         ASSERT_EQ(r, 0);
     }
+
+    bufferlist a;
     {
-        bufferlist a;
         a.append("0123456789");
 
         // 2. write offset 10,
@@ -105,8 +106,6 @@ TEST_P(KvsStoreTest, TestOffsetWrites) {
         r = queue_transaction(store, ch, std::move(t));
         ASSERT_EQ(r, 0);
 
-        bufferlist a;
-        a.append("0123456789");
         a.append_zero(5);
         a.append("01234");
 
@@ -120,7 +119,52 @@ TEST_P(KvsStoreTest, TestOffsetWrites) {
         }
         ASSERT_TRUE(bl_eq(a, in));
     }
-    exit(0);
+
+    a.clear();
+    a.append("0123456789");
+    a.append("01234567890123456789");
+
+    //case 2: object size = 20, offset = 10 && length = 20   |000000000000000000000000000000 |  len = 30
+    {
+        bufferlist add;
+        add.append("01234567890123456789");
+        ObjectStore::Transaction t;
+        t.write(cid, hoid, 10, 20, add);
+        r = queue_transaction(store, ch, std::move(t));
+        ASSERT_EQ(r, 0);
+
+        bufferlist in;
+        r = store->read(ch, hoid, 0, 0x4000, in);
+        ASSERT_EQ(30, r);
+
+        if (ceph_str_hash_linux(a.c_str(), a.length()) !=
+            ceph_str_hash_linux(in.c_str(), in.length())) {
+            std::cerr << "hash mismatch\n";
+        }
+        ASSERT_TRUE(bl_eq(a, in));
+    }
+
+    a.append_zero(8192);
+    //case 3: object size = 30, offset = 30 && length = 8192 |30zero<8162zero>|<30zero>      |  len = 8192+30
+    {
+        bufferlist add;
+        add.append_zero(8192);
+        ObjectStore::Transaction t;
+        t.write(cid, hoid, 30, 8192, add);
+        r = queue_transaction(store, ch, std::move(t));
+        ASSERT_EQ(r, 0);
+
+        bufferlist in;
+        r = store->read(ch, hoid, 0, 0x4000, in);
+        ASSERT_EQ(8192+30, r);
+
+        if (ceph_str_hash_linux(a.c_str(), a.length()) !=
+            ceph_str_hash_linux(in.c_str(), in.length())) {
+            std::cerr << "hash mismatch\n";
+        }
+        ASSERT_TRUE(bl_eq(a, in));
+    }
+    
 }
 
 TEST_P(KvsStoreTest, OffsetWrites) {
