@@ -126,7 +126,7 @@ public:
     inline uint32_t get_pos() { return pos; }
 
 
-    inline void append_zero(uint32_t l) {
+    inline void append_zero(const uint32_t l) {
         if (l + pos > KVS_OBJECT_SPLIT_SIZE) throw "end of buffer -- 1";
         if (l == 0) return;
         memset(buffer + pos, 0, l);

@@ -331,6 +331,7 @@ public:
 	/// Implementation of ObjectStore Interface
 	/// =========================================================
     void _do_write_stripe(KvsTransContext *txc, OnodeRef o, kvs_stripe *stripe);
+    kvs_stripe* _write_stripe(OnodeRef o, bufferlist& orig_bl, uint64_t dataoff, const uint64_t stripeoff, const int64_t off, const uint64_t use, const bool need_read);
 
     kvs_stripe* get_stripe_for_write(OnodeRef o,int stripe_off);
     kvs_stripe* get_stripe_for_rmw(OnodeRef o, int stripe_off);
