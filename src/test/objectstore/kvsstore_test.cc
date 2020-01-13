@@ -46,7 +46,6 @@ ghobject_t generate_long_name(unsigned i)
 }
 
 
-
 // Class 1 -  Trivial Mount, ReMount Tests
 TEST_P(KvsStoreTest, Trivial) {
 }
@@ -229,7 +228,7 @@ TEST_P(KvsStoreTest, SimpleWriteAllReadTest)
     coll_t cid; // Added for iterator bug in FW
 
     int r;
-    int NUM_OBJS = 50;
+    int NUM_OBJS = 10000;
     int WRITE_SIZE = 850;
     set<ghobject_t> created;
     string base = "wa";
@@ -3373,20 +3372,6 @@ TEST_P(KvsStoreTest, SimpleCloneTest) {
 
 
 //////////////////
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

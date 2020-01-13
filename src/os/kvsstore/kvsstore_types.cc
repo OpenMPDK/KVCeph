@@ -57,13 +57,15 @@ void KvsOnode::flush()
     if (flushing_count.load()) {
     	//TODO: waiting count - txc apply kv
     	waiting_count++;
-        std::unique_lock l(flush_lock);
-        while (flushing_count.load()) {
-            TR << oid << ", flush_cond.wait - flush count = " << flushing_count.load();
-            flush_cond.wait(l);
-            TR << oid << ", flush_cond.wakeup - flush count = " << flushing_count.load();
-        }
-        waiting_count--;
+       	{
+	        std::unique_lock l(flush_lock);
+	        while (flushing_count.load()) {
+	            TR << oid << ", flush_cond.wait - flush count = " << flushing_count.load();
+	            flush_cond.wait(l);
+	            TR << oid << ", flush_cond.wakeup - flush count = " << flushing_count.load();
+	        }
+	        waiting_count--;
+    	}
     }
 }
 

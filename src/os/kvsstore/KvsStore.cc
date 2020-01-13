@@ -2921,7 +2921,6 @@ void KvsStore::_kv_finalize_thread() {
 				KvsTransContext *txc = ordered_txc.front();
 
 				// clear write buffers
-
                 // decrease flushing count
                 for (auto ls : { &txc->onodes, &txc->modified_objects }) {
                     for (auto& o : *ls) {
@@ -2932,7 +2931,10 @@ void KvsStore::_kv_finalize_thread() {
 
                         TR << o->oid << "decrease flush count " << o->flushing_count.load() -1;
                         dout(20) << __func__ << " onode " << o << " had " << o->flushing_count << dendl;
-                        if (--o->flushing_count == 0 && o->waiting_count.load()) {
+                        if (o->flushing_count.load()){
+                        	--o->flushing_count;
+                        }
+                        if (o->flushing_count == 0 && o->waiting_count.load()) {
                             TR << o->oid << "notify ";
                             std::lock_guard l(o->flush_lock);
                             o->flush_cond.notify_all();
