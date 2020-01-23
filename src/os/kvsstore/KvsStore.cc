@@ -363,6 +363,7 @@ int KvsStore::_open_collections() {
                 if (it) delete it;
                 return -EIO;
             }
+            derr << " collection opened:  " << cid << " " << c << dendl;
             dout(20) << __func__ << " opened " << cid << " " << c << dendl;
             _osr_attach(c.get());
             coll_map[cid] = c;
@@ -2066,8 +2067,10 @@ int KvsStore::_write_sb() {
 	bufferlist bl;
 	encode(this->kvsb, bl);
 
+	derr << __func__ << " superblock bufferlist length = " << bl.length() << ", is up to date " << this->kvsb.is_uptodate << dendl;
+
 	return db.write_sb(bl);
-	// derr << __func__ << " superblock bufferlist length = " << bl.length() << dendl;
+
 }
 
 void KvsStore::_close_db() {
@@ -3314,14 +3317,15 @@ int KvsStore::_do_write(KvsTransContext *txc,
     uint32_t endpage_id    = (offset + length-1) / stripe_size;
     uint64_t data_off = 0;
     uint32_t newend_off = 0;
-    for (uint32_t i = startpage_id; i <= endpage_id; i++) {
+    for (uint64_t i = startpage_id; i <= endpage_id; i++) {
         const uint64_t stripeoff     = i << KVS_OBJECT_SPLIT_SHIFT;
         const uint64_t curstripesize = std::min(o->onode.size - stripeoff, stripe_size);
         const int64_t  off           = (offset > 0)? offset - stripeoff:0;
-        const uint64_t use           = std::min(length, stripe_size - off);
+        const uint64_t adjustedstripesize = (off > 0)? stripe_size - off: stripe_size;
+        const uint64_t use           = std::min(length, adjustedstripesize);
         const uint64_t need_read = (stripeoff < o->onode.size) && ( (off > 0) || (off + use < curstripesize) );   //bool need_read = (there is a block written ) && (off > 0) && (off + use < currentstripsize );
 
-        kvs_stripe *stripe = _write_stripe(o,orig_bl, data_off, stripeoff, off, use, need_read);
+        kvs_stripe *stripe = _write_stripe(o,orig_bl, data_off, stripeoff, (off > 0)? off:0, use, need_read);
         newend_off = stripeoff + stripe->get_pos();
 
         _do_write_stripe(txc, o, stripe);

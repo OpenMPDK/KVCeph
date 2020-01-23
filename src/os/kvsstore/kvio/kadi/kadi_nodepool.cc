@@ -123,7 +123,7 @@ kv_indexnode *bptree_pool::_fetch_node(const bp_addr_t &addr) {
 	}
 
 	// load from the disk
-	if (bpaddr_pageid(addr) <= meta->get_last_pgid() && !meta->isnew) {
+	if (/*bpaddr_pageid(addr) <= meta->get_last_pgid() && */!meta->isnew) {
 
 		void *data = malloc(param->datanode_block_size);
 		int nread = read_page(addr, data, param->datanode_block_size);
