@@ -3268,6 +3268,7 @@ void KvsStore::_do_write_stripe(KvsTransContext *txc, OnodeRef o, kvs_stripe *st
 {
     TR << "write stripe: pageid = " << stripe->pgid << ", pos = " << stripe->get_pos();
     db.add_userdata(&txc->ioc, o->oid, stripe->buffer, stripe->get_pos(), stripe->pgid);
+    stripe->set_pos(0);
 }
 
 kvs_stripe * KvsStore::_write_stripe(OnodeRef o, bufferlist& orig_bl, uint64_t dataoff, const uint64_t stripeoff, const int64_t off, const uint64_t use, const bool need_read)
