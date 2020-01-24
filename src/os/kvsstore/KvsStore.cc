@@ -419,7 +419,9 @@ int KvsStore::queue_transactions(CollectionHandle &ch, vector<Transaction> &tls,
     ObjectStore::Transaction::collect_contexts(tls, &onreadable, &ondisk, &onreadable_sync);
 
     KvsCollection *c = static_cast<KvsCollection*>(ch.get());
+
     if (c == 0) ceph_abort_msg("cannot find the collection");
+
     KvsOpSequencer *osr = c->osr.get();
 
     KvsTransContext *txc = _txc_create(static_cast<KvsCollection*>(ch.get()), osr);

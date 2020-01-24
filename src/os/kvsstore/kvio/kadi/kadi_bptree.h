@@ -368,9 +368,9 @@ public:
 	}
 
 	void flush() {
-		if (root && dirty) {
-			pool.flush(root->addr);
-		}
+	    if (!dirty) return;
+
+        pool.flush((root == NULL)? invalid_key_addr:root->addr);
 	}
 private:
 	///

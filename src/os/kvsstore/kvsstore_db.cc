@@ -486,7 +486,8 @@ uint64_t KvsStoreDB::compact() {
                 tree->insert((char*)key, length);
 			} else if (opcode == nvme_cmd_kv_delete) {
                 TR << "tree-remove " << treename << ", key: " << print_kvssd_key(std::string((char*)key,length)) ;
-                tree->remove((char*)key, length);
+                int r = tree->remove((char*)key, length);
+                TR << "remove failed? " << r;
 			}
 
 			//cout << "read: group"  << groupid << ", seq " << sequence << ", " << print_key((const char*)key, length) << ", length = " << length << endl;

@@ -68,7 +68,7 @@ KvsSlottedPage *bptree_pool::create_data_node() {
 }
 
 void bptree_pool::flush(const bp_addr_t &newrootaddr) {
-    if (newrootaddr == invalid_key_addr) return;
+    //if (newrootaddr == invalid_key_addr) return;
 
 
 	meta->set_next_pgid(next_pgid);
