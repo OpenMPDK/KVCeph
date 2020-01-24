@@ -73,20 +73,23 @@ public:
 
 	// >=
 	inline bool is_key_ge(const kv_key &key1, const kv_key &key2) {
-		char *k1 = (char *)key1.key;
-		char *k2 = (char *)key2.key;
+		unsigned char *k1 = (unsigned char *)key1.key;
+        unsigned char *k2 = (unsigned char *)key2.key;
 		const int k1_length = key1.length;
 		const int k2_length = key2.length;
 		return (kvkey_lex_compare(k1, k1+k1_length, k2, k2+k2_length) >= 0);
 	}
 
 private:
-	template<class InputIt1, class InputIt2>
-	inline int kvkey_lex_compare(InputIt1 first1, InputIt1 last1, InputIt2 first2, InputIt2 last2)
+	inline int kvkey_lex_compare(unsigned char* first1, unsigned char* last1, unsigned char* first2, unsigned char* last2)
 	{
 		for ( ; (first1 != last1) && (first2 != last2); ++first1, (void) ++first2 ) {
-			if (*first1 < *first2) return -1;
-			if (*first2 < *first1) return +1;
+			if (*first1 < *first2) {
+                return -1;
+			}
+			if (*first2 < *first1) {
+			    return +1;
+			}
 		}
 
 		if (first1 == last1) {

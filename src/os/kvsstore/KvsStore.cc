@@ -241,6 +241,20 @@ int KvsStore::_collection_list(KvsCollection *c, const ghobject_t &start,
            << print_kvssd_key(end_key.key, end_key.length) << " start " << start;
 
 		it = db.get_iterator(GROUP_PREFIX_ONODE);
+
+
+        TR << "it valid = ? " << it->valid();
+
+        while (true) {
+            if (it->valid()) {
+                kv_key key = it->key();
+                TR << " key list " << print_kvssd_key(key.key, key.length) << end;
+                it->next();
+            }
+            else
+                break;
+        }
+
 		if (start == ghobject_t() || start == c->cid.get_min_hobj()) {
 			it->upper_bound(temp_start_key);
 			temp = true;
@@ -271,9 +285,13 @@ int KvsStore::_collection_list(KvsCollection *c, const ghobject_t &start,
 			}
 		}
 
-		while (true) {
+
+        while (true) {
+            TR  << " current key " << print_kvssd_key(it->key().key, it->key().length);
+            TR  << " pend    key " << print_kvssd_key(pend.key, pend.length);
+            TR << "  greater than pend ? " << db.is_key_ge(it->key(), pend);
 			if (!it->valid() || db.is_key_ge(it->key(), pend)) {
-                TR << "iter: key not valid ";
+                TR << "iter: key not valid : greater than pend ? " << db.is_key_ge(it->key(), pend);
 				if (!it->valid())
 					dout(20) << __func__ << " iterator not valid (end of db?)" << dendl;
 				else {
@@ -3287,7 +3305,7 @@ kvs_stripe * KvsStore::_write_stripe(OnodeRef o, bufferlist& orig_bl, uint64_t d
     } else {
         stripe = get_stripe_for_write(o, stripeoff);
         stripe->set_pos(0);
-        
+
         if (off)
             stripe->append_zero(off);
 

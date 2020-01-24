@@ -482,10 +482,10 @@ uint64_t KvsStoreDB::compact() {
             TR  << "found: opcode = " << opcode << ", key = " << print_key((const char*)key, length) << ", length = " << length ;
 
 			if (opcode == nvme_cmd_kv_store) {
-                //TR << "tree-insert " << treename << ", key: " << print_kvssd_key(std::string((char*)key,length)) ;
+                TR << "tree-insert " << treename << ", key: " << print_kvssd_key(std::string((char*)key,length)) ;
                 tree->insert((char*)key, length);
 			} else if (opcode == nvme_cmd_kv_delete) {
-                //TR << "tree-remove " << treename << ", key: " << print_kvssd_key(std::string((char*)key,length)) ;
+                TR << "tree-remove " << treename << ", key: " << print_kvssd_key(std::string((char*)key,length)) ;
                 tree->remove((char*)key, length);
 			}
 

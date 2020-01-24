@@ -1353,6 +1353,7 @@ private:
 		virtual void upper_bound(const char *key, int length) {
 			reset();
             if (tree == 0) return;
+            TR << "upper bound " << print_kvssd_key(key, length);
 
 			bool same;
 			bptree_node *node = tree->root;
