@@ -2950,19 +2950,24 @@ void KvsStore::_kv_finalize_thread() {
                         {
                             std::lock_guard<std::mutex> l(o->flush_lock);
                             o->flush_txns.erase(txc);
+
+                            if (o->flushing_count.load()){
+                                --o->flushing_count;
+                            }
+
+                            if (o->flushing_count == 0) {
+                                o->clear_pending_stripes();
+
+                                if ( o->waiting_count.load()) {
+                                    o->flush_cond.notify_all();
+                                }
+                            }
+
                         }
 
                         TR << o->oid << "decrease flush count " << o->flushing_count.load() -1;
                         dout(20) << __func__ << " onode " << o << " had " << o->flushing_count << dendl;
-                        if (o->flushing_count.load()){
-                        	--o->flushing_count;
-                        }
-                        if (o->flushing_count == 0 && o->waiting_count.load()) {
-                            TR << o->oid << "notify ";
-                            std::lock_guard l(o->flush_lock);
-                            o->flush_cond.notify_all();
-                            o->clear_pending_stripes();
-                        }
+
                     }
                 }
 
