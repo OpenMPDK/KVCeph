@@ -221,6 +221,7 @@ usage_exit() {
 }
 
 while [ $# -ge 1 ]; do
+  echo "$1"
 case $1 in
     -d | --debug )
         debug=1
@@ -417,12 +418,15 @@ case $1 in
         ;;
     --debug-mkfs)
         debug_mkfs=1
+echo "debug mkfs ? $debug_mkfs"
         ;;
     --debug-kvsstore)
         debug_kvsstore=1
+echo "debug kvsstore ? $debug_kvsstore"
         ;;
     --kvsstore-dev)
         kvsstore_dev="$2"
+echo "kvsstore dev = $kvsstore_dev"
         shift
         ;;
     --bluestore-devs )
@@ -441,6 +445,7 @@ case $1 in
 esac
 shift
 done
+
 
 if [ -z "$kvsstore_dev" ]; then
     echo "kvsstore_dev paramter is missing" 
@@ -896,11 +901,14 @@ EOF
             echo "{\"cephx_secret\": \"$OSD_SECRET\"}" > $CEPH_DEV_DIR/osd$osd/new.json
             ceph_adm osd new $uuid -i $CEPH_DEV_DIR/osd$osd/new.json
             rm $CEPH_DEV_DIR/osd$osd/new.json
-
+echo "!"
             if [ $debug_mkfs -eq 1 ]; then
             #    echo "$SUDO gdbserver localhost:7788 $CEPH_BIN/$ceph_osd $extra_osd_args -i $osd $ARGS --mkfs --key $OSD_SECRET --osd-uuid $uuid"
             #    sudo env PATH="$PATH" gdbserver localhost:7788 $CEPH_BIN/$ceph_osd $extra_osd_args -i $osd $ARGS --mkfs --key $OSD_SECRET --osd-uuid $uuid
-                echo "$SUDO $CEPH_BIN/$ceph_osd $extra_osd_args -i $osd $ARGS --mkfs --key $OSD_SECRET --osd-uuid $uuid"
+		echo "-------------------------------"
+		echo "Please run the following comand"
+		echo "-------------------------------"
+                echo "$SUDO $CEPH_BIN/$ceph_osd $extra_osd_args -f -i $osd $ARGS --mkfs --key $OSD_SECRET --osd-uuid $uuid"
                 exit
             else
                 echo "$SUDO $CEPH_BIN/$ceph_osd $extra_osd_args -i $osd $ARGS --mkfs --key $OSD_SECRET --osd-uuid $uuid"

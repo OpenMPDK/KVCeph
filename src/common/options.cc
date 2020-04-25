@@ -4965,6 +4965,12 @@ std::vector<Option> get_global_options() {
             .set_default("127.0.0.1")
             .set_description("IP address of the remote terminal server"),
 
+        Option("kvsstore_keyspace_sorted", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+         .set_default(0)
+         .set_description("Keyspace ID for metadata"),
+        Option("kvsstore_keyspace_notsorted", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+         .set_default(1)
+         .set_description("Keyspace ID for data"),
         Option("kvsdbg_port", Option::TYPE_INT, Option::LEVEL_ADVANCED)
             .set_default(-1)
             .set_description("port number of the remote terminal server"),

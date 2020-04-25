@@ -1081,6 +1081,8 @@ OPTION(bluestore_log_collection_list_age, OPT_DOUBLE)
 OPTION(bluestore_debug_enforce_settings, OPT_STR)
 
 // kvsstore
+OPTION(kvsstore_keyspace_sorted, OPT_INT)
+OPTION(kvsstore_keyspace_notsorted, OPT_INT)
 OPTION(kvsdbg_server, OPT_STR)
 OPTION(kvsdbg_port, OPT_INT)
 OPTION(op_scheduler, OPT_STR)

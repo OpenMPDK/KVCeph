@@ -25,10 +25,13 @@
 #include <boost/dynamic_bitset.hpp>
 #include <boost/intrusive_ptr.hpp>
 
+#include "include/types.h"
+#include "include/utime.h"
 #include "include/ceph_assert.h"
 #include "include/unordered_map.h"
 #include "include/mempool.h"
 #include "include/hash.h"
+#include "common/hobject.h"
 #include "common/ref.h"
 #include "common/bloom_filter.hpp"
 #include "common/Finisher.h"
@@ -38,729 +41,844 @@
 #include "common/PriorityCache.h"
 #include "common/RefCountedObj.h"
 #include "os/ObjectStore.h"
-#include "include/types.h"
-#include "include/utime.h"
 
-#include "kvio/kvio_options.h"
-#include "kvio/ondisk_types.h"
-#include "kvio/kadi/kadi_types.h"
-#include "kvio/keyencoder.h"
-#include "kvsstore_pages.h"
+
+#include "keyencoder.h"
+#include "kvssd_types.h"
+
 
 class KvsStore;
-class KvsTransContext;
-class KvsOpSequencer;
-using OpSequencerRef = ceph::ref_t<KvsOpSequencer>;
-
-struct KvsOnodeSpace;
-struct KvsCollection;
-typedef boost::intrusive_ptr<KvsCollection> CollectionRef;
+class KvsStoreCache;
 
 using namespace ceph;
 
-enum {
-    KVS_ONODE_CREATED        = -1,
-    KVS_ONODE_FETCHING       =  0,
-    KVS_ONODE_DOES_NOT_EXIST =  2,
-    KVS_ONODE_PREFETCHED     =  3,
-    KVS_ONODE_VALID          =  4
-};
+#define MAX_BUFFER_SLOP_RATIO_DEN 8
 
-enum KVS_JOURNAL_ENTRY {
-	KVS_JOURNAL_ENTRY_ONODE = 0,
-	KVS_JOURNAL_ENTRY_COLL  = 1
-};
+struct kvsstore_sb_t {
+    uint64_t nid_last;
+    uint64_t is_uptodate;
 
-#define KVS_ITERATOR_TYPE_SORTED    0
-#define KVS_ITERATOR_TYPE_INTORDER  1
+    explicit kvsstore_sb_t(): nid_last(0), is_uptodate(0) {}
 
-#ifndef KVSSTORE_ITERATOR_TYPE
-#define KVSSTORE_ITERATOR_TYPE KVS_INORDER_ITERATOR
-#endif
-
-
-inline int align_4B(uint32_t length) { return ((length - 1) / 4 + 1)*4;   }
-
-class kvs_stripe {
-public:
-    uint32_t len;
-    uint32_t pos;
-    char *buffer;
-    int pgid;
-
-    kvs_stripe(int pgid_): len(KVS_OBJECT_SPLIT_SIZE), pos(0), pgid(pgid_) {
-        allocate();
+    DENC(kvsstore_sb_t, v, p) {
+        DENC_START(1, 1, p);
+            denc(v.nid_last, p);
+            denc(v.is_uptodate, p);
+        DENC_FINISH(p);
     }
-    ~kvs_stripe() {
-        release();
+    void dump(Formatter *f) const{
+        f->dump_unsigned("nid_last", nid_last);
+        f->dump_unsigned("is_uptodate", is_uptodate);
     }
-
-
-
-    void allocate() {
-        buffer = (char*)malloc(len);
-    }
-
-    void set_moved() {
-        buffer = 0;
-    }
-
-    void release() {
-        free (buffer);
-        buffer = 0;
-    }
-
-    inline uint32_t length() { return len; }
-
-    inline void clear() {
-        pos = 0;
-    }
-
-    inline void inc_pos(uint32_t newpos) {
-        pos += newpos;
-    }
-    inline void set_pos(uint32_t newpos) {
-        pos = newpos;
-    }
-
-    inline uint32_t get_pos() { return pos; }
-
-
-    inline void append_zero(const uint32_t l) {
-        if (l + pos > KVS_OBJECT_SPLIT_SIZE) throw "end of buffer -- 1";
-        if (l == 0) return;
-        memset(buffer + pos, 0, l);
-        inc_pos(l);
-    }
-
-    inline void append(const bufferlist& other, unsigned off, unsigned l) {
-        if (l + pos > KVS_OBJECT_SPLIT_SIZE) throw "end of buffer -- 2";
-        if (l == 0) return;
-        other.copy(off, l, buffer + pos);  inc_pos(l);
-    }
-
-    inline void substr_of(const bufferlist& other, unsigned off, unsigned l)
-    {
-        clear();
-        append(other, off, l);
-    }
+    static void generate_test_instances(list<kvsstore_sb_t*>& o){}
 
 };
 
-///  ====================================================
-///  ONODE
-///  ====================================================
 
-struct KvsOnode {
-    MEMPOOL_CLASS_HELPERS();
+/// collection metadata
+struct kvsstore_cnode_t {
+    uint32_t bits;   ///< how many bits of coll pgid are significant
 
-    std::atomic_int nref;  ///< reference count
-    KvsCollection *c;
-    ghobject_t oid;
+    explicit kvsstore_cnode_t(int b=0) : bits(b) {}
 
-    boost::intrusive::list_member_hook<> lru_item;
-
-    kvsstore_onode_t onode;  ///< metadata stored as value in kv store
-    bool exists;              ///< true if object logically exists
-
-    int status;
-
-    // track txc's that have not been committed to kv store (and whose
-    // effects cannot be read via the kvdb read methods)
-    std::atomic<int> flushing_count = {0};
-    std::atomic<int> waiting_count = {0};
-
-    std::mutex flush_lock; // = ceph::make_mutex("KvsStore::flush_lock");  ///< protect flush_txns
-    std::condition_variable flush_cond;   ///< wait here for uncommitted txns
-    set<KvsTransContext*> flush_txns;
-
-    map<uint64_t,kvs_stripe*> pending_stripes;
-    void clear_pending_stripes() {
-       for(const auto &stripe : pending_stripes) {
-            delete stripe.second;
-       };
-       pending_stripes.clear();
+    DENC(kvsstore_cnode_t, v, p) {
+        DENC_START(1, 1, p);
+            denc(v.bits, p);
+        DENC_FINISH(p);
     }
-    KvsOnode(KvsCollection *c, const ghobject_t& o)
-            : nref(0),
-              c(c),
-              oid(o),
-              exists(false),
-              status(KVS_ONODE_CREATED) {
-    }
-
-    void flush();
-    void get() {
-        ++nref;
-    }
-    void put() {
-        if (--nref == 0)
-            delete this;
-    }
-
-    static KvsOnode* decode(
-          CollectionRef c,
-          const ghobject_t& oid,
-          const bufferlist& v);
+    void dump(Formatter *f) const{f->dump_unsigned("bits", bits);}
+    static void generate_test_instances(list<kvsstore_cnode_t*>& o){}
 
 };
 
-typedef boost::intrusive_ptr<KvsOnode> OnodeRef;
-
-static inline void intrusive_ptr_add_ref(KvsOnode *o) {
-    o->get();
-}
-static inline void intrusive_ptr_release(KvsOnode *o) {
-    o->put();
+template <typename Map>
+bool map_compare (Map const &lhs, Map const &rhs) {
+    // No predicate needed because there is operator== for pairs already.
+    return lhs.size() == rhs.size()
+           && std::equal(lhs.begin(), lhs.end(),
+                         rhs.begin());
 }
 
-///  ====================================================
-///  Cache
-///  ====================================================
+template <typename Map>
+bool map_compare2 (Map const &lhs, Map const &rhs) {
+    // No predicate needed because there is operator== for pairs already.
+    bool ret =  lhs.size() == rhs.size();
+    if (!ret) return ret;
 
-#include "kvsstore_cache_impl.h"
+    const auto it = rhs.begin();
+    for (const auto &p : lhs) {
+        std::string s (p.second.c_str(), p.second.length());
+        std::string s2 (it->second.c_str(), it->second.length());
 
-///  ====================================================
-///  Collections
-///  ====================================================
-
-struct KvsCollection : public ObjectStore::CollectionImpl {
-    KvsStore *store;
-    OpSequencerRef osr;
-    KvsBufferCacheShard *cache;       ///< our cache shard
-    kvsstore_cnode_t cnode;
-    ceph::shared_mutex lock = ceph::make_shared_mutex("KvsCollection::lock", true, false);
-
-    bool exists;
-
-    // cache onodes on a per-collection basis to avoid lock
-    // contention.
-    KvsOnodeSpace onode_map;
-    KvsBufferSpace data_map;
-
-    ContextQueue *commit_queue;
+        if (!(p.first == it->first && s == s2)) return false;
+    }
+    return true;
+}
 
 
-    OnodeRef get_onode(const ghobject_t& oid, bool create, bool is_createop=false);
+/// onode: per-object metadata
+struct kvsstore_onode_t {
+    uint64_t nid = 0;
+    uint64_t size = 0;
+    bufferlist omap_header;
+    set<std::string>             omaps;        ///< omap keys
+    map<mempool::kvsstore_cache_other::string, bufferptr>  attrs;        ///< attrs
 
+    inline bool has_omap() const { return omaps.size() > 0; }
+    inline bool equals(kvsstore_onode_t &other) {
 
-    void split_cache(KvsCollection *dest);
-
-    //int get_data(KvsTransContext *txc, const ghobject_t& oid, uint64_t offset, size_t length, bufferlist &bl);
-
-    bool contains(const ghobject_t& oid) {
-        if (cid.is_meta())
-            return oid.hobj.pool == -1;
-        spg_t spgid;
-        if (cid.is_pg(&spgid))
-            return spgid.pgid.contains(cnode.bits, oid) && oid.shard_id == spgid.shard;
-        return false;
+        return nid == other.nid && size == other.size &&
+               omap_header.contents_equal(other.omap_header) &&
+               map_compare(omaps, other.omaps) &&
+               map_compare2(attrs, other.attrs);
+    }
+    DENC(kvsstore_onode_t, v, p) {
+        DENC_START(1, 1, p);
+            denc_varint(v.nid, p);
+            denc_varint(v.size, p);
+            denc(v.attrs, p);
+            denc(v.omaps, p);
+            denc(v.omap_header, p);
+            //denc(v.flags, p);
+        DENC_FINISH(p);
     }
 
-    int64_t pool() const {
-      return cid.pool();
-    }
-
-    bool flush_commit(Context *c) override;
-    void flush() override;
-    void flush_all_but_last();
-
-    KvsCollection(KvsStore *ns, KvsOnodeCacheShard *oc, KvsBufferCacheShard *bc, coll_t c);
-    virtual ~KvsCollection() {}
+    void dump(Formatter *f) const {}
+    static void generate_test_instances(list<kvsstore_onode_t*>& o) {}
 };
 
 ///  ====================================================
-///  Iterators
+///  Object Store Data Types
 ///  ====================================================
 
-class KvsIterator {
+class KvsStoreTypes {
 public:
-    KvsIterator() {}
-    virtual ~KvsIterator() {}
-    virtual int begin() = 0;
-    virtual int end() = 0;
-    virtual int upper_bound(const kv_key &key) = 0;
-    virtual int lower_bound(const kv_key &key) = 0;
 
-    virtual bool valid() = 0;
+    // forward declarations
+    class OpSequencer;
+    struct Collection;
+    struct TransContext;
+    struct OnodeSpace;
+    struct Onode;
+    typedef boost::intrusive_ptr<Collection> CollectionRef;
+    typedef boost::intrusive_ptr<Onode> OnodeRef;
+    using OpSequencerRef = ceph::ref_t<OpSequencer>;
+    typedef map<uint64_t, bufferlist> ready_regions_t;
+    typedef vector<std::pair<uint64_t,uint64_t> > zero_regions_t;
+    typedef vector<uint16_t> chunk2read_t;
 
-    virtual int next() = 0;
-    virtual int prev() = 0;
-
-    virtual kv_key key() = 0;
-};
-
-
-///  ====================================================
-///  Journal
-///  ====================================================
-
-
-struct KvsJournal {
-	static std::atomic<uint64_t> journal_index;
-	static const size_t MAX_JOURNAL_ENTRY_SIZE = 2*1024*1024UL;
-
-	// journal data
-	// <num_io (n)> <journal entry 0> .... <journal entry n>
-
-	uint32_t* num_io_pos;
-	char *journal_buffer;
-	unsigned journal_buffer_pos;
-	bool created;
-
-	KvsJournal() {
-	    FTRACE
-		journal_buffer = (char*)malloc(MAX_JOURNAL_ENTRY_SIZE);
-		if (journal_buffer == 0) throw "failed to allocate a journal";
-		num_io_pos = (uint32_t*)journal_buffer;
-		*num_io_pos = 0;
-		journal_buffer_pos = 4;
-        created = true;
-	}
-
-	KvsJournal(char *buffer) {
-		journal_buffer = buffer;
-		num_io_pos = (uint32_t*)journal_buffer;
-		journal_buffer_pos = 4;
-        created = false;
-	}
-
-	~KvsJournal() {
-		if (created) free(journal_buffer);
-	}
-
-	inline bool is_full(int length) {
-		return journal_buffer_pos + length >= MAX_JOURNAL_ENTRY_SIZE;
-	}
-
-	//const std::function<int (char *)>
-	template<typename Functor>
-	void add_journal_entry(Functor &&filler) {
-	    FTRACE
-		journal_buffer_pos += filler(journal_buffer + journal_buffer_pos);
-		*num_io_pos = *num_io_pos + 1;
-	}
-
-	template<typename Functor>
-	void read_journal_entry(Functor &&reader) {
-		const int ne = *num_io_pos;
-		for (int i =0 ;i < ne ; i++) {
-			kvs_journal_entry* entry = (kvs_journal_entry*)(journal_buffer + journal_buffer_pos);
-			int datapos = journal_buffer_pos + sizeof(kvs_journal_entry);
-			int keypos  = datapos + align_4B(entry->length);
-			reader(entry, journal_buffer + keypos, (entry->length == 0)? 0:journal_buffer + datapos);
-			journal_buffer_pos = keypos + entry->key_length;
-		}
-	}
-};
-
-
-///  ====================================================
-///  IO Context
-///  ====================================================
-
-struct KvsIoContext {
-private:
-    std::mutex lock; // = ceph::make_mutex("KvsStore::iocontext_lock");
-    ceph::condition_variable cond;
+    struct BufferSpace;
+    struct BufferCacheShard;
 
 public:
-    std::mutex running_aio_lock; //  = ceph::make_mutex("KvsStore::running_aio_lock");
-    atomic_bool submitted = { false };
-    CephContext* cct;
-    void *priv;
-    utime_t start;
-    std::atomic<int> num_running = {0};
-    std::atomic<int> num_running_journals = {0};
+    ///------------------------------------------------------------
+    /// on-disk data structures
+    ///------------------------------------------------------------
+
+    /// superblock
+
+
 
 public:
-    // commands
-    kv_batch_context batchctx;
-    KvsJournal *cur_journal;
-    std::list<KvsJournal *> journal; 		   										///< not yet submitted
 
-    struct IoRequest {
-    	uint8_t spaceid;
-    	kv_key *key;
-    	bufferlist* data;
-    	char *raw_data;
-    	int   raw_data_length;
+    ///------------------------------------------------------------
+    /// LRU cache for onodes and buffers, borrowed from Bluestore
+    ///------------------------------------------------------------
 
-    	IoRequest(uint8_t spaceid_, kv_key *key_, bufferlist* data_):
-    		spaceid(spaceid_), key(key_), data(data_), raw_data(0), raw_data_length(0)
-    	{}
+    struct Buffer {
+        MEMPOOL_CLASS_HELPERS();
 
-    	IoRequest(uint8_t spaceid_, kv_key *key_, char *raw_data_, int raw_data_length_):
-    		spaceid(spaceid_), key(key_), data(0), raw_data(raw_data_), raw_data_length(raw_data_length_)
-    	{}
+        enum {
+            STATE_EMPTY,     ///< empty buffer -- used for cache history
+            STATE_CLEAN,     ///< clean data that is up to date
+            STATE_WRITING,   ///< data that is being written (io not yet complete)
+        };
+        static const char *get_state_name(int s) {
+            switch (s) {
+                case STATE_EMPTY: return "empty";
+                case STATE_CLEAN: return "clean";
+                case STATE_WRITING: return "writing";
+                default: return "???";
+            }
+        }
+        enum {
+            FLAG_NOCACHE = 1,  ///< trim when done WRITING (do not become CLEAN)
+            // NOTE: fix operator<< when you define a second flag
+        };
+        static const char *get_flag_name(int s) {
+            switch (s) {
+                case FLAG_NOCACHE: return "nocache";
+                default: return "???";
+            }
+        }
+
+        BufferSpace *space;
+        uint16_t state;             ///< STATE_*
+        uint16_t cache_private = 0; ///< opaque (to us) value used by Cache impl
+        uint32_t flags;             ///< FLAG_*
+        uint64_t seq;
+        uint32_t offset, length;
+        bufferlist data;
+
+        boost::intrusive::list_member_hook<> lru_item;
+        boost::intrusive::list_member_hook<> state_item;
+
+        Buffer(BufferSpace *space, unsigned s, uint64_t q, uint32_t o, uint32_t l,
+               unsigned f = 0)
+                : space(space), state(s), flags(f), seq(q), offset(o), length(l) {}
+        Buffer(BufferSpace *space, unsigned s, uint64_t q, uint32_t o, bufferlist& b,
+               unsigned f = 0)
+                : space(space), state(s), flags(f), seq(q), offset(o),
+                  length(b.length()), data(b) {}
+
+        bool is_empty() const {
+            return state == STATE_EMPTY;
+        }
+        bool is_clean() const {
+            return state == STATE_CLEAN;
+        }
+        bool is_writing() const {
+            return state == STATE_WRITING;
+        }
+
+        uint32_t end() const {
+            return offset + length;
+        }
+
+        void truncate(uint32_t newlen) {
+            ceph_assert(newlen < length);
+            if (data.length()) {
+                bufferlist t;
+                t.substr_of(data, 0, newlen);
+                data.claim(t);
+            }
+            length = newlen;
+        }
+        void maybe_rebuild() {
+            if (data.length() &&
+                (data.get_num_buffers() > 1 ||
+                 data.front().wasted() > data.length() / MAX_BUFFER_SLOP_RATIO_DEN)) {
+                data.rebuild();
+            }
+        }
+
+        void dump(Formatter *f) const {
+            f->dump_string("state", get_state_name(state));
+            f->dump_unsigned("seq", seq);
+            f->dump_unsigned("offset", offset);
+            f->dump_unsigned("length", length);
+            f->dump_unsigned("data_length", data.length());
+        }
     };
 
-    std::list<IoRequest*> pending_ios;    		    ///< not yet submitted
-    std::list<IoRequest*> running_ios;    		    ///< not yet submitted
+// buffer map, read/write/remove/add buffers
+    struct BufferSpace {
+        enum {
+            BYPASS_CLEAN_CACHE = 0x1,  // bypass clean cache
+        };
 
-    explicit KvsIoContext(CephContext* _cct): cct(_cct), priv(0) {
-        FTRACE
-    	create_new_journal();
-    }
+        typedef boost::intrusive::list<
+                Buffer,
+                boost::intrusive::member_hook<
+                        Buffer,
+                        boost::intrusive::list_member_hook<>,
+                        &Buffer::state_item> > state_list_t;
 
-    ~KvsIoContext() {
-        FTRACE
-    }
+        mempool::kvsstore_cache_other::map<uint32_t, std::unique_ptr<Buffer>>
+                buffer_map;
 
-    inline void create_new_journal() {
-        FTRACE
-    	cur_journal = new KvsJournal;
-    	journal.push_back(cur_journal);
-    }
+        // we use a bare intrusive list here instead of std::map because
+        // it uses less memory and we expect this to be very small (very
+        // few IOs in flight to the same Blob at the same time).
+        state_list_t writing;   ///< writing buffers, sorted by seq, ascending
 
-    KvsIoContext(const KvsIoContext& other) = delete;
-    KvsIoContext &operator=(const KvsIoContext& other) = delete;
+        ~BufferSpace() {
+            ceph_assert(buffer_map.empty());
+            ceph_assert(writing.empty());
+        }
 
-    template<typename Keygen>
-	inline void add_to_journal(const int spaceid, const int object_type, bufferlist *bl, const Keygen &keygen) {
-        FTRACE
-		const int bl_length = (bl == 0)? 0:align_4B(bl->length());
-		const int journal_entry_size = sizeof(kvs_journal_entry) + KVKEY_MAX_SIZE + bl_length;
-		if (cur_journal->is_full(journal_entry_size)) {
-			create_new_journal();
-		}
+        bool get_buffer_address(BufferCacheShard* cache, uint32_t offset, void **addr, uint64_t *length);
 
-		// entry + value + key  (start address of each item is 4B aligned)
-		cur_journal->add_journal_entry([&] (char *buffer)-> int {
-			kvs_journal_entry* entry = (kvs_journal_entry*)buffer;
-			entry->spaceid 	   = spaceid;
-			entry->object_type = object_type;
-			entry->op_type     = (bl == 0); //1 /* delete */: 0 /* write */;
-			entry->key_length  = keygen(buffer + sizeof(kvs_journal_entry) + bl_length);
+        void _add_buffer(BufferCacheShard* cache, Buffer *b, int level, Buffer *near) {
+            cache->_audit("_add_buffer start");
+            buffer_map[b->offset].reset(b);
+            if (b->is_writing()) {
+                b->data.reassign_to_mempool(mempool::mempool_kvsstore_writing);
+                if (writing.empty() || writing.rbegin()->seq <= b->seq) {
+                    writing.push_back(*b);
+                } else {
+                    auto it = writing.begin();
+                    while (it->seq < b->seq) {
+                        ++it;
+                    }
 
-			if (bl) {
-				bl->copy(0, bl->length(), buffer + sizeof(kvs_journal_entry));
-				entry->length = bl->length();
-			} else {
-				entry->length =0;
-			}
-			return journal_entry_size - KVKEY_MAX_SIZE + entry->key_length;
-		});
-	}
+                    ceph_assert(it->seq >= b->seq);
+                    // note that this will insert b before it
+                    // hence the order is maintained
+                    writing.insert(it, *b);
+                }
+            } else {
+                b->data.reassign_to_mempool(mempool::mempool_kvsstore_cache_data);
+                cache->_add(b, level, near);
+            }
+            cache->_audit("_add_buffer end");
+        }
+        void _rm_buffer(BufferCacheShard* cache, Buffer *b) {
+            _rm_buffer(cache, buffer_map.find(b->offset));
+        }
+        void _rm_buffer(BufferCacheShard* cache,
+                        map<uint32_t, std::unique_ptr<Buffer>>::iterator p) {
+            ceph_assert(p != buffer_map.end());
+            cache->_audit("_rm_buffer start");
+            if (p->second->is_writing()) {
+                writing.erase(writing.iterator_to(*p->second));
+            } else {
+                cache->_rm(p->second.get());
+            }
+            buffer_map.erase(p);
+            cache->_audit("_rm_buffer end");
+        }
+
+        map<uint32_t,std::unique_ptr<Buffer>>::iterator _data_lower_bound(
+                uint32_t offset) {
+            auto i = buffer_map.lower_bound(offset);
+            if (i != buffer_map.begin()) {
+                --i;
+                if (i->first + i->second->length <= offset)
+                    ++i;
+            }
+            return i;
+        }
+
+        // must be called under protection of the Cache lock
+        void _clear(BufferCacheShard* cache);
+
+        // return value is the highest cache_private of a trimmed buffer, or 0.
+        int discard(BufferCacheShard* cache, uint32_t offset, uint32_t length) {
+            std::lock_guard l(cache->lock);
+            int ret = _discard(cache, offset, length);
+            cache->_trim();
+            return ret;
+        }
+        int _discard(BufferCacheShard* cache, uint32_t offset, uint32_t length);
+
+        void write(BufferCacheShard* cache, uint64_t seq, uint32_t offset, bufferlist& bl,
+                   unsigned flags) {
+            std::lock_guard l(cache->lock);
+            Buffer *b = new Buffer(this, Buffer::STATE_WRITING, seq, offset, bl,
+                                   flags);
+            b->cache_private = _discard(cache, offset, bl.length());
+            _add_buffer(cache, b, (flags & Buffer::FLAG_NOCACHE) ? 0 : 1, nullptr);
+            cache->_trim();
+        }
+        void _finish_write(BufferCacheShard* cache, uint64_t seq);
+        void did_read(BufferCacheShard* cache, uint32_t offset, bufferlist& bl) {
+            std::lock_guard l(cache->lock);
+            Buffer *b = new Buffer(this, Buffer::STATE_CLEAN, 0, offset, bl);
+            b->cache_private = _discard(cache, offset, bl.length());
+            _add_buffer(cache, b, 1, nullptr);
+            cache->_trim();
+        }
+
+        void read(BufferCacheShard* cache, uint32_t offset, uint32_t length,
+                  ready_regions_t& res,
+                  interval_set<uint32_t>& res_intervals,
+                  int flags = 0);
+
+        void truncate(BufferCacheShard* cache, uint32_t offset) {
+            discard(cache, offset, (uint32_t)-1 - offset);
+        }
+
+        void split(BufferCacheShard* cache, size_t pos, BufferSpace &r);
+
+        void dump(BufferCacheShard* cache, Formatter *f) const {
+            std::lock_guard l(cache->lock);
+            f->open_array_section("buffers");
+            for (auto& i : buffer_map) {
+                f->open_object_section("buffer");
+                ceph_assert(i.first == i.second->offset);
+                i.second->dump(f);
+                f->close_section();
+            }
+            f->close_section();
+        }
+    };
+
+
+    struct CacheShard {
+        CephContext *cct;
+        PerfCounters *logger;
+
+        /// protect lru and other structures
+        std::recursive_mutex lock; // = { ceph::make_recursive_mutex("KvsStore::CacheShard::lock") };
+
+        std::atomic<uint64_t> max = { 0 };
+        std::atomic<uint64_t> num = { 0 };
+
+        CacheShard(CephContext *cct) : cct(cct), logger(nullptr) {}
+        virtual ~CacheShard() {}
+
+        void set_max(uint64_t max_) {
+            max = max_;
+        }
+
+        uint64_t _get_num() {
+            return num;
+        }
+
+        virtual void _trim_to(uint64_t max) = 0;
+        void _trim() {
+            _trim_to(max);
+        }
+        void trim() {
+            std::lock_guard l(lock);
+            _trim();
+        }
+        void flush() {
+            std::lock_guard l(lock);
+            // we should not be shutting down after the blackhole is enabled
+            _trim_to(0);
+        }
+
+#ifdef DEBUG_CACHE
+        virtual void _audit(const char *s) = 0;
+#else
+        void _audit(const char *s) { /* no-op */
+        }
+#endif
+    };
+
+
+    /// A Generic buffer Cache Shard
+    struct BufferCacheShard : public CacheShard {
+        uint64_t buffer_bytes = 0;
+
+    public:
+        BufferCacheShard(CephContext* cct) : CacheShard(cct) {}
+        static BufferCacheShard *create(CephContext* cct, string type,
+                                        PerfCounters *logger);
+        virtual void _add(Buffer *b, int level, Buffer *near) = 0;
+        virtual void _rm(Buffer *b) = 0;
+        virtual void _move(BufferCacheShard *src, Buffer *b) = 0;
+        virtual void _touch(Buffer *b) = 0;
+        virtual void _adjust_size(Buffer *b, int64_t delta) = 0;
+
+        uint64_t _get_bytes() {
+            return buffer_bytes;
+        }
+
+        virtual void add_stats(uint64_t *buffers, uint64_t *bytes) = 0;
+
+        bool empty() {
+            std::lock_guard l(lock);
+            return _get_bytes() == 0;
+        }
+    };
+
+
+    /// A Generic onode Cache Shard
+    struct OnodeCacheShard: public CacheShard {
+        std::array<std::pair<ghobject_t, mono_clock::time_point>, 64> dumped_onodes;
+    public:
+        OnodeCacheShard(CephContext *cct) :
+                CacheShard(cct) {
+        }
+        static OnodeCacheShard* create(CephContext *cct, string type,
+                                       PerfCounters *logger);
+        virtual void _add(OnodeRef &o, int level) = 0;
+        virtual void _rm(OnodeRef &o) = 0;
+        virtual void _touch(OnodeRef &o) = 0;
+        virtual void add_stats(uint64_t *onodes) = 0;
+
+        bool empty() {
+            return _get_num() == 0;
+        }
+    };
+
+    ///------------------------------------------------------------
+    /// OnodeSpace
+    ///------------------------------------------------------------
+
+    struct OnodeSpace {
+        OnodeCacheShard *cache;
+
+    public:
+        /// forward lookups
+        mempool::kvsstore_cache_other::unordered_map<ghobject_t, OnodeRef> onode_map;
+
+        friend class Collection; // for split_cache()
+
+    public:
+
+        OnodeSpace(OnodeCacheShard *c) : cache(c) {}
+
+        ~OnodeSpace() {
+            clear();
+        }
+
+        OnodeRef add(const ghobject_t &oid, OnodeRef o);
+        OnodeRef lookup(const ghobject_t &o);
+        void remove(const ghobject_t &oid) {
+            onode_map.erase(oid);
+        }
+        void rename(OnodeRef &o, const ghobject_t &old_oid,
+                    const ghobject_t &new_oid,
+                    const mempool::kvsstore_cache_other::string &new_okey);
+
+        void clear();
+        bool empty();
+
+        template <int LogLevelV>
+        void dump(CephContext *cct);
+
+        /// return true if f true for any item
+        bool map_any(std::function<bool(OnodeRef)> f);
+    };
+
+    ///  ====================================================
+    ///  ONODE
+    ///  ====================================================
+
+    struct Onode {
+        MEMPOOL_CLASS_HELPERS();
+
+        std::atomic_int nref;  ///< reference count
+        Collection *c;
+
+        ghobject_t oid;
+
+        boost::intrusive::list_member_hook<> lru_item;
+
+        kvsstore_onode_t onode;   ///< metadata stored as value in kv store
+        bool exists;              ///< true if object logically exists
+
+        BufferSpace bc;           ///< buffer cache
+
+        // track txc's that have not been committed to kv store (and whose
+        // effects cannot be read via the kvdb read methods)
+        std::atomic<int> flushing_count = {0};
+        std::atomic<int> waiting_count = {0};
+
+        std::mutex flush_lock; // = ceph::make_mutex("KvsStore::flush_lock");  ///< protect flush_txns
+        std::condition_variable flush_cond;   ///< wait here for uncommitted txns
+
+        Onode(Collection *c, const ghobject_t& o)
+                : nref(0), c(c), oid(o), exists(false) {
+        }
+
+        void flush();
+        void get() {
+            ++nref;
+        }
+        void put() {
+            if (--nref == 0) {
+                std::lock_guard l(c->cache->lock);
+                bc._clear(c->cache);
+
+                delete this;
+            }
+        }
 
 
 
-    bool has_pending_aios() {
-        return batchctx.size() > 0 || journal.size() > 0 || pending_ios.size() > 0;
-    }
+        static Onode* decode(CollectionRef c, const ghobject_t& oid, const bufferlist& v);
+    };
 
-    /// Add to I/O and Journal queues
-    /// ----------------------------------
+    ///  ====================================================
+    ///  Collections
+    ///  ====================================================
 
-    inline void add_pending_bl(uint8_t space_id, bufferlist &bl, const std::function< uint8_t (void*)> &keygen) {
+    struct Collection : public ObjectStore::CollectionImpl {
+        KvsStore *store;
+        OpSequencerRef osr;
+        BufferCacheShard *cache;     ///< our cache shard
+        kvsstore_cnode_t cnode;
+        std::shared_mutex lock; // =  ceph::make_shared_mutex("KvsStore::Collection::lock", true, false);
 
-    	if (DISABLE_BATCH || bl.length() > MAX_BATCH_VALUE_SIZE) {
-    		// add key-value pair to the pending queue
-    		bufferlist* list = new bufferlist(std::move(bl));
-    		pending_ios.push_back(new IoRequest(space_id, set_kv_key(keygen), list));
-    	}
-    	else {
-    		// use batch cmd: add key-value pair to the batch buffer
-    		batchctx.batch_store(space_id, 0, keygen, [&] (char* buffer)->uint32_t {
-    			bl.copy(0, bl.length(), (char*)buffer);
-    			return bl.length();
-    		});
-    	}
-    }
-    inline void add_pending_data(uint8_t space_id, char*data, uint32_t length, const std::function< uint8_t (void*)> &keygen) {
-       	if (DISABLE_BATCH || length > MAX_BATCH_VALUE_SIZE) {
-       		// add key-value pair to the pending queue
-       		pending_ios.push_back(new IoRequest(space_id, set_kv_key(keygen), data, length));
-       	}
-       	else {
-       		// use batch cmd: add key-value pair to the batch buffer
-       		batchctx.batch_store(space_id, 0, keygen, [&] (char* buffer)->uint32_t {
-       			memcpy((char*)buffer, data, length);
-       			return length;
-       		});
-       	}
-    }
-    inline void add_pending_remove(uint8_t space_id, const std::function< uint8_t (void*)> &keygen) {
-    	pending_ios.push_back(new IoRequest(space_id, set_kv_key(keygen), nullptr));
-    }
+        bool exists;
 
-    /// Transaction key & value pair
-    /// ----------------------------
+        // cache onodes on a per-collection basis to avoid lock
+        // contention.
+        OnodeSpace onode_map;
 
-    // should be created on a heap so the journal can be flushed first
-    inline kv_key* set_kv_key(const std::function< uint8_t (void*)> &keygen) {
-    	kv_key* key = new kv_key();
-    	key->key    = malloc(256);
-    	key->length = keygen(key->key);
-    	return key;
-    }
+        ContextQueue *commit_queue;
+
+        OnodeRef get_onode(const ghobject_t& oid, bool create, bool is_createop=false);
+
+
+        void split_cache(Collection *dest);
+
+        //int get_data(TransContext *txc, const ghobject_t& oid, uint64_t offset, size_t length, bufferlist &bl);
+
+        bool contains(const ghobject_t& oid) {
+            if (cid.is_meta())
+                return oid.hobj.pool == -1;
+            spg_t spgid;
+            if (cid.is_pg(&spgid))
+                return spgid.pgid.contains(cnode.bits, oid) && oid.shard_id == spgid.shard;
+            return false;
+        }
+
+        int64_t pool() const {
+            return cid.pool();
+        }
+
+        bool flush_commit(Context *c) override;
+        void flush() override;
+        void flush_all_but_last();
+
+        Collection(KvsStore *ns, OnodeCacheShard *oc, BufferCacheShard *bc, coll_t c);
+    };
+
+
+    ///  ====================================================
+    ///  Transaction Context
+    ///  ====================================================
+
+    struct TransContext  {
+        MEMPOOL_CLASS_HELPERS();
+
+        typedef enum {
+            STATE_PREPARE,
+            STATE_AIO_SUBMITTED,		// submitted data. not yet synced
+            STATE_AIO_DONE,
+            STATE_FINISHING,
+            STATE_DONE,
+        } state_t;
+
+        state_t state = STATE_PREPARE;
+
+        const char *get_state_name() {
+            switch (state) {
+                case STATE_PREPARE: return "STATE_PREPARE";
+                case STATE_AIO_SUBMITTED: return "STATE_AIO_WAIT - submitted IO are done(called by c)";
+                case STATE_AIO_DONE: return "STATE_IO_DONE - processing IO done events (called by cb)";
+                case STATE_FINISHING: return "STATE_FINISHING - releasing resources for IO (called by cb)";
+                case STATE_DONE: return "done";
+            }
+            return "???";
+        }
+
+        CollectionRef ch;
+        OpSequencerRef osr; // this should be ch->osr
+        boost::intrusive::list_member_hook<> sequencer_item;
+
+        uint64_t bytes = 0, ios = 0;
+
+        set<OnodeRef> onodes;     ///< these need to be updated/written
+        set<OnodeRef> modified_objects;  ///< objects we modified (and need a ref)
+
+        list<Context*> 		oncommits;  		 ///< more commit completions
+        list<CollectionRef> removed_collections; ///< colls we removed
+        std::vector<bufferlist> omap_data;       /// temporary write buffer for omap
+        std::vector<bufferlist> coll_data;       /// temporary write buffer for collection
+
+        IoContext ioc;	// I/O operations
+
+        bool had_ios = false;
+        uint64_t seq = 0;
+
+        uint64_t last_nid = 0;     ///< if non-zero, highest new nid we allocated
+        void *parent;
+        explicit TransContext(void *parent_, CephContext *cct_, Collection *c,  OpSequencer *o, list<Context*> *on_commits)
+                : ch(c), osr(o), ioc( this), parent(parent_)
+        {
+            if (on_commits) {
+                oncommits.swap(*on_commits);
+            }
+        }
+
+        ~TransContext() {}
+
+        void write_onode(OnodeRef &o) {
+            onodes.insert(o);
+        }
+
+        /// note we logically modified object (when onode itself is unmodified)
+        void note_modified_object(OnodeRef &o) {
+            // onode itself isn't written, though
+            modified_objects.insert(o);
+        }
+
+        void note_removed_object(OnodeRef& o) {
+            onodes.erase(o);
+            modified_objects.insert(o);
+        }
+
+        // callback for data
+        void aio_finish(KvsStore *store);
+    };
+
+
+    ///  ====================================================
+    ///  OpSequencer
+    ///  ====================================================
+
+    class OpSequencer : public RefCountedObject {
+    public:
+        typedef boost::intrusive::list<TransContext, boost::intrusive::member_hook<TransContext,boost::intrusive::list_member_hook<>,&TransContext::sequencer_item> > q_list_t;
+
+    public:
+        std::mutex qlock;// = ceph::make_mutex("KvsStore::OpSequencer::qlock");
+        std::condition_variable qcond;
+
+        q_list_t q;  ///< transactions
+
+        KvsStore *store;
+        coll_t cid;
+
+        uint64_t last_seq = 0;
+
+        std::atomic_int txc_with_unstable_io = {0};  ///< num txcs with unstable io
+        std::atomic_int kv_committing_serially = {0};
+        std::atomic_int kv_submitted_waiters = {0};
+        std::atomic_int kv_drain_preceding_waiters = {0};
+
+        std::atomic_bool zombie = {false};    ///< owning Sequencer has gone away
+
+        const uint32_t sequencer_id;
+
+        uint32_t get_sequencer_id() const {
+            return sequencer_id;
+        }
+
+        void queue_new(TransContext *txc) {
+            FTRACE
+            {
+                bool b = qlock.try_lock();
+                if (b) qlock.unlock();
+                else {
+                    TR << "cannot be locked who is using it?";
+                }
+            }
+            std::lock_guard l(qlock);
+            txc->seq = ++last_seq;
+            q.push_back(*txc);
+            //TR << "queue new " <<  (void*)txc << " - queue size = " << q.size()<< "\n";
+        }
+
+        void drain() {
+            FTRACE
+            std::unique_lock l(qlock);
+            TR << "OSR QUEUE LOCK";
+            while (!q.empty())
+                qcond.wait(l);
+        }
+
+        void drain_preceding(TransContext *txc) {
+            FTRACE
+            std::unique_lock l(qlock);
+            TR << "OSR QUEUE LOCK";
+            while (&q.front() != txc)
+                qcond.wait(l);
+        }
+
+        bool _is_all_kv_submitted() {
+            FTRACE
+            // caller must hold qlock & q.empty() must not empty
+            ceph_assert(!q.empty());
+            TransContext *txc = &q.back();
+            if (txc->state >= TransContext::STATE_AIO_SUBMITTED) {
+                return true;
+            }
+            return false;
+        }
+
+        void flush() {
+            FTRACE
+            std::unique_lock l(qlock);
+            TR << "OSR QUEUE LOCK";
+            while (true) {
+                // set flag before the check because the condition
+                // may become true outside qlock, and we need to make
+                // sure those threads see waiters and signal qcond.
+                ++kv_submitted_waiters;
+                if (q.empty() || _is_all_kv_submitted()) {
+                    --kv_submitted_waiters;
+                    return;
+                }
+                qcond.wait(l);
+                --kv_submitted_waiters;
+            }
+        }
+
+        void flush_all_but_last() {
+            FTRACE
+            std::unique_lock l(qlock);
+            TR << "OSR QUEUE LOCK";
+            assert (q.size() >= 1);
+            while (true) {
+                // set flag before the check because the condition
+                // may become true outside qlock, and we need to make
+                // sure those threads see waiters and signal qcond.
+                ++kv_submitted_waiters;
+                if (q.size() <= 1) {
+                    --kv_submitted_waiters;
+                    return;
+                } else {
+                    auto it = q.rbegin();
+                    it++;
+                    if (it->state >= TransContext::STATE_AIO_SUBMITTED) {
+                        --kv_submitted_waiters;
+                        return;
+                    }
+                }
+                qcond.wait(l);
+                --kv_submitted_waiters;
+            }
+        }
+
+
+        bool flush_commit(Context *c) {
+            FTRACE
+            std::lock_guard l(qlock);
+            TR << "OSR QUEUE LOCK";
+            if (q.empty()) {
+                return true;
+            }
+            TransContext *txc = &q.back();
+            if (txc->state >= TransContext::STATE_AIO_DONE) {
+                return true;
+            }
+            txc->oncommits.push_back(c);
+            return false;
+        }
+
+
+        FRIEND_MAKE_REF(OpSequencer);
+        OpSequencer(KvsStore *store, uint32_t sequencer_id, const coll_t &c);
+
+        ~OpSequencer() {
+            FTRACE
+            TR << "osr - destroy" << this;
+            ceph_assert(q.empty());
+        }
+    };
 };
 
-struct KvsDataBlock {
-	bufferlist data;
-	uint32_t pos;
-	KvsDataBlock(): pos(0) {}
+WRITE_CLASS_DENC(kvsstore_sb_t)
+WRITE_CLASS_DENC(kvsstore_onode_t)
+WRITE_CLASS_DENC(kvsstore_cnode_t)
 
-	inline void write_data(unsigned b_off, unsigned b_len, char *src) {
-		unsigned padding_len = b_off - pos;
-		if (padding_len > 0) {
-			data.append_zero(padding_len);
-		}
-
-		if (src) {
-			data.copy_in(b_off, b_len, src, false);
-		} else {
-			data.zero(b_off, b_len);
-		}
-
-		// new length
-		if (b_off + b_len > pos)
-			pos = b_off + b_len;
-	}
-};
-
-struct KvsTransContext  {
-    MEMPOOL_CLASS_HELPERS();
-
-    typedef enum {
-        STATE_PREPARE,
-		//STATE_JOURNAL_WAIT, // submitted journal entries. not yet synced
-        STATE_AIO_WAIT,		// submitted data. not yet synced
-        STATE_IO_DONE,
-        STATE_FINISHING,
-        STATE_DONE,
-    } state_t;
-    state_t state = STATE_PREPARE;
-
-    const char *get_state_name() {
-        switch (state) {
-            case STATE_PREPARE: return "STATE_PREPARE";
-            //case STATE_JOURNAL_WAIT: return "STATE_JOURNAL_WAIT - submitted journal IO";
-            case STATE_AIO_WAIT: return "STATE_AIO_WAIT - submitted IO are done(called by c)";
-            case STATE_IO_DONE: return "STATE_IO_DONE - processing IO done events (called by cb)";
-            case STATE_FINISHING: return "STATE_FINISHING - releasing resources for IO (called by cb)";
-            case STATE_DONE: return "done";
-        }
-        return "???";
-    }
-
-    CephContext *cct;
-    CollectionRef ch;
-    KvsStore *store;
-    OpSequencerRef osr; // this should be ch->osr
-    boost::intrusive::list_member_hook<> sequencer_item;
-
-    uint64_t bytes = 0, cost = 0;
-
-    set<OnodeRef> onodes;     ///< these need to be updated/written
-    set<OnodeRef> modified_objects;  ///< objects we modified (and need a ref)
-
-    Context *oncommit;         ///< signal on commit
-    Context *onreadable;         ///< signal on readable
-    Context *onreadable_sync;         ///< signal on readable
-    list<Context*> 		oncommits;  		 ///< more commit completions
-    list<CollectionRef> removed_collections; ///< colls we removed
-
-    /*inline map<const ghobject_t, KvsStoreDataObject*>* get_databuffers() {
-        return &databuffers;
-    }
-
-    inline KvsStoreDataObject* get_databuffer(const ghobject_t& oid) {
-        auto it = databuffers.find(oid);
-        if (it != databuffers.end()) {
-            return it->second;
-        } else {
-            auto obj = new KvsStoreDataObject;
-            databuffers[oid] = obj;
-            return obj;
-        }
-    }
-    */
-    KvsIoContext ioc;	// I/O operations
-
-    uint64_t seq = 0;
-    utime_t t0,t1,t2,t3,t4,t5,t6,t7,t8,t9;
-    bool submitted = false;
-    explicit KvsTransContext(CephContext *_cct, KvsCollection *c, KvsStore *_store, KvsOpSequencer *o)
-        : cct(_cct), ch(c), store(_store), osr(o), oncommit(0),onreadable(0),onreadable_sync(0), ioc(_cct)
-    {
-    }
-
-    ~KvsTransContext() {
-    }
-
-    void write_onode(OnodeRef &o) {
-        //o->status = KVS_ONODE_VALID;
-        o->exists = true;
-        onodes.insert(o);
-    }
-
-    /// note we logically modified object (when onode itself is unmodified)
-    void note_modified_object(OnodeRef &o) {
-      // onode itself isn't written, though
-      modified_objects.insert(o);
-    }
-    void note_removed_object(OnodeRef& o) {
-      onodes.erase(o);
-      modified_objects.insert(o);
-    }
-
-    // callback for data
-    void aio_finish(kv_io_context *op);
-    void journal_finish(kv_io_context *op);
-private:
-
-    //map<const ghobject_t, KvsStoreDataObject*> databuffers; /// data to write
-
-};
-
-
-///  ====================================================
-///  OpSequencer
-///  ====================================================
-
-class KvsOpSequencer : public RefCountedObject {
-public:
-    std::mutex qlock; // = ceph::make_mutex("KvspSequencer::qlock");
-    std::condition_variable qcond;
-
-    typedef boost::intrusive::list<KvsTransContext, boost::intrusive::member_hook<KvsTransContext,boost::intrusive::list_member_hook<>,&KvsTransContext::sequencer_item> > q_list_t;
-
-    q_list_t q;  ///< transactions
-
-    boost::intrusive::list_member_hook<> deferred_osr_queue_item;
-
-    //ObjectStore::Sequencer *parent;
-    KvsStore *store;
-    coll_t cid;
-
-    uint64_t last_seq = 0;
-
-    std::atomic_int txc_with_unstable_io = {0};  ///< num txcs with unstable io
-    std::atomic_int kv_committing_serially = {0};
-    std::atomic_int kv_submitted_waiters = {0};
-
-    std::atomic_bool zombie = {false};    ///< owning Sequencer has gone away
-
-    const uint32_t sequencer_id;
-
-    uint32_t get_sequencer_id() const {
-      return sequencer_id;
-    }
-
-    void queue_new(KvsTransContext *txc) {
-		std::lock_guard l(qlock);
-		txc->seq = ++last_seq;
-		q.push_back(*txc);
-	    //TR << "queue new " <<  (void*)txc << " - queue size = " << q.size()<< "\n";
-	}
-
-	void pop_front_nolock() {
-        //void *txc = &q.front();
-        q.pop_front();
-        //TR << "queue pop " <<  (void*)txc << " - queue size = " << q.size()<< "\n";
-    }
-
-    void drain() {
-      std::unique_lock<std::mutex> l(qlock);
-      //TR << "queue drain before " << q.size() << "\n";
-      while (!q.empty()) {
-          qcond.wait(l);
-      }
-      //TR << "queue drain end " << q.size() << "\n";
-    }
-
-    void drain_preceding(KvsTransContext *txc) {
-      std::unique_lock<std::mutex> l(qlock);
-      //TR << "queue drain proceding before " << q.size() << "\n";
-      while (&q.front() != txc)
-    	  qcond.wait(l);
-      //TR << "queue drain proceding end" << q.size() << "\n";
-    }
-
-
-    bool _is_all_kv_submitted() {
-      // caller must hold qlock & q.empty() must not empty
-      ceph_assert(!q.empty());
-      KvsTransContext *txc = &q.back();
-      if (txc->state >= KvsTransContext::STATE_AIO_WAIT) {
-    	  return true;
-      }
-      return false;
-    }
-
-    void flush() {
-      std::unique_lock<std::mutex> l(qlock);
-      TR << "queue flush " << q.size() << "\n";
-      while (true) {
-		// set flag before the check because the condition
-		// may become true outside qlock, and we need to make
-		// sure those threads see waiters and signal qcond.
-		++kv_submitted_waiters;
-		if (q.empty() || _is_all_kv_submitted()) {
-		  --kv_submitted_waiters;
-		  return;
-		}
-		qcond.wait(l);
-		--kv_submitted_waiters;
-      }
-      TR << "queue flush after" << q.size()<< "\n";
-    }
-
-
-    bool flush_commit(Context *c) {
-        std::lock_guard l(qlock);
-        if (q.empty()) {
-            return true;
-        }
-        KvsTransContext *txc = &q.back();
-        if (txc->state >= KvsTransContext::STATE_IO_DONE) {
-            return true;
-        }
-        txc->oncommits.push_back(c);
-        return false;
-    }
-
-
-    void flush_all_but_last() {
-      std::unique_lock<std::mutex> l(qlock);
-      if (q.size() == 0) return;
-      assert (q.size() >= 1);
-      while (true) {
-		// set flag before the check because the condition
-		// may become true outside qlock, and we need to make
-		// sure those threads see waiters and signal qcond.
-		++kv_submitted_waiters;
-		if (q.size() <= 1) {
-		  --kv_submitted_waiters;
-		  return;
-		} else {
-		  auto it = q.rbegin();
-		  it++;
-		  if (it->state >= KvsTransContext::STATE_AIO_WAIT) {
-			--kv_submitted_waiters;
-			return;
-		  }
-		}
-		qcond.wait(l);
-		--kv_submitted_waiters;
-      }
-    }
-
-    KvsOpSequencer(KvsStore *store, uint32_t sequencer_id, const coll_t &c);
-
-    ~KvsOpSequencer() {
-        FTRACE
-    	ceph_assert(q.empty());
-    }
-};
-
-static inline void intrusive_ptr_add_ref(KvsOpSequencer *o) {
+static inline void intrusive_ptr_add_ref(KvsStoreTypes::Onode *o) {
     o->get();
 }
-static inline void intrusive_ptr_release(KvsOpSequencer *o) {
+
+static inline void intrusive_ptr_release(KvsStoreTypes::Onode *o) {
     o->put();
 }
+static inline void intrusive_ptr_add_ref(KvsStoreTypes::OpSequencer *o) {
+    o->get();
+    //TR << "op sequencer add nref = " << o->get_nref();
+}
+
+static inline void intrusive_ptr_release(KvsStoreTypes::OpSequencer *o) {
+    //TR << "op sequencer release - nref = " << o->get_nref() -1;
+    o->put();
+
+}
+
+
 
 
 #endif /* SRC_OS_KVSSTORE_KVSSTORE_TYPES_H_ */

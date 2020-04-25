@@ -8,7 +8,6 @@
 #ifndef SRC_OS_KVSSTORE_KVSSTORE_DEBUG_H_
 #define SRC_OS_KVSSTORE_KVSSTORE_DEBUG_H_
 
-#include <map>
 #include <string>
 #include <mutex>
 #include <fstream>
@@ -17,15 +16,14 @@
 #include <memory.h>
 #include <string.h>
 #include <gperftools/heap-checker.h>
-#include <include/ceph_hash.h>
 //#include "common/BackTrace.h"
 // function traces: records enter and exit events
 // ----------------------------------------------
 
 #define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 
-#define ENABLE_FTRACE
-#define ENABLE_FUNCTION_TRACE
+//#define ENABLE_FTRACE
+//#define ENABLE_FUNCTION_TRACE
 //#define ENABLE_IOTRACE
 //#define ENABLE_IOTRACE_SUBMIT
 //#define IOTRACE_MINIMAL
@@ -88,27 +86,6 @@ SimpleLoggerBuffer operator<<(FtraceFile &simpleLogger, T&& message)
 #ifdef ENABLE_FTRACE
 
 #define MEMCHECK 0
-#include <set>
-
-extern std::mutex debug_threadname_lock;
-extern std::map<uint64_t, int> debug_threadnames;
-
-inline static std::string get_thread_name() {
-    std::string name;
-    char thread_name[256];
-    uint64_t thread_id = pthread_self();
-
-    std::unique_lock<std::mutex> l(debug_threadname_lock);
-    auto it = debug_threadnames.find(thread_id);
-    if (it == debug_threadnames.end()) {
-        uint64_t newid = debug_threadnames.size();
-        debug_threadnames[thread_id] = newid;
-    }
-
-    std::string idstr = std::to_string(debug_threadnames[thread_id]);
-    if (idstr.length() < 2) idstr = "0" + idstr;
-    return "thread-" + idstr;
-}
 
 struct FtraceObject {
 
@@ -118,8 +95,7 @@ struct FtraceObject {
     FtraceObject(const char *f, int line_) : func(f), line(line_) {
 
 #ifdef ENABLE_FUNCTION_TRACE
-
-       FLOG <<  "[" << get_thread_name() << "] " << func << ":" << line << " - Enter";
+       FLOG << pthread_self() << "[ETR][" << func << ":" << line <<  "] ";
 #endif
 #if MEMCHECK
         FLOG << ", memcheck= " ;
@@ -150,7 +126,7 @@ struct FtraceObject {
 
     ~FtraceObject() {
 #ifdef ENABLE_FUNCTION_TRACE
-        FLOG <<  "[" << get_thread_name() << "] " << func << ":" << line << " - Exit";
+        FLOG << pthread_self() << "[EXT][" << func << ":" << line <<  "] ";
 #endif
 #if MEMCHECK
         {
@@ -181,10 +157,11 @@ struct FtraceObject {
 #define LOGEND ""
 
 #define FTRACE FtraceObject fobj(__FUNCTION__, __LINE__);
-#define TR FLOG << "[" << get_thread_name() << "] " << __FUNCTION__ << ":" << __LINE__ << " - "
-#define TRERR FLOG << "[" << get_thread_name() << "] " << __FUNCTION__ << ":" << __LINE__ << " - ERR "
-#define TRBACKTRACE { ostringstream oss; oss << BackTrace(1); FLOG << "[" << __FILENAME__ << ":"  << __LINE__ << "] " << "Backtrace: " << oss.str(); }
-
+#define TR FLOG << pthread_self() << " "
+#define TRERR FLOG << pthread_self() << " "
+//#define TR FLOG << pthread_self() << "[" << __FILENAME__ << ":"  << __LINE__ << "] "
+//#define TRERR FLOG << pthread_self() << "[" << __FILENAME__ << ":"  << __LINE__ << "] ERR: "
+#define TRBACKTRACE { ostringstream oss; oss << BackTrace(1); FLOG << pthread_self() << "[" << __FILENAME__ << ":"  << __LINE__ << "] " << "Backtrace: " << oss.str(); }
 #else
 #define TRERR FLOG << pthread_self() << "[" << __FILENAME__ << ":"  << __LINE__ << "] ERR: "
 #define FTRACE
@@ -197,7 +174,7 @@ struct FtraceObject {
 #ifdef IOTRACE_MINIMAL
 #define TRIO if (false) FLOG
 #else
-#define TRIO FLOG <<  "[" << get_thread_name() << "] " << __FUNCTION__ << ":" << __LINE__ << " - "
+#define TRIO FLOG << pthread_self() << "[" << __FILENAME__ << ":"  << __LINE__ << "] "
 #endif
 
 
@@ -230,47 +207,6 @@ inline std::string print_kvssd_key(T* in_, unsigned length)
     out.append(buf);
     return out;
 }
-
-#include <sstream>
-
-inline void print_value(int r, int opcode, void *key, unsigned keylen, void *data, unsigned length)
-{
-    std::stringstream ss;
-    std::string keystr = print_kvssd_key((const char*)key, keylen);
-
-    const uint32_t prefix = *(uint32_t*)key;
-    std::string type = "";
-    if (prefix == 0x0) {
-        type = "ONODE";
-    } else if (prefix == 0x1) {
-        type = "COLL";
-    } else {
-        type = "DATA";
-    }
-
-    if (opcode == 0x90 || opcode == 0x81) {
-        unsigned hash = ceph_str_hash_linux((const char*)data, length);
-        ss << ", value addr " << data << ", length = " << length << ", hash " << hash;
-    }
-    std::string cmd = "";
-    if (opcode == 0x90) {
-        cmd = "READ";
-    } else if (opcode == 0x81) {
-        cmd = "WRITE";
-    } else if (opcode == 0xA1) {
-        cmd = "DELETE";
-    } else {
-        cmd = "UNKNOWN";
-    }
-
-    std::string header = "[TEST] ";
-    if(opcode != -1) {
-        header = "[IO] ";
-    };
-    TR << header << type << " " << cmd << "- ret = " << r  << ", key " << keystr << ss.str();
-}
-
-
 
 
 inline std::string print_kvssd_key(const std::string &str)
