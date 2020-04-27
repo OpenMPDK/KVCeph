@@ -15,26 +15,28 @@ set(libos_srcs
   filestore/WBThrottle.cc
   memstore/MemStore.cc
 
-  kvsstore/KvsStore.h
+  kvsstore/keyencoder.h
+  kvsstore/kvssd_types.h
   kvsstore/KvsStore.cc
-  kvsstore/kvsstore_types.cc
-  kvsstore/kvsstore_types.h
-  kvsstore/kvsstore_pages.h
+  kvsstore/KvsStore.h
+  kvsstore/kvsstore_cache.cc
   kvsstore/kvsstore_db.cc
   kvsstore/kvsstore_db.h
-  kvsstore/kvsstore_iterator.cc
-  kvsstore/kvsstore_iterator.h
-  kvsstore/kvio/kvio.cc
-  kvsstore/kvio/kvio.h
-  kvsstore/kvio/kadi/kadi_cmds.cc
-  kvsstore/kvio/kadi/kadi_cmds.h
-  kvsstore/kvio/kadi/kadi_helpers.cc
-  kvsstore/kvio/kadi/kadi_helpers.h
-  kvsstore/kvio/kadi/kadi_nodepool.cc
-  kvsstore/kvio/kadi/kadi_nodepool.h
-  kvsstore/kvio/kadi/kadi_bptree.h
-  kvsstore/kvio/kadi/kadi_types.h
-  kvsstore/kvio/kadi/linux_nvme_ioctl.h
+  kvsstore/kvsstore_debug.h
+  kvsstore/kvsstore_types.cc
+  kvsstore/kvsstore_types.h
+  kvsstore/os_adapter.cc
+  kvsstore/os_adapter.h
+  kvsstore/kadi/kadi_bptree.h
+  kvsstore/kadi/kadi_cmds.cc
+  kvsstore/kadi/kadi_cmds.h
+  kvsstore/kadi/kadi_helpers.cc
+  kvsstore/kadi/kadi_helpers.h
+  kvsstore/kadi/kadi_nodepool.cc
+  kvsstore/kadi/kadi_nodepool.h
+  kvsstore/kadi/kadi_slottedpage.h
+  kvsstore/kadi/kadi_types.h
+  kvsstore/kadi/linux_nvme_ioctl.h
   
   kstore/KStore.cc
   kstore/kstore_types.cc
