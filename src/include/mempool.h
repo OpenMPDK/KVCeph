@@ -158,10 +158,12 @@ namespace mempool {
   f(bluefs)			      \
   f(buffer_anon)		      \
   f(buffer_meta)		      \
-  f(kvsstore_cache_onode)       \
   f(kvsstore_cache_data)       \
+  f(kvsstore_cache_onode)       \
   f(kvsstore_cache_other)       \
+  f(kvsstore_fsck)		      \
   f(kvsstore_txc)         \
+  f(kvsstore_writing)		      \
   f(osd)			      \
   f(osd_mapbl)			      \
   f(osd_pglog)			      \
