@@ -23,7 +23,7 @@ FtraceFile FLOG;
 
 
 MEMPOOL_DEFINE_OBJECT_FACTORY(KvsStoreTypes::Onode, kvsstore_onode, kvsstore_cache_onode);
-MEMPOOL_DEFINE_OBJECT_FACTORY(KvsStoreTypes::TransContext, kvsstore_transcontext, kvsstore_txc);
+//MEMPOOL_DEFINE_OBJECT_FACTORY(KvsStoreTypes::TransContext, kvsstore_transcontext, kvsstore_txc);
 
 std::atomic<uint64_t> KvsJournal::journal_index = {0};
 
@@ -35,6 +35,7 @@ std::atomic<uint64_t> KvsJournal::journal_index = {0};
 KvsStoreTypes::Onode* KvsStoreTypes::Onode::decode(
   CollectionRef c, const ghobject_t& oid, const bufferlist& v)
 {
+    FTRACE
 	KvsStoreTypes::Onode* on = new KvsStoreTypes::Onode(c.get(), oid);
 	on->exists = true;
 	auto p = v.front().begin_deep();
@@ -48,6 +49,7 @@ KvsStoreTypes::Onode* KvsStoreTypes::Onode::decode(
 
 void KvsStoreTypes::Onode::flush()
 {
+    FTRACE
     if (flushing_count.load()) {
     	waiting_count++;
         //TR << "flush lock -1 flushing count = " << flushing_count.load() << "waiting count = " <<  waiting_count ;
@@ -72,24 +74,28 @@ KvsStoreTypes::Collection::Collection(KvsStore *store_, OnodeCacheShard *oc, Buf
     onode_map(oc),
     commit_queue(nullptr)
 {
+    FTRACE
 }
 
 bool KvsStoreTypes::Collection::flush_commit(Context *c) {
+    FTRACE
 	return osr->flush_commit(c);
 }
 
 void KvsStoreTypes::Collection::flush() {
+    FTRACE
 	osr->flush();
 }
 
 void KvsStoreTypes::Collection::flush_all_but_last()
 {
+    FTRACE
 	osr->flush_all_but_last();
 }
 
 KvsStoreTypes::OnodeRef KvsStoreTypes::Collection::get_onode(const ghobject_t &oid, bool create,
 		bool is_createop) {
-	//ceph_assert(create ? ceph_mutex_is_wlocked(lock) : ceph_mutex_is_locked(lock));
+    //ceph_assert(create ? ceph_mutex_is_wlocked(lock) : ceph_mutex_is_locked(lock));
     FTRACE
 	spg_t pgid;
 	if (cid.is_pg(&pgid)) {
@@ -195,6 +201,7 @@ void KvsStoreTypes::Collection::split_cache(Collection *dest) {
 ///--------------------------------------------------------
 
 void KvsStoreTypes::TransContext::aio_finish(KvsStore *store) {
+    //FTRACE
 	store->txc_aio_finish(this);
 }
 
@@ -206,6 +213,7 @@ void KvsStoreTypes::TransContext::aio_finish(KvsStore *store) {
 KvsStoreTypes::OpSequencer::OpSequencer(KvsStore *store, uint32_t sequencer_id, const coll_t &c)
 	: RefCountedObject(store->cct),
 	store(store), cid(c), sequencer_id(sequencer_id) {
+    FTRACE
     {
         bool b = qlock.try_lock();
         if (b) qlock.unlock();

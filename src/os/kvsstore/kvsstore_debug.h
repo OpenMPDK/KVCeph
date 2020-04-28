@@ -24,8 +24,8 @@
 
 #define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 
-#define ENABLE_FTRACE
-#define ENABLE_FUNCTION_TRACE
+//#define ENABLE_FTRACE
+//#define ENABLE_FUNCTION_TRACE
 //#define ENABLE_IOTRACE
 //#define ENABLE_IOTRACE_SUBMIT
 //#define IOTRACE_MINIMAL
@@ -95,7 +95,6 @@ extern std::map<uint64_t, int> debug_threadnames;
 
 inline static std::string get_thread_name() {
     std::string name;
-    char thread_name[256];
     uint64_t thread_id = pthread_self();
 
     std::unique_lock<std::mutex> l(debug_threadname_lock);

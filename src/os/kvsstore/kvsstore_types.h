@@ -636,7 +636,7 @@ public:
     ///  ====================================================
 
     struct TransContext  {
-        MEMPOOL_CLASS_HELPERS();
+        //MEMPOOL_CLASS_HELPERS();
 
         typedef enum {
             STATE_PREPARE,

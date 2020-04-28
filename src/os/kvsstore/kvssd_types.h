@@ -77,7 +77,7 @@ public:
     // no copying
     IoContext(const IoContext& other) = delete;
     IoContext &operator=(const IoContext& other) = delete;
-
+//~IoContext() { TR << "IOContext destroyed: ptr = " << (void*)this; }
 public:
 
     bool has_pending_aios() {

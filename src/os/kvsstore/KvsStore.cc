@@ -285,12 +285,14 @@ void KvsStore::close_db() {
 
 
 int KvsStore::mkfs_kvsstore() {
+    FTRACE
     this->kvsb.is_uptodate = 1;
 
     return 0;
 }
 
 int KvsStore::mount_kvsstore() {
+    FTRACE
     // load nid_last for atomic accesses
     this->nid_last = this->kvsb.nid_last;
 
@@ -301,7 +303,7 @@ int KvsStore::mount_kvsstore() {
 }
 
 int KvsStore::umount_kvsstore() {
-
+    FTRACE
     this->kvsb.is_uptodate = 1;
     this->kvsb.nid_last = this->nid_last;   // atomic -> local
 
@@ -530,6 +532,7 @@ void KvsStore::reap_collections() {
 
 KvsStoreTypes::CollectionRef KvsStore::get_collection(const coll_t &cid) {
     FTRACE
+    //TRBACKTRACE;
     std::shared_lock l(coll_lock);
     ceph::unordered_map<coll_t, CollectionRef>::iterator cp = coll_map.find(cid);
     if (cp == coll_map.end()) {
@@ -565,6 +568,7 @@ ObjectStore::CollectionHandle KvsStore::create_new_collection(
 
 int KvsStore::set_collection_opts(CollectionHandle &ch,
                                   const pool_opts_t &opts) {
+    FTRACE
     dout(15) << __func__ << " " << ch->cid << " options " << opts << dendl;
     Collection *c = static_cast<Collection*>(ch.get());
     if (!c->exists)
@@ -716,7 +720,7 @@ int KvsStore::read(CollectionHandle &c_, const ghobject_t &oid, uint64_t offset,
 
 int KvsStore::_do_read_chunks_async(OnodeRef &o, ready_regions_t &ready_regions, chunk2read_t &chunk2read, BufferCacheShard *cache) {
     IoContext ioc( NULL);
-
+    FTRACE
     _prepare_read_chunk_ioc(o->oid, ready_regions, chunk2read, &ioc);
 
     int r = db.aio_submit_and_wait(&ioc);
@@ -762,6 +766,7 @@ int KvsStore::_do_read(Collection *c,OnodeRef o,uint64_t offset,size_t length,bu
 
 int KvsStore::_prepare_read_chunk_ioc(const ghobject_t &oid, ready_regions_t& ready_regions,chunk2read_t& chunk2read, IoContext *ioc)
 {
+    FTRACE
     int r = 0;
     for (const uint16_t &chunkid : chunk2read) {
         bufferlist &bl = ready_regions[chunkid];
@@ -802,6 +807,7 @@ int KvsStore::_generate_read_result_bl(OnodeRef o,uint64_t offset,size_t length,
 void KvsStore::_read_cache(BufferCacheShard *cache, OnodeRef o, uint64_t offset , size_t length, int read_cache_policy,
         ready_regions_t& ready_regions,chunk2read_t& chunk2read)
 {
+    FTRACE
     // find chunks in the cache
 
     interval_set<uint32_t> cache_interval;
@@ -898,7 +904,7 @@ int KvsStore::queue_transactions(CollectionHandle &ch, vector<Transaction> &tls,
 
 
 bool KvsStore::_check_onode_validity(kvsstore_onode_t &ori_onode, bufferlist&bl) {
-
+    FTRACE
     kvsstore_onode_t decoded_onode;
     auto p = bl.cbegin();
     try {
@@ -974,6 +980,7 @@ int KvsStore::_txc_write_nodes(TransContext *txc) {
 }
 
 KvsStore::TransContext* KvsStore::_txc_create(Collection *c, OpSequencer *osr, list<Context*> *on_commits) {
+    FTRACE
     TransContext *txc = new TransContext(this, cct, c, osr, on_commits);
     osr->queue_new(txc);
     return txc;
@@ -989,7 +996,9 @@ void KvsStore::_txc_add_transaction(TransContext *txc, Transaction *t) {
     unsigned j = 0;
     for (vector<coll_t>::iterator p = i.colls.begin(); p != i.colls.end();
          ++p, ++j) {
+        //TR << "1";
         cvec[j] = get_collection(*p);
+        //TR << "2";
     }
 
     vector<OnodeRef> ovec(i.objects.size());
@@ -1379,6 +1388,7 @@ int KvsStore::_write(TransContext *txc, CollectionRef &c, OnodeRef &o,
 int KvsStore::_do_write_read_chunks_if_needed(CollectionRef& c, OnodeRef &o, const uint64_t object_length,
         uint64_t offset, uint64_t length, ready_regions_t &readyregions, zero_regions_t &zeroregions, const uint64_t chunksize)
 {
+    FTRACE
     uint64_t e = offset + length;
     int32_t head_off = -1;
     int32_t tail_off = -1;
@@ -1434,7 +1444,7 @@ int KvsStore::_do_write_read_chunks_if_needed(CollectionRef& c, OnodeRef &o, con
 
 
 void KvsStore::_do_write_pad_zeros(ready_regions_t &readyregions, zero_regions_t &zeroregions, const uint64_t chunksize) {
-
+    FTRACE
     for (const auto &p : zeroregions) {
         const uint64_t c_off = p2align(p.first, chunksize);
         const uint64_t p_off = p2phase(p.first, chunksize);
@@ -1723,7 +1733,7 @@ int KvsStore::_clone(TransContext *txc, CollectionRef &c, OnodeRef &oldo, OnodeR
 int KvsStore::_clone_range(TransContext *txc, CollectionRef &c,
                            OnodeRef &oldo, OnodeRef &newo, uint64_t srcoff, uint64_t length,
                            uint64_t dstoff) {
-
+    FTRACE
     dout(15) << __func__ << " " << c->cid << " " << oldo->oid << " -> "
              << newo->oid << " from " << srcoff << "~" << length
              << " to offset " << dstoff << dendl;
@@ -1904,13 +1914,14 @@ int KvsStore::getattr(CollectionHandle &c_, const ghobject_t &oid,
 
     int r;
     {
-        
         std::shared_lock l(c->lock);
         
         mempool::kvsstore_cache_other::string k(name);
 
         OnodeRef o = c->get_onode(oid, false);
         if (!o || !o->exists) {
+            TR << "not exist, returning " << r;
+            TRBACKTRACE;
             r = -ENOENT;
             goto out;
         }
@@ -1923,8 +1934,9 @@ int KvsStore::getattr(CollectionHandle &c_, const ghobject_t &oid,
 
         r = 0;
     }
-    out:
-    
+out:
+    TR << "returning " << r;
+
     return r;
 }
 
@@ -1940,7 +1952,6 @@ int KvsStore::getattrs(CollectionHandle &c_, const ghobject_t &oid,
     {
         
         std::shared_lock l(c->lock);
-        
 
         OnodeRef o = c->get_onode(oid, false);
         if (!o || !o->exists) {
@@ -2248,7 +2259,7 @@ public:
     }
 
     int seek_to_first() override {
-        
+        FTRACE
         std::shared_lock l(c->lock);
         
         if (o->onode.has_omap()) {
@@ -2260,7 +2271,7 @@ public:
         return 0;
     }
     int upper_bound(const string &after) override {
-        
+        FTRACE
         std::shared_lock l(c->lock);
         
         if (o->onode.has_omap()) {
@@ -2272,7 +2283,7 @@ public:
         return 0;
     }
     int lower_bound(const string &to) override {
-        
+        FTRACE
         std::shared_lock l(c->lock);
         
         if (o->onode.has_omap()) {
@@ -2284,7 +2295,7 @@ public:
         return 0;
     }
     bool valid() override {
-        
+        FTRACE
         std::shared_lock l(c->lock);
         
         
@@ -2292,6 +2303,7 @@ public:
     }
 
     int next() override {
+        FTRACE
         int r = -1;
         
         std::shared_lock l(c->lock);
@@ -2304,7 +2316,7 @@ public:
         return r;
     }
     string key() override {
-        
+        FTRACE
         std::shared_lock l(c->lock);
         
         ceph_assert(valid());
@@ -2313,7 +2325,7 @@ public:
     }
 
     bufferlist value() override {
-        
+        FTRACE
         std::shared_lock l(c->lock);
         
         bufferlist bl;
@@ -2478,7 +2490,7 @@ int KvsStore::_do_remove_collection(TransContext *txc, CollectionRef *c)
 
 int KvsStore::_split_collection(TransContext *txc, CollectionRef &c,
                                 CollectionRef &d, unsigned bits, int rem) {
-
+    FTRACE
     dout(20) << __func__ << " " << c->cid << " to " << d->cid << " "
              << " bits " << bits << dendl;
     std::unique_lock l(c->lock);
@@ -2585,7 +2597,7 @@ int KvsStore::_merge_collection(TransContext *txc, CollectionRef *c,
 }
 
 static void get_coll_key_range(const coll_t& cid, int bits, kv_key *temp_start, kv_key *temp_end, kv_key *start, kv_key *end ) {
-
+    FTRACE
     //TR << "coll key range " << cid << ", bits = " << bits;
     struct kvs_onode_key* temp_s_key = (struct kvs_onode_key*)temp_start->key;
     struct kvs_onode_key* temp_e_key = (struct kvs_onode_key*)temp_end->key;
@@ -2800,6 +2812,7 @@ int KvsStore::_collection_list(Collection *c, const ghobject_t &start,
 /// ------------------------------------------------------------------------------------------------
 
 void KvsStore::txc_aio_finish(TransContext *txc) {
+    //FTRACE
     _txc_state_proc(txc);
 }
 
@@ -2837,6 +2850,7 @@ void KvsStore::_txc_state_proc(TransContext *txc) {
             case TransContext::STATE_FINISHING:
                 //TR << "STATE FINISHING";
                 _txc_finish(txc);    // called by a finalize thread
+                TR << "STATE FINISHING DONE";
                 return;
 
             default:
@@ -2854,7 +2868,9 @@ void KvsStore::_txc_finish_io(TransContext *txc)
     OpSequencer *osr = txc->osr.get();
     std::lock_guard l(osr->qlock);
     txc->state = TransContext::STATE_AIO_DONE;
+    //TR << "release";
     txc->ioc.release_running_aios();
+    //TR << "check";
     OpSequencer::q_list_t::iterator p = osr->q.iterator_to(*txc);
     while (p != osr->q.begin()) {
         --p;
@@ -2867,11 +2883,15 @@ void KvsStore::_txc_finish_io(TransContext *txc)
         }
     }
 
+
     // process the stored transactions
     do {
+        //TR << "process a pending txc_state_proc - begin";
         _txc_state_proc(&*p++);
+        //TR << "process a pending txc_state_proc - done ";
     } while (p != osr->q.end() && p->state == TransContext::STATE_AIO_DONE);
 
+    //TR << "notify all";
     if (osr->kv_submitted_waiters) {
         osr->qcond.notify_all();
     }
@@ -2890,7 +2910,7 @@ void KvsStore::_txc_committed_kv(TransContext *txc) {
 
 
 void KvsStore::_kv_finalize_thread() {
-
+    FTRACE
     deque<TransContext *> kv_committed;
 
     std::unique_lock<std::mutex> l(kv_finalize_lock);
@@ -2951,6 +2971,7 @@ void KvsStore::_kv_finalize_thread() {
 }
 
 void KvsStore::_txc_finish_writes(TransContext *txc) {
+    FTRACE
     for (auto o : txc->onodes) {
         BufferCacheShard *cache = o->c->cache;
         std::lock_guard l(cache->lock);
@@ -2982,11 +3003,14 @@ void KvsStore::_txc_finish(TransContext *txc) {
     dout(20) << __func__ << " " << txc << " onodes " << txc->onodes << dendl;
     assert(txc->state == TransContext::STATE_FINISHING);
 
+    TR << "1";
     _txc_finish_writes(txc);
+    TR << "2";
     while (!txc->removed_collections.empty()) {
         _queue_reap_collection(txc->removed_collections.front());
         txc->removed_collections.pop_front();
     }
+    TR << "3";
     OpSequencerRef osr = txc->osr;
     bool empty = false;
     OpSequencer::q_list_t releasing_txc;
@@ -3018,12 +3042,19 @@ void KvsStore::_txc_finish(TransContext *txc) {
             osr->qcond.notify_all();
         }
     }
+    TR << "4";
     while (!releasing_txc.empty()) {
+        TR << "4.1";
         auto txc = &releasing_txc.front();
-        _txc_release_alloc(txc);
+        TR << "4.2 txc = " << (void*) txc;
+        //_txc_release_alloc(txc);
+        TR << "4.3";
         releasing_txc.pop_front();
-        delete txc;
+        TR << "4.4";
+        if (txc)
+            delete txc;
     }
+    TR << "5";
     if (empty && osr->zombie) {
         std::lock_guard l(zombie_osr_lock);
         if (zombie_osr_set.erase(osr->cid)) {
@@ -3032,6 +3063,7 @@ void KvsStore::_txc_finish(TransContext *txc) {
             dout(10) << __func__ << " empty zombie osr " << osr << " already reaped" << dendl;
         }
     }
+    TR << "6";
 }
 
 // do nothing
@@ -3119,6 +3151,7 @@ void KvsStore::_osr_drain(OpSequencer *osr) {
 
 void KvsStore::_osr_drain_preceding(TransContext *txc)
 {
+    FTRACE
     OpSequencer *osr = txc->osr.get();
     dout(10) << __func__ << " " << txc << " osr " << osr << dendl;
     osr->kv_drain_preceding_waiters++;
@@ -3134,6 +3167,7 @@ void KvsStore::_osr_drain_preceding(TransContext *txc)
 ///--------------------------------------------------------
 
 void KvsStore::_kv_index_thread() {
+#if 0
     FTRACE
     derr << "index thread..." << dendl;
     // load pages from the AOL
@@ -3149,7 +3183,7 @@ void KvsStore::_kv_index_thread() {
         usleep(index_interval_us);
     }
 
-    derr << "index thread...done" << dendl;
+#endif
 }
 
 ///--------------------------------------------------------------
