@@ -93,9 +93,17 @@ SimpleLoggerBuffer operator<<(FtraceFile &simpleLogger, T&& message)
 extern std::mutex debug_threadname_lock;
 extern std::map<uint64_t, int> debug_threadnames;
 
+
+
+
 inline static std::string get_thread_name() {
-    std::string name;
+    if (1)
+    {
+        return std::to_string((uint64_t)pthread_self());
+    }
+    /*
     uint64_t thread_id = pthread_self();
+    std::string name;
 
     std::unique_lock<std::mutex> l(debug_threadname_lock);
     auto it = debug_threadnames.find(thread_id);
@@ -107,6 +115,7 @@ inline static std::string get_thread_name() {
     std::string idstr = std::to_string(debug_threadnames[thread_id]);
     if (idstr.length() < 2) idstr = "0" + idstr;
     return "thread-" + idstr;
+    */
 }
 
 struct FtraceObject {
@@ -277,6 +286,7 @@ inline std::string print_kvssd_key(const std::string &str)
 	return print_kvssd_key(str.c_str(), str.length());
 }
 
+#define SMUTEX last_shared_loc[]
 
 //#define KTRACE(cct, in, len) ({ typeof (in) in_ = (in); typeof (len) len_ = (len); lderr(cct) << "[" << __FUNC__ << ":" << __LINE__ << "] user key: " << print_kvssd_key(in_, len_) << dendl; })
 

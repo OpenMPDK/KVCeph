@@ -395,7 +395,8 @@ int KvsStore::fiemap_impl(CollectionHandle &c_, const ghobject_t &oid,
     Collection *c = static_cast<Collection*>(c_.get());
     if (!c->exists)
         return -ENOENT;
-    
+
+
     std::shared_lock l(c->lock);
     
     OnodeRef o = c->get_onode(oid, false);
@@ -863,14 +864,6 @@ int KvsStore::queue_transactions(CollectionHandle &ch, vector<Transaction> &tls,
     Collection *c = static_cast<Collection*>(ch.get());
     OpSequencer *osr = c->osr.get();
 
-    {
-        bool b = osr->qlock.try_lock();
-        if (b) osr->qlock.unlock();
-        else {
-            TR << "cannot be locked who is using it?";
-        }
-    }
-
 
     // prepare
     TransContext *txc = _txc_create(static_cast<Collection*>(ch.get()), osr, &on_commit);
@@ -929,52 +922,65 @@ int KvsStore::_txc_write_nodes(TransContext *txc) {
     dout(20) << __func__ << " txc " << txc << " onodes " << txc->onodes << dendl;
 
     // sync write onodes, omap values, superblocks
-
+TR << "1";
     bufferlist sbbl;
     std::vector<bufferlist> bls;
     bls.reserve(txc->onodes.size());
-
+    TR << "2";
     IoContext ioc(0);
-
-    for (auto o : txc->onodes) {
+    TR << "3";
+    for (const OnodeRef& o : txc->onodes) {
+        TR << "4";
         size_t bound = 0;
         denc(o->onode, bound);
-
+        TR << "4-1";
         bls.emplace_back();
         bufferlist &bl = bls.back();
+        TR << "4-2";
         {
             auto p = bl.get_contiguous_appender(bound, true);
             denc(o->onode, p);
         }
+        TR << "4-3";
 
         //_check_onode_validity(o->onode, bl);
 
-        //TR << "write onode: data = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", length = " << bl.length();
+        TR << "write onode: data = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", length = " << bl.length();
         db.aio_write_onode(o->oid, bl, &ioc, true);
-        o->flushing_count++;
+        //o->flushing_count++;
+        TR << "5 o->nref = " << o->nref.load();
     }
+    TR << "6";
 
     // objects we modified but didn't affect the onode
     auto p = txc->modified_objects.begin();
     while (p != txc->modified_objects.end()) {
         if (txc->onodes.count(*p) == 0) {
-            (*p)->flushing_count++;
+            //(*p)->flushing_count++;
+            TR << "7";
             ++p;
         } else {
+            TR << "8";
             // remove dups with onodes list to avoid problems in _txc_finish
             p = txc->modified_objects.erase(p);
         }
     }
+    TR << "9";
 
     if (this->nid_last > this->kvsb.nid_last + SB_FLUSH_FREQUENCY) {
         this->kvsb.nid_last = this->nid_last;
         encode(this->kvsb, sbbl);
         db.aio_write_sb(sbbl, &ioc);
     }
+    TR << "10";
+
+    TR << "issue sync IO ";
 
     int r =  db.syncio_submit_and_wait(&ioc);
+    TR << "issue sync IO done";
     if (r == 0) {
-        _txc_apply_kv(txc);
+        //_txc_finish_writes(txc);
+        //_txc_apply_kv(txc);
     }
     return r;
 }
@@ -996,17 +1002,16 @@ void KvsStore::_txc_add_transaction(TransContext *txc, Transaction *t) {
     unsigned j = 0;
     for (vector<coll_t>::iterator p = i.colls.begin(); p != i.colls.end();
          ++p, ++j) {
-        //TR << "1";
         cvec[j] = get_collection(*p);
-        //TR << "2";
     }
+
+    TR << "collections are loaded";
 
     vector<OnodeRef> ovec(i.objects.size());
 
     for (int pos = 0; i.have_op(); ++pos) {
         Transaction::Op *op = i.decode_op();
         int r = 0;
-
 
         // no coll or obj
         if (op->op == Transaction::OP_NOP) {
@@ -1016,7 +1021,7 @@ void KvsStore::_txc_add_transaction(TransContext *txc, Transaction *t) {
         // collection operations
         CollectionRef &c = cvec[op->cid];
 
-        //TR << "TR op= " << op->op << ", op cid = " << op->cid;
+        TR << "Collection TR op= " << op->op << ", op cid = " << op->cid;
 
 
         switch (op->op) {
@@ -1109,14 +1114,21 @@ void KvsStore::_txc_add_transaction(TransContext *txc, Transaction *t) {
             || op->op == Transaction::OP_ZERO) {
             create = true;
         }
+
+        TR << "Object TR op= " << op->op << ", create = " << create;
+
         // object operations
         std::unique_lock l(c->lock);
+
+        TR << "collection lock is acquired";
 
         OnodeRef &o = ovec[op->oid];
         if (!o) {
             ghobject_t oid = i.get_oid(op->oid);
+            TR << "loading onode " << oid;
             o = c->get_onode(oid, create, op->op == Transaction::OP_CREATE);
         }
+        TR << "loading onode " << op->oid << "done";
 
         if (!create && (!o || !o->exists)) {
             TRERR << "not a create nor exist";
@@ -1127,6 +1139,8 @@ void KvsStore::_txc_add_transaction(TransContext *txc, Transaction *t) {
             r = -ENOENT;
             goto endop;
         }
+
+        TR << "processing op";
 
         switch (op->op) {
             case Transaction::OP_CREATE:
@@ -2822,7 +2836,7 @@ void KvsStore::_txc_state_proc(TransContext *txc) {
 
         switch (txc->state) {
             case TransContext::STATE_PREPARE:
-                //TR << "TXC " << (void*) txc << ", STATE: PREPARE";
+                TR << "TXC 1 " << (void*) txc << ", STATE: PREPARE";
 
                 if (txc->ioc.has_pending_aios()) {
                     txc->state = TransContext::STATE_AIO_SUBMITTED;
@@ -2833,26 +2847,32 @@ void KvsStore::_txc_state_proc(TransContext *txc) {
                 // ** fall-thru **
 
             case TransContext::STATE_AIO_SUBMITTED:
-                //TR << "STATE_AIO_SUBMITTED";
+                TR << "TXC 2 " << (void*) txc <<  "_txc_finish_io start";
                 // io finished
                 _txc_finish_io(txc);  // called by a IO callback function
+                TR << "TXC 2 " << (void*) txc <<  "_txc_finish_io done";
                 return;
 
             case TransContext::STATE_AIO_DONE:
-                //TR << "STATE AIO DONE";
+                TR << "TXC 3 " << (void*) txc <<  " STATE AIO DONE start";
+                txc->state = TransContext::STATE_FINALIZE;
                 {
                     std::lock_guard l(kv_finalize_lock);
                     kv_finalize_queue.push_back(txc);
                     kv_finalize_cond.notify_one();
                 }
+                TR << "TXC 3 " << (void*) txc <<  " STATE AIO DONE end";
                 return;
 
             case TransContext::STATE_FINISHING:
-                //TR << "STATE FINISHING";
+                TR << "TXC 4" << (void*) txc <<  "STATE FINISHING start";
                 _txc_finish(txc);    // called by a finalize thread
-                TR << "STATE FINISHING DONE";
+                TR << "TXC 4" << (void*) txc <<  "STATE FINISHING DONE end";
                 return;
-
+            case TransContext::STATE_FINALIZE:
+                TR << "shouldn't be called";
+                assert(0 == "unexpected txc state");
+                return;
             default:
                 derr << __func__ << " unexpected txc " << txc << " state "
                      << txc->get_state_name() << dendl;
@@ -2866,40 +2886,65 @@ void KvsStore::_txc_finish_io(TransContext *txc)
 {
     FTRACE
     OpSequencer *osr = txc->osr.get();
+    TR << "TXC 2 try getting a qlock";
     std::lock_guard l(osr->qlock);
+    TR << "TXC 2 qlock acquired, txc = " << (void*)txc << ", state -> AIO_DONE";
     txc->state = TransContext::STATE_AIO_DONE;
-    //TR << "release";
+    TR << "TXC 2 release";
     txc->ioc.release_running_aios();
-    //TR << "check";
+    TR << "TXC 2 check";
+    {
+        OpSequencer::q_list_t::iterator p = osr->q.begin();
+        while (p != osr->q.end()) {
+            TransContext *t = &*p;
+            TR << "dump txc " << (void *) t << ", state = " << t->state;
+            p++;
+        }
+    }
+
+    TR << "TXC 2 Status check";
     OpSequencer::q_list_t::iterator p = osr->q.iterator_to(*txc);
     while (p != osr->q.begin()) {
         --p;
+        TR << "p " << (void*)&(*p) << ", state = " << p->state;
         if (p->state < TransContext::STATE_AIO_DONE) {
+            TR << "return";
             return;
         }
         if (p->state > TransContext::STATE_AIO_DONE) {
             ++p;
+            TR << "move next and break ";
             break;
         }
+        TR << "move next";
     }
 
-
+    TR << "TXC 2 TXC State Proc";
     // process the stored transactions
     do {
-        //TR << "process a pending txc_state_proc - begin";
+        TR << "process a pending txc_state_proc: state = " << (int) p->state;
         _txc_state_proc(&*p++);
-        //TR << "process a pending txc_state_proc - done ";
+        TR << "process a pending txc_state_proc - done ";
     } while (p != osr->q.end() && p->state == TransContext::STATE_AIO_DONE);
 
-    //TR << "notify all";
+    TR << "notify all";
     if (osr->kv_submitted_waiters) {
         osr->qcond.notify_all();
     }
+    TR << "TXC 2 TXC State Proc done";
 }
 
 void KvsStore::_txc_committed_kv(TransContext *txc) {
     FTRACE
+    TR << "osr qlock try txc = " << (void*)txc;
+    if (txc->osr) {
+
+    } else {
+        TR << "osr qlock try txc->osr is null";
+    }
+
     std::lock_guard l(txc->osr->qlock);
+    TR << "osr qlock acquired";
     txc->state = TransContext::STATE_FINISHING;
     if (txc->ch->commit_queue) {
         txc->ch->commit_queue->queue(txc->oncommits);
@@ -2928,15 +2973,16 @@ void KvsStore::_kv_finalize_thread() {
         } else {
             kv_committed.swap(kv_finalize_queue);
             l.unlock();
-
+            TR << "kv_finalize start";
+            /*
             for (auto txc : kv_committed) {
 
                 TR << "before commited_kv";
-                _txc_committed_kv(txc);
+
                 TR << "after commited_kv";
 
                 if (txc->state == TransContext::STATE_AIO_DONE) {
-                    //_txc_apply_kv(txc);
+                    _txc_apply_kv(txc);
                     txc->state = TransContext::STATE_FINISHING;
                     if (txc->osr->kv_submitted_waiters) {
                         TR << "before kv_submitted_waiters";
@@ -2950,18 +2996,30 @@ void KvsStore::_kv_finalize_thread() {
                     ceph_assert(txc->state == TransContext::STATE_FINISHING);
                 }
             }
+             */
             TR << "calling txc_state_proc";
 
             while (!kv_committed.empty()) {
                 TransContext *txc = kv_committed.front();
 
+                TR << "before _txc_committed_kv: txc " << (void*)txc;
+                _txc_committed_kv(txc);
+                TR << "after _txc_committed_kv";
+
                 assert(txc->state == TransContext::STATE_FINISHING);
+                TR << "calling txc_state_proc -3";
                 _txc_state_proc(txc);
+                TR << "calling txc_state_proc -4";
                 kv_committed.pop_front();
+                TR << "calling txc_state_proc -5";
             }
 
+            kv_committed.clear();
+
+            TR << "reap collections";
             // this is as good a place as any ...
             reap_collections();
+            TR << "kv_finalize finished";
 
             l.lock();
         }
@@ -2972,28 +3030,50 @@ void KvsStore::_kv_finalize_thread() {
 
 void KvsStore::_txc_finish_writes(TransContext *txc) {
     FTRACE
-    for (auto o : txc->onodes) {
+    TR << "txc = " << (void*)txc;
+    TR << "txc onode size = " << txc->onodes.size();
+    for (const OnodeRef& o : txc->onodes) {
+        TR << "1";
+        if (!o) {
+            TR << "onode is destroyed";
+        }
+        else {
+            TR << "nref = " << o->nref.load();
+            TR << "c = " << (void*)o->c;
+            TR << "cache = " << (void*)o->c->cache;
+        }
         BufferCacheShard *cache = o->c->cache;
+        TR << "cache->lock, cache = ? " << (void*)cache;
         std::lock_guard l(cache->lock);
+        TR << "cache->lock acquired";
         if (o->c->cache != cache) {
             continue;
         }
+        TR << "finish write ";
         o->bc._finish_write(cache, txc->seq);
+        TR << "finish done";
+        break;
     }
-
+    TR << "txc2 = " << (void*)txc;
     // objects we modified but didn't affect the onode
     auto p = txc->modified_objects.begin();
     while (p != txc->modified_objects.end()) {
         if (txc->onodes.count(*p) == 0) {
             ++p;
         } else {
+            TR << "1";
             auto o = *p;
             BufferCacheShard *cache = o->c->cache;
             std::lock_guard l(cache->lock);
             if (o->c->cache != cache) {
+                TR << "next";
+                ++p;
                 continue;
             }
+            TR << "finish write 1";
             o->bc._finish_write(cache, txc->seq);
+            TR << "finish write 2";
+            break;
         }
     }
 }
@@ -3002,20 +3082,23 @@ void KvsStore::_txc_finish(TransContext *txc) {
     FTRACE
     dout(20) << __func__ << " " << txc << " onodes " << txc->onodes << dendl;
     assert(txc->state == TransContext::STATE_FINISHING);
+    TR << "TXC 4 before finish writes";
 
-    TR << "1";
     _txc_finish_writes(txc);
-    TR << "2";
+    TR << "TXC 4 after finish writes";
+
     while (!txc->removed_collections.empty()) {
         _queue_reap_collection(txc->removed_collections.front());
         txc->removed_collections.pop_front();
     }
-    TR << "3";
+
     OpSequencerRef osr = txc->osr;
     bool empty = false;
     OpSequencer::q_list_t releasing_txc;
     {
+        TR << "qlock try";
         std::lock_guard l(osr->qlock);
+        TR << "qlock acquired";
         txc->state = TransContext::STATE_DONE;
         bool notify = false;
         while (!osr->q.empty()) {
@@ -3042,19 +3125,18 @@ void KvsStore::_txc_finish(TransContext *txc) {
             osr->qcond.notify_all();
         }
     }
-    TR << "4";
+
     while (!releasing_txc.empty()) {
-        TR << "4.1";
+
         auto txc = &releasing_txc.front();
-        TR << "4.2 txc = " << (void*) txc;
+        //TR << "4.2 txc = " << (void*) txc;
         //_txc_release_alloc(txc);
-        TR << "4.3";
+
         releasing_txc.pop_front();
-        TR << "4.4";
-        if (txc)
-            delete txc;
+        TR << "txc deleted = " << (void*) txc;
+        delete txc;
     }
-    TR << "5";
+
     if (empty && osr->zombie) {
         std::lock_guard l(zombie_osr_lock);
         if (zombie_osr_set.erase(osr->cid)) {
@@ -3063,7 +3145,7 @@ void KvsStore::_txc_finish(TransContext *txc) {
             dout(10) << __func__ << " empty zombie osr " << osr << " already reaped" << dendl;
         }
     }
-    TR << "6";
+
 }
 
 // do nothing
@@ -3071,17 +3153,21 @@ void KvsStore::_txc_release_alloc(TransContext *txc) {}
 
 void KvsStore::_txc_apply_kv(TransContext *txc)
 {
+    /*
     FTRACE
     for (auto ls : { &txc->onodes, &txc->modified_objects }) {
         for (auto& o : *ls) {
             dout(20) << __func__ << " onode " << o << " had " << o->flushing_count
                      << dendl;
             if (--o->flushing_count == 0 && o->waiting_count.load()) {
+                TR << "flush_lock, flushing count = " << o->flushing_count.load();
                 std::lock_guard l(o->flush_lock);
+                TR << "flush_lock acquired";
                 o->flush_cond.notify_all();
             }
         }
     }
+    */
 }
 
 
@@ -3109,24 +3195,10 @@ void KvsStore::_osr_attach(Collection *c) {
 		auto p = zombie_osr_set.find(c->cid);
 		if (p == zombie_osr_set.end()) {
 			c->osr = ceph::make_ref<OpSequencer>(this, next_sequencer_id++, c->cid);
-            {
-                bool b = c->osr->qlock.try_lock();
-                if (b) c->osr->qlock.unlock();
-                else {
-                    TR << "cannot be locked who is using it?";
-                }
-            }
 			ldout(cct, 10) << __func__ << " " << c->cid << " fresh osr " << c->osr << dendl;
 
 		} else {
 			c->osr = p->second;
-            {
-                bool b = c->osr->qlock.try_lock();
-                if (b) c->osr->qlock.unlock();
-                else {
-                    TR << "cannot be locked who is using it?";
-                }
-            }
             zombie_osr_set.erase(p);
 			ldout(cct, 10) << __func__ << " " << c->cid << " resurrecting zombie osr " << c->osr << dendl;
 			c->osr->zombie = false;

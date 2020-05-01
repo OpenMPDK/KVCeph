@@ -55,7 +55,7 @@ void aio_callback(kv_io_context &op, void *post_data)
     }
     //TR << "callback2 ioc parent = " << ioc->parent;
 
-    //print_value(r, op.opcode, op.key.key, op.key.length, op.value.value,op.value.length);
+    print_value(r, op.opcode, op.key.key, op.key.length, op.value.value,op.value.length);
 
     bool last = ioc->try_aio_wake();
     //TR << "is last = " << last << ", parent exists? " << ioc->parent ;
@@ -113,6 +113,7 @@ kvaio_t* KvsStoreDB::_syncio_write(int keyspaceid, void *addr, uint32_t len, IoC
     ioc->pending_syncios.push_back(kvaio_t(nvme_cmd_kv_store, keyspaceid, aio_callback, ioc, this));
 
     kvaio_t& aio = ioc->pending_syncios.back();
+    TR << "aio.ioc = " << (void*) aio.parent;
     aio.value     = addr;
     aio.vallength = len;
     aio.valoffset = 0;
@@ -306,9 +307,7 @@ void KvsStoreDB::aio_remove_coll(const coll_t &cid, IoContext *ioc)
 int KvsStoreDB::read_kvkey(kv_key *key, bufferlist &bl, bool sorted)
 {
     FTRACE
-    IoContext ioc( 0);
     const int keyspaceid = (sorted)? keyspace_sorted:keyspace_notsorted;
-    boost::container::small_vector<iovec,4> iov;    // to retrieve an internal address from a bufferlist
     kv_value value;
 
     bufferptr bp = buffer::create_small_page_aligned(8192);
@@ -379,18 +378,18 @@ int KvsStoreDB::aio_submit_and_wait(IoContext *ioc) {
 
 int KvsStoreDB::syncio_submit_and_wait(IoContext *ioc) {
     FTRACE
-    //TR << "syncio_submit_and_wait entered";
+    TR << "syncio_submit_and_wait entered";
     int r = 0;
     if (ioc->pending_syncios.size()) {
         syncio_submit(ioc);
         ioc->aio_wait();
         r = ioc->get_return_value();
         if (r != 0) {
-            //TR << "syncio_submit_and_wait exited r = " << r;
+            TR << "syncio_submit_and_wait exited r = " << r;
             return r;
         }
     }
-    //TR << "syncio_submit_and_wait exited r = " << r;
+    TR << "syncio_submit_and_wait exited r = " << r;
     return r;
 }
 
@@ -455,7 +454,9 @@ int KvsStoreDB::syncio_submit(IoContext *ioc)
 
     auto cur = ioc->pending_syncios.begin();
     auto end = ioc->pending_syncios.end();
-    TR << "submit ioc parent = " << ioc->parent;
+
+    TR << "submit ioc  = " << (void*)ioc << ", ioc2 = " << (void*)cur->parent;
+    TR << "submit ioc parent = " << ioc->parent << ", ioc2 parent = " << ((IoContext*)cur->parent)->parent;
 
 
     while (cur != end) {

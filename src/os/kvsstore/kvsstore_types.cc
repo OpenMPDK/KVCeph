@@ -50,15 +50,16 @@ KvsStoreTypes::Onode* KvsStoreTypes::Onode::decode(
 void KvsStoreTypes::Onode::flush()
 {
     FTRACE
+    /*
     if (flushing_count.load()) {
     	waiting_count++;
-        //TR << "flush lock -1 flushing count = " << flushing_count.load() << "waiting count = " <<  waiting_count ;
+        TR << "flush lock -1 flushing count = " << flushing_count.load() << "waiting count = " <<  waiting_count ;
         std::unique_lock l(flush_lock);
         while (flushing_count.load()) {
             flush_cond.wait(l);
         }
         waiting_count--;
-    }
+    }*/
 }
 
 /// --------------------------------------------------------------------
@@ -119,7 +120,6 @@ KvsStoreTypes::OnodeRef KvsStoreTypes::Collection::get_onode(const ghobject_t &o
 	    store->db.aio_read_onode(oid, v, &ioc);
 		r = store->db.aio_submit_and_wait(&ioc);
 	}
-
 
 	if (r == KV_ERR_KEY_NOT_EXIST) {
 		if (!create)
@@ -213,14 +213,6 @@ void KvsStoreTypes::TransContext::aio_finish(KvsStore *store) {
 KvsStoreTypes::OpSequencer::OpSequencer(KvsStore *store, uint32_t sequencer_id, const coll_t &c)
 	: RefCountedObject(store->cct),
 	store(store), cid(c), sequencer_id(sequencer_id) {
-    FTRACE
-    {
-        bool b = qlock.try_lock();
-        if (b) qlock.unlock();
-        else {
-            TR << "cannot be locked who is using it?";
-        }
-    }
 }
 
 

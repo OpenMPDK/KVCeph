@@ -639,9 +639,10 @@ public:
         //MEMPOOL_CLASS_HELPERS();
 
         typedef enum {
-            STATE_PREPARE,
+            STATE_PREPARE = 0,
             STATE_AIO_SUBMITTED,		// submitted data. not yet synced
             STATE_AIO_DONE,
+            STATE_FINALIZE,
             STATE_FINISHING,
             STATE_DONE,
         } state_t;
@@ -744,31 +745,28 @@ public:
 
         void queue_new(TransContext *txc) {
             FTRACE
-            {
-                bool b = qlock.try_lock();
-                if (b) qlock.unlock();
-                else {
-                    TR << "cannot be locked who is using it?";
-                }
-            }
+            TR << "try getting a qlock";
             std::lock_guard l(qlock);
+            TR << "qlock acquired";
             txc->seq = ++last_seq;
             q.push_back(*txc);
-            //TR << "queue new " <<  (void*)txc << " - queue size = " << q.size()<< "\n";
+            TR << "queue new " <<  (void*)txc << " - queue size = " << q.size();
         }
 
         void drain() {
             FTRACE
+            TR << "try getting a qlock";
             std::unique_lock l(qlock);
-            TR << "OSR QUEUE LOCK";
+            TR << "qlock acquired";
             while (!q.empty())
                 qcond.wait(l);
         }
 
         void drain_preceding(TransContext *txc) {
             FTRACE
+            TR << "try getting a qlock";
             std::unique_lock l(qlock);
-            TR << "OSR QUEUE LOCK";
+            TR << "qlock acquired";
             while (&q.front() != txc)
                 qcond.wait(l);
         }
@@ -786,8 +784,9 @@ public:
 
         void flush() {
             FTRACE
+            TR << "try getting a qlock";
             std::unique_lock l(qlock);
-            TR << "OSR QUEUE LOCK";
+            TR << "qlock acquired";
             while (true) {
                 // set flag before the check because the condition
                 // may become true outside qlock, and we need to make
@@ -804,8 +803,9 @@ public:
 
         void flush_all_but_last() {
             FTRACE
+            TR << "try getting a qlock";
             std::unique_lock l(qlock);
-            TR << "OSR QUEUE LOCK";
+            TR << "qlock acquired";
             assert (q.size() >= 1);
             while (true) {
                 // set flag before the check because the condition
@@ -831,8 +831,9 @@ public:
 
         bool flush_commit(Context *c) {
             FTRACE
+            TR << "try getting a qlock";
             std::lock_guard l(qlock);
-            TR << "OSR QUEUE LOCK";
+            TR << "qlock acquired";
             if (q.empty()) {
                 return true;
             }
