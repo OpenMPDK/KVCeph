@@ -308,7 +308,27 @@ void KvsStoreDB::aio_remove_coll(const coll_t &cid, IoContext *ioc)
 
     //TR << "trying to delete COLL - " << print_kvssd_key((char *) aio->key, aio->keylength);
 }
+int KvsStoreDB::read_onode(const ghobject_t &oid, bufferlist &bl)
+{
+    FTRACE
+    char keybuffer[256];
+    kv_key key;
+    key.key    = keybuffer;
+    key.length = construct_onode_key(cct, oid, keybuffer);
 
+    kv_value value;
+    bufferptr bp = buffer::create_small_page_aligned(8192);
+    value.value  = bp.c_str();
+    value.length = bp.length();
+    value.offset = 0;
+
+    int r =  this->kadi.kv_retrieve_sync(keyspace_sorted, &key, &value);
+    if (r == 0) {
+        bp.set_length(value.length);
+        bl.append(std::move(bp));
+    }
+    return r;
+}
 // low level sync read function
 int KvsStoreDB::read_kvkey(kv_key *key, bufferlist &bl, bool sorted)
 {

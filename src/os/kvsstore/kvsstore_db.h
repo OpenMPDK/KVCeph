@@ -183,6 +183,7 @@ public:
     void aio_write_chunk(const ghobject_t &oid, uint16_t chunkid, void *addr, uint32_t len, IoContext *ioc);
     void aio_remove_chunk(const ghobject_t &oid, uint16_t chunkid, IoContext *ioc);
 
+    int  read_onode(const ghobject_t &oid, bufferlist &bl);
     void aio_read_onode(const ghobject_t &oid, bufferlist &bl, IoContext *ioc);
     void aio_write_onode(const ghobject_t &oid, bufferlist &bl, IoContext *ioc, bool sync = true);
     void aio_remove_onode(const ghobject_t &oid, IoContext *ioc, bool sync = true);
