@@ -60,11 +60,11 @@ void aio_callback(kv_io_context &op, void *post_data)
     bool last = ioc->try_aio_wake();
     //TR << "is last = " << last << ", parent exists? " << ioc->parent ;
     if (last && ioc->parent) {
-        if (!is_live_object(ioc)) {
+        /*if (!is_live_object(ioc)) {
             std::cout << "ERROR2";
             std::string &str = removed_objects[(void*)ioc];
             std::cout << str <<std::endl;
-        }
+        }*/
         TR2 << "RECV: op = " << op.opcode << ", aio = " << (void*)aio << ", ioc = " << (void*)ioc << ", txc = " << ioc->parent << ", caller thread = " << aio->caller;
         //TR << "callback ioc = " << aio->parent << ", ioc parent = " << ioc->parent << ", calling aio_finish";
         KvsStore::TransContext* txc = static_cast<KvsStore::TransContext*>(ioc->parent);
@@ -443,7 +443,7 @@ int KvsStoreDB::aio_submit(IoContext *ioc)
     std::unique_lock<std::mutex> lck(ioc->running_aio_lock);
     auto cur = ioc->running_aios.begin();
     auto end = ioc->running_aios.end();
-
+#if 0
     //TR << "aio " << (void*) &(*cur) << ", parent = " << (void*)cur->parent;
     TR2 << "AIO SUBMIT - dry run ioc = " << (void*)ioc << ", num running = " << ioc->num_running.load();
     while (cur != end) {
@@ -464,9 +464,11 @@ int KvsStoreDB::aio_submit(IoContext *ioc)
 
     int num =0 ;
     TR2 << "AIO SUBMIT - run ioc = " << (void*)ioc;
+#endif
     while (cur != end) {
-        TR2 << "LOOP " << num++ << "/" << pending;
+        //TR2 << "LOOP " << num++ << "/" << pending;
         kvaio_t *aio = (*cur);
+#if 0
         if (aio) {
             if (aio->opcode > 200) {
                 TR2 << "ERROR AIO op contains a wrong pointer";
@@ -474,7 +476,7 @@ int KvsStoreDB::aio_submit(IoContext *ioc)
             }
             TR2 << "SEND AIO op = : "<< aio->opcode <<  " kvaio_t = " << (void*)aio << ", aio parent = " << (void*) aio->parent << ", ioc = " << (void*)ioc << ", txc = " << ioc->parent;
         }
-
+#endif
 
         switch (aio->opcode) {
             case nvme_cmd_kv_retrieve:

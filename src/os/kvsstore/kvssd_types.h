@@ -80,7 +80,7 @@ public:
 
     explicit IoContext(void *parent_, const char *fname)
     : parent(parent_), loc(fname) {
-        add_live_object(this);
+        //add_live_object(this);
     }
 
     // no copying
@@ -89,8 +89,7 @@ public:
     ~IoContext() {
         //TR2 << "IOContext destroyed: ptr = " << (void*)this;
         //std::ostringstream oss; oss << BackTrace(1);
-
-        remove_live_object(this, loc);
+        //remove_live_object(this, loc);
     }
 public:
 
