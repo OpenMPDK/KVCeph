@@ -30,6 +30,9 @@
 
 std::mutex debug_threadname_lock;
 std::map<uint64_t, int> debug_threadnames;
+std::mutex live_object_lock;
+std::set<void*> live_objects;
+std::map<void*, std::string> removed_objects;
 
 // set up dout_context and dout_prefix here
 // -----------------------------------------
@@ -187,7 +190,7 @@ int KvsStore::open_db(bool create) {
 
 bool KvsStore::_check_db() {
     int num_onodes = 10;
-    IoContext ioc( 0);
+    IoContext ioc( 0, __func__);
     std::string prefix = "test_onode";
     std::vector<ghobject_t*> onodes;    onodes.reserve(num_onodes);
     std::vector<bufferlist*> bls;       bls.reserve(num_onodes);
@@ -210,7 +213,7 @@ bool KvsStore::_check_db() {
         ceph_abort_msg("onode write failed");
     }
 
-    IoContext read_ioc(0);
+    IoContext read_ioc(0, __func__);
     for (int i =0 ;i < num_onodes; i++) {
         db.aio_read_onode(*onodes[i], *read_bls[i], &read_ioc);
     }
@@ -720,7 +723,7 @@ int KvsStore::read(CollectionHandle &c_, const ghobject_t &oid, uint64_t offset,
 }
 
 int KvsStore::_do_read_chunks_async(OnodeRef &o, ready_regions_t &ready_regions, chunk2read_t &chunk2read, BufferCacheShard *cache) {
-    IoContext ioc( 0);
+    IoContext ioc( 0, __func__);
     FTRACE
     _prepare_read_chunk_ioc(o->oid, ready_regions, chunk2read, &ioc);
 
@@ -927,7 +930,7 @@ TR << "1";
     std::vector<bufferlist> bls;
     bls.reserve(txc->onodes.size());
     TR << "2";
-    IoContext ioc(0);
+    IoContext ioc(0, __func__);
     TR << "3";
     for (const OnodeRef& o : txc->onodes) {
         TR << "4";
@@ -1713,7 +1716,7 @@ int KvsStore::_clone(TransContext *txc, CollectionRef &c, OnodeRef &oldo, OnodeR
     {
         txc->omap_data.reserve(newo->onode.omaps.size());
         {
-            IoContext ioc(0);
+            IoContext ioc(0, __func__);
             int i = 0;
             for (const std::string &name : newo->onode.omaps) {
                 txc->omap_data.emplace_back();
@@ -2209,7 +2212,7 @@ int KvsStore::omap_get_values(CollectionHandle &c_, const ghobject_t &oid,
         return 0;
     }
 
-    IoContext ioc (0);
+    IoContext ioc (0,__func__);
 
     for (const std::string &p : keys) {
         if (o->onode.omaps.find(p) != o->onode.omaps.end()) {
@@ -2246,7 +2249,7 @@ int KvsStore::omap_get_impl(Collection *c, const ghobject_t &oid,
 
     *header = o->onode.omap_header;
 
-    IoContext ioc (0);
+    IoContext ioc (0,__func__);
 
     for (const std::string &p : o->onode.omaps) {
         bufferlist &bl = (*out)[p];
@@ -2343,7 +2346,7 @@ public:
         
         bufferlist bl;
 
-        IoContext ioc ( 0);
+        IoContext ioc ( 0,__func__);
 
         const std::string &key = *it;
 

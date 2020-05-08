@@ -683,7 +683,7 @@ public:
         uint64_t last_nid = 0;     ///< if non-zero, highest new nid we allocated
         void *parent;
         explicit TransContext(void *parent_, CephContext *cct_, Collection *c,  OpSequencer *o, list<Context*> *on_commits)
-                : ch(c), osr(o), ioc( this), parent(parent_)
+                : ch(c), osr(o), ioc( this,__func__), parent(parent_)
         {
             TR2 << "TransContext: created. IOC = " << (void*)ioc.parent;
             if (on_commits) {

@@ -115,8 +115,8 @@ KvsStoreTypes::OnodeRef KvsStoreTypes::Collection::get_onode(const ghobject_t &o
     int r = KV_ERR_KEY_NOT_EXIST;
 	KvsStoreTypes::Onode *on;
 
+    IoContext ioc(0, __func__);
 	if (!is_createop) {
-	    IoContext ioc(0);
 	    store->db.aio_read_onode(oid, v, &ioc);
 		r = store->db.aio_submit_and_wait(&ioc);
 	}

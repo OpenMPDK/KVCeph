@@ -60,6 +60,11 @@ void aio_callback(kv_io_context &op, void *post_data)
     bool last = ioc->try_aio_wake();
     //TR << "is last = " << last << ", parent exists? " << ioc->parent ;
     if (last && ioc->parent) {
+        if (!is_live_object(ioc)) {
+            std::cout << "ERROR2";
+            std::string &str = removed_objects[(void*)ioc];
+            std::cout << str <<std::endl;
+        }
         TR2 << "RECV: op = " << op.opcode << ", aio = " << (void*)aio << ", ioc = " << (void*)ioc << ", txc = " << ioc->parent << ", caller thread = " << aio->caller;
         //TR << "callback ioc = " << aio->parent << ", ioc parent = " << ioc->parent << ", calling aio_finish";
         KvsStore::TransContext* txc = static_cast<KvsStore::TransContext*>(ioc->parent);
@@ -327,7 +332,7 @@ int KvsStoreDB::read_kvkey(kv_key *key, bufferlist &bl, bool sorted)
 
 int KvsStoreDB::read_sb(bufferlist &bl) {
     FTRACE
-    IoContext ioc(0);
+    IoContext ioc(0, __func__ );
     kvaio_t *aio = _aio_read(keyspace_notsorted, KVS_OBJECT_SPLIT_SIZE, &bl, &ioc);
     aio->keylength =  construct_kvsbkey_impl(aio->key);
 
@@ -344,7 +349,7 @@ int KvsStoreDB::read_sb(bufferlist &bl) {
 
 int KvsStoreDB::write_sb(bufferlist &bl) {
     FTRACE
-    IoContext ioc(0);
+    IoContext ioc(0, __func__);
 
     kvaio_t *aio = _syncio_write(keyspace_notsorted, bl, &ioc);
     aio->keylength =  construct_kvsbkey_impl(aio->key);
@@ -393,7 +398,7 @@ int KvsStoreDB::syncio_submit_and_wait(IoContext *ioc) {
     TR << "syncio_submit_and_wait exited r = " << r;
     return r;
 }
-
+#include <sstream>
 int KvsStoreDB::aio_submit(IoContext *ioc)
 {
     FTRACE
@@ -420,8 +425,13 @@ int KvsStoreDB::aio_submit(IoContext *ioc)
     while (cur != end) {
         kvaio_t *aio = (*cur);
         aio->caller  = (uint64_t)pthread_self();
-        TR2 << "DRYRUN op = : " << aio->opcode << " kvaio_t = " << (void *) aio << ", aio parent = "
-            << (void *) aio->parent << ", ioc = " << (void *) ioc << ", txc = " << ioc->parent;
+
+
+
+        std::stringstream  ss;
+        ss << "DRYRUN op = : " << aio->opcode << " kvaio_t = " << (void *) aio << ", aio parent = "
+            << (void *) aio->parent << "== ioc = " << (void *) ioc << ", txc(ioc->parent) = " << (void*)ioc->parent;
+        aio->debug   = ss.str();
         cur++;
     }
 

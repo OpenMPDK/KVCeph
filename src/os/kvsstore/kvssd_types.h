@@ -46,6 +46,7 @@ struct kvaio_t {
     bufferlist bl;  ///< write payload (so that it remains stable for duration)
     bufferlist *pbl; /// output bl - will contain bl
     uint64_t caller;
+    std::string debug;
     boost::container::small_vector<iovec,4> iov;    // to retrieve an internal address from a bufferlist
 
     kvaio_t(int opcode_, int spaceid_, aio_callback_t c, IoContext *p, void *db_):
@@ -64,8 +65,10 @@ private:
     //ceph::condition_variable cond;
     int r = 0;
     int keyspace;
+
 public:
     void *parent;
+    std::string loc;
 
     std::mutex running_aio_lock;
     std::list<kvaio_t*> pending_syncios; ///< objects to be synchronously written (no lock contention)
@@ -75,13 +78,20 @@ public:
     std::atomic_int num_pending = {0};
     std::atomic_int num_running = {0};
 
-    explicit IoContext(void *parent_)
-    : parent(parent_) {}
+    explicit IoContext(void *parent_, const char *fname)
+    : parent(parent_), loc(fname) {
+        add_live_object(this);
+    }
 
     // no copying
     IoContext(const IoContext& other) = delete;
     IoContext &operator=(const IoContext& other) = delete;
-    ~IoContext() { TR2 << "IOContext destroyed: ptr = " << (void*)this; }
+    ~IoContext() {
+        //TR2 << "IOContext destroyed: ptr = " << (void*)this;
+        //std::ostringstream oss; oss << BackTrace(1);
+
+        remove_live_object(this, loc);
+    }
 public:
 
     bool has_pending_aios() {

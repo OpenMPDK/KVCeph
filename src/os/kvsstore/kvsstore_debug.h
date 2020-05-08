@@ -282,8 +282,34 @@ inline void print_value(int r, int opcode, void *key, unsigned keylen, void *dat
     TR << header << type << " " << cmd << "- ret = " << r  << ", key " << keystr << ss.str();
 }
 
+#include <set>
+#include <mutex>
+extern std::mutex live_object_lock;
+extern std::set<void*> live_objects;
+extern std::map<void*, std::string> removed_objects;
 
 
+inline void add_live_object(void *addr) {
+    std::unique_lock<std::mutex> l(live_object_lock);
+    if (live_objects.find(addr) != live_objects.end()) {
+        std::cout << "ERROR";
+    };
+    live_objects.insert(addr);
+}
+
+inline void remove_live_object(void *addr, const std::string &bt) {
+    std::unique_lock<std::mutex> l(live_object_lock);
+    if (live_objects.find(addr) == live_objects.end()) {
+        std::cout << "ERROR";
+    };
+    removed_objects[addr] = bt;
+    live_objects.erase(addr);
+}
+
+inline bool is_live_object(void *addr) {
+    std::unique_lock<std::mutex> l(live_object_lock);
+    return (live_objects.find(addr) != live_objects.end());
+}
 
 inline std::string print_kvssd_key(const std::string &str)
 {
