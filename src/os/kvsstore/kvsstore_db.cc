@@ -369,15 +369,19 @@ int KvsStoreDB::read_sb(bufferlist &bl) {
 
 int KvsStoreDB::write_sb(bufferlist &bl) {
     FTRACE
-    IoContext ioc(0, __func__);
+    char keybuffer[256];
+    boost::container::small_vector<iovec,4> iov;
+    bl.prepare_iov(&iov);
 
-    kvaio_t *aio = _syncio_write(keyspace_notsorted, bl, &ioc);
-    aio->keylength =  construct_kvsbkey_impl(aio->key);
+    kv_value v;
+    v.value     = (void*)iov[0].iov_base;
+    v.length = iov[0].iov_len;
+    v.offset = 0;
+    kv_key k;
+    k.key = keybuffer;
+    k.length = construct_kvsbkey_impl(keybuffer);
 
-    TR << "ioc parent = " << ioc.parent;
-    print_value(0, -1, aio->key, aio->keylength, bl.c_str(), bl.length());
-
-    return syncio_submit_and_wait(&ioc);
+    return this->kadi.kv_store_sync(keyspace_notsorted, &k, &v);
 }
 
 int KvsStoreDB::aio_write_sb(bufferlist &bl, IoContext *ioc) {

@@ -949,7 +949,7 @@ TR << "1";
         //_check_onode_validity(o->onode, bl);
 
         TR << "write onode: data = " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", length = " << bl.length();
-        db.aio_write_onode(o->oid, bl, &ioc, true);
+        db.aio_write_onode(o->oid, bl, &ioc, false);
         //o->flushing_count++;
         TR << "5 o->nref = " << o->nref.load();
     }
@@ -979,7 +979,7 @@ TR << "1";
 
     TR << "issue sync IO ";
 
-    int r =  db.syncio_submit_and_wait(&ioc);
+    int r =  db.aio_submit_and_wait(&ioc);
     TR << "issue sync IO done";
     if (r == 0) {
         //_txc_finish_writes(txc);
