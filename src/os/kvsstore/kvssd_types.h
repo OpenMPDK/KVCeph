@@ -16,7 +16,7 @@
 #include <boost/container/small_vector.hpp>
 #include "kadi/kadi_types.h"
 #include "include/buffer.h"
-
+#include "kvsstore_debug.h"
 
 
 
@@ -45,11 +45,14 @@ struct kvaio_t {
     bufferptr  bp;  ///< read buffer
     bufferlist bl;  ///< write payload (so that it remains stable for duration)
     bufferlist *pbl; /// output bl - will contain bl
-
+    uint64_t caller;
     boost::container::small_vector<iovec,4> iov;    // to retrieve an internal address from a bufferlist
 
     kvaio_t(int opcode_, int spaceid_, aio_callback_t c, IoContext *p, void *db_):
-        opcode(opcode_), spaceid(spaceid_), keylength(0), value(0), vallength(0), valoffset(0), parent(p), cb_func(c), rval(-1000), db(db_) {}
+        opcode(opcode_), spaceid(spaceid_), keylength(0), value(0), vallength(0), valoffset(0), parent(p), cb_func(c), rval(-1000), db(db_)
+    {
+        TR2 << "kvaio_t created: " << (void*)this << ", parent (ioc) = " << (void*)parent;
+    }
 
 };
 
@@ -64,9 +67,10 @@ private:
 public:
     void *parent;
 
-    std::list<kvaio_t> pending_syncios; ///< objects to be synchronously written (no lock contention)
-    std::list<kvaio_t> pending_aios;    ///< not yet submitted
-    std::list<kvaio_t> running_aios;    ///< submitting or submitted
+    std::mutex running_aio_lock;
+    std::list<kvaio_t*> pending_syncios; ///< objects to be synchronously written (no lock contention)
+    std::list<kvaio_t*> pending_aios;    ///< not yet submitted
+    std::list<kvaio_t*> running_aios;    ///< submitting or submitted
 
     std::atomic_int num_pending = {0};
     std::atomic_int num_running = {0};
@@ -77,7 +81,7 @@ public:
     // no copying
     IoContext(const IoContext& other) = delete;
     IoContext &operator=(const IoContext& other) = delete;
-//~IoContext() { TR << "IOContext destroyed: ptr = " << (void*)this; }
+    ~IoContext() { TR2 << "IOContext destroyed: ptr = " << (void*)this; }
 public:
 
     bool has_pending_aios() {
@@ -94,7 +98,13 @@ public:
         //TR << "IO Finished";
     }
 
-    void release_running_aios() { running_aios.clear(); }
+    void release_running_aios() {
+        std::unique_lock<std::mutex> lck(running_aio_lock);
+        for (const kvaio_t *p : running_aios) {
+            delete p;
+        }
+        running_aios.clear();
+    }
     uint64_t get_num_ios() const { return 0; }
 
     bool try_aio_wake() {

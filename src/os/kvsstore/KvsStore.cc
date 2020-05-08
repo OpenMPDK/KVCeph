@@ -720,7 +720,7 @@ int KvsStore::read(CollectionHandle &c_, const ghobject_t &oid, uint64_t offset,
 }
 
 int KvsStore::_do_read_chunks_async(OnodeRef &o, ready_regions_t &ready_regions, chunk2read_t &chunk2read, BufferCacheShard *cache) {
-    IoContext ioc( NULL);
+    IoContext ioc( 0);
     FTRACE
     _prepare_read_chunk_ioc(o->oid, ready_regions, chunk2read, &ioc);
 
@@ -1934,8 +1934,7 @@ int KvsStore::getattr(CollectionHandle &c_, const ghobject_t &oid,
 
         OnodeRef o = c->get_onode(oid, false);
         if (!o || !o->exists) {
-            TR << "not exist, returning " << r;
-            TRBACKTRACE;
+            //TR << "not exist, returning " << r;
             r = -ENOENT;
             goto out;
         }
@@ -1949,7 +1948,7 @@ int KvsStore::getattr(CollectionHandle &c_, const ghobject_t &oid,
         r = 0;
     }
 out:
-    TR << "returning " << r;
+    //TR << "returning " << r;
 
     return r;
 }
@@ -2865,15 +2864,16 @@ void KvsStore::_txc_state_proc(TransContext *txc) {
                 return;
 
             case TransContext::STATE_FINISHING:
-                TR << "TXC 4" << (void*) txc <<  "STATE FINISHING start";
+                TR << "TXC 4 " << (void*) txc <<  " STATE FINISHING start";
                 _txc_finish(txc);    // called by a finalize thread
-                TR << "TXC 4" << (void*) txc <<  "STATE FINISHING DONE end";
+                TR << "TXC 4 " << (void*) txc <<  " STATE FINISHING DONE end";
                 return;
             case TransContext::STATE_FINALIZE:
                 TR << "shouldn't be called";
                 assert(0 == "unexpected txc state");
                 return;
             default:
+                TR << "TXC ERR " << (void*) txc << ", wrong state = " << txc->state;
                 derr << __func__ << " unexpected txc " << txc << " state "
                      << txc->get_state_name() << dendl;
                 assert(0 == "unexpected txc state");
@@ -2891,7 +2891,7 @@ void KvsStore::_txc_finish_io(TransContext *txc)
     TR << "TXC 2 qlock acquired, txc = " << (void*)txc << ", state -> AIO_DONE";
     txc->state = TransContext::STATE_AIO_DONE;
     TR << "TXC 2 release";
-    txc->ioc.release_running_aios();
+
     TR << "TXC 2 check";
     {
         OpSequencer::q_list_t::iterator p = osr->q.begin();
@@ -3133,6 +3133,7 @@ void KvsStore::_txc_finish(TransContext *txc) {
         //_txc_release_alloc(txc);
 
         releasing_txc.pop_front();
+        txc->ioc.release_running_aios();
         TR << "txc deleted = " << (void*) txc;
         delete txc;
     }

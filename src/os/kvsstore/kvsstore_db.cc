@@ -32,7 +32,7 @@ void aio_callback(kv_io_context &op, void *post_data)
     int r = op.retcode;
 
     if (op.opcode == nvme_cmd_kv_retrieve && r == 0 && op.value.actual_value_size > op.value.length) {
-        TR << "read retry";
+        //TR << "read retry";
         aio->pbl->clear();
         aio->bp = buffer::create_small_page_aligned(op.value.actual_value_size);
         aio->value     = aio->bp.c_str();
@@ -60,12 +60,13 @@ void aio_callback(kv_io_context &op, void *post_data)
     bool last = ioc->try_aio_wake();
     //TR << "is last = " << last << ", parent exists? " << ioc->parent ;
     if (last && ioc->parent) {
-        TR << "callback ioc = " << aio->parent << ", ioc parent = " << ioc->parent << ", calling aio_finish";
+        TR2 << "RECV: op = " << op.opcode << ", aio = " << (void*)aio << ", ioc = " << (void*)ioc << ", txc = " << ioc->parent << ", caller thread = " << aio->caller;
+        //TR << "callback ioc = " << aio->parent << ", ioc parent = " << ioc->parent << ", calling aio_finish";
         KvsStore::TransContext* txc = static_cast<KvsStore::TransContext*>(ioc->parent);
         KvsStore* store = static_cast<KvsStore*>(txc->parent);
 
         txc->aio_finish(store);
-        TR << "calling aio_finish - done";
+        //TR << "calling aio_finish - done";
     }
 }
 
@@ -89,14 +90,14 @@ kvaio_t* KvsStoreDB::_aio_write(int keyspaceid, bufferlist &bl, IoContext *ioc)
 kvaio_t* KvsStoreDB::_aio_write(int keyspaceid, void *addr, uint32_t len, IoContext *ioc)
 {
     FTRACE
-    ioc->pending_aios.push_back(kvaio_t(nvme_cmd_kv_store, keyspaceid, aio_callback, ioc, this));
+    ioc->pending_aios.push_back(new kvaio_t(nvme_cmd_kv_store, keyspaceid, aio_callback, ioc, this));
     ++ioc->num_pending;
 
-    kvaio_t& aio = ioc->pending_aios.back();
-    aio.value     = addr;
-    aio.vallength = len;
-    aio.valoffset = 0;
-    return &aio;
+    kvaio_t* aio = ioc->pending_aios.back();
+    aio->value     = addr;
+    aio->vallength = len;
+    aio->valoffset = 0;
+    return aio;
 }
 
 kvaio_t* KvsStoreDB::_syncio_write(int keyspaceid, bufferlist &bl, IoContext *ioc)
@@ -110,57 +111,57 @@ kvaio_t* KvsStoreDB::_syncio_write(int keyspaceid, bufferlist &bl, IoContext *io
 kvaio_t* KvsStoreDB::_syncio_write(int keyspaceid, void *addr, uint32_t len, IoContext *ioc)
 {
     FTRACE
-    ioc->pending_syncios.push_back(kvaio_t(nvme_cmd_kv_store, keyspaceid, aio_callback, ioc, this));
+    ioc->pending_syncios.push_back(new kvaio_t(nvme_cmd_kv_store, keyspaceid, aio_callback, ioc, this));
 
-    kvaio_t& aio = ioc->pending_syncios.back();
-    TR << "aio.ioc = " << (void*) aio.parent;
-    aio.value     = addr;
-    aio.vallength = len;
-    aio.valoffset = 0;
-    return &aio;
+    kvaio_t* aio = ioc->pending_syncios.back();
+    TR << "aio.ioc = " << (void*) aio->parent;
+    aio->value     = addr;
+    aio->vallength = len;
+    aio->valoffset = 0;
+    return aio;
 }
 
 kvaio_t* KvsStoreDB::_aio_read(int keyspaceid, uint32_t len, bufferlist *pbl, IoContext *ioc)
 {
     FTRACE
-    ioc->pending_aios.push_back(kvaio_t(nvme_cmd_kv_retrieve, keyspaceid, aio_callback, ioc, this));
+    ioc->pending_aios.push_back(new kvaio_t(nvme_cmd_kv_retrieve, keyspaceid, aio_callback, ioc, this));
     ++ioc->num_pending;
-    kvaio_t& aio = ioc->pending_aios.back();
+    kvaio_t* aio = ioc->pending_aios.back();
 
-    aio.bp = buffer::create_small_page_aligned(len);
-    aio.pbl = pbl; // out bl - needs to be cleared when retrying
+    aio->bp = buffer::create_small_page_aligned(len);
+    aio->pbl = pbl; // out bl - needs to be cleared when retrying
 
-    aio.value     = aio.bp.c_str();
-    aio.vallength = aio.bp.length();
-    aio.valoffset = 0;
+    aio->value     = aio->bp.c_str();
+    aio->vallength = aio->bp.length();
+    aio->valoffset = 0;
 
-    return &aio;
+    return aio;
 }
 
 kvaio_t* KvsStoreDB::_syncio_remove(int keyspaceid, IoContext *ioc)
 {
     FTRACE
-    ioc->pending_syncios.push_back(kvaio_t(nvme_cmd_kv_delete, keyspaceid, aio_callback, ioc, this));
+    ioc->pending_syncios.push_back(new kvaio_t(nvme_cmd_kv_delete, keyspaceid, aio_callback, ioc, this));
 
-    kvaio_t& aio = ioc->pending_syncios.back();
-    aio.value     = 0;
-    aio.vallength = 0;
-    aio.valoffset = 0;
-    return &aio;
+    kvaio_t* aio = ioc->pending_syncios.back();
+    aio->value     = 0;
+    aio->vallength = 0;
+    aio->valoffset = 0;
+    return aio;
 }
 
 
 kvaio_t* KvsStoreDB::_aio_remove(int keyspaceid, IoContext *ioc)
 {
     FTRACE
-    ioc->pending_aios.push_back(kvaio_t(nvme_cmd_kv_delete, keyspaceid, aio_callback, ioc, this));
+    ioc->pending_aios.push_back(new kvaio_t(nvme_cmd_kv_delete, keyspaceid, aio_callback, ioc, this));
     ++ioc->num_pending;
 
-    kvaio_t& aio = ioc->pending_aios.back();
-    aio.value     = 0;
-    aio.vallength = 0;
-    aio.valoffset = 0;
-    return &aio;
+    kvaio_t* aio = ioc->pending_aios.back();
+    aio->value     = 0;
+    aio->vallength = 0;
+    aio->valoffset = 0;
+    return aio;
 }
 
 void KvsStoreDB::aio_read_chunk(const ghobject_t &oid, uint16_t chunkid, uint32_t len, bufferlist &bl, IoContext *ioc)
@@ -400,7 +401,8 @@ int KvsStoreDB::aio_submit(IoContext *ioc)
         return 0;
     }
 
-    list<kvaio_t>::iterator e = ioc->running_aios.begin();
+    ioc->running_aios.clear();
+    list<kvaio_t*>::iterator e = ioc->running_aios.begin();
     ioc->running_aios.splice(e, ioc->pending_aios);
 
     int pending = ioc->num_pending.load();
@@ -409,24 +411,49 @@ int KvsStoreDB::aio_submit(IoContext *ioc)
 
     int r= 0;
 
+    std::unique_lock<std::mutex> lck(ioc->running_aio_lock);
     auto cur = ioc->running_aios.begin();
-    auto end = e;
+    auto end = ioc->running_aios.end();
 
     //TR << "aio " << (void*) &(*cur) << ", parent = " << (void*)cur->parent;
-
-
+    TR2 << "AIO SUBMIT - dry run ioc = " << (void*)ioc << ", num running = " << ioc->num_running.load();
     while (cur != end) {
-        switch (cur->opcode) {
+        kvaio_t *aio = (*cur);
+        aio->caller  = (uint64_t)pthread_self();
+        TR2 << "DRYRUN op = : " << aio->opcode << " kvaio_t = " << (void *) aio << ", aio parent = "
+            << (void *) aio->parent << ", ioc = " << (void *) ioc << ", txc = " << ioc->parent;
+        cur++;
+    }
+
+    cur = ioc->running_aios.begin();
+    end = ioc->running_aios.end();
+
+    int num =0 ;
+    TR2 << "AIO SUBMIT - run ioc = " << (void*)ioc;
+    while (cur != end) {
+        TR2 << "LOOP " << num++ << "/" << pending;
+        kvaio_t *aio = (*cur);
+        if (aio) {
+            if (aio->opcode > 200) {
+                TR2 << "ERROR AIO op contains a wrong pointer";
+                TRBACKTRACE;
+            }
+            TR2 << "SEND AIO op = : "<< aio->opcode <<  " kvaio_t = " << (void*)aio << ", aio parent = " << (void*) aio->parent << ", ioc = " << (void*)ioc << ", txc = " << ioc->parent;
+        }
+
+
+        switch (aio->opcode) {
             case nvme_cmd_kv_retrieve:
-                r = kadi.kv_retrieve_aio(cur->spaceid, cur->key, cur->keylength, cur->value, cur->valoffset, cur->vallength, { cur->cb_func,  &(*cur) });
+
+                r = kadi.kv_retrieve_aio(aio->spaceid, aio->key, aio->keylength, aio->value, aio->valoffset, aio->vallength, { aio->cb_func,  aio });
                 break;
             case nvme_cmd_kv_delete:
                 //TR << "kvdelete - " << print_kvssd_key((char *) cur->key, cur->keylength);
-                r = kadi.kv_delete_aio(cur->spaceid, cur->key, cur->keylength, { cur->cb_func,  &(*cur) });
+                r = kadi.kv_delete_aio(aio->spaceid, aio->key, aio->keylength, { aio->cb_func,  aio });
                 break;
             case nvme_cmd_kv_store:
                 //TR << "kvstore - " << print_kvssd_key((char *) cur->key, cur->keylength) << ", hash = " << ceph_str_hash_linux((const char *) cur->value, cur->vallength) << ", val length " << cur->vallength << ", addr = " << (void*)cur->value;
-                r = kadi.kv_store_aio(cur->spaceid, cur->key, cur->keylength, cur->value, cur->valoffset, cur->vallength, { cur->cb_func,  &(*cur)});
+                r = kadi.kv_store_aio(aio->spaceid, aio->key, aio->keylength, aio->value, aio->valoffset, aio->vallength, { aio->cb_func,  aio});
                 break;
         };
 
@@ -437,6 +464,8 @@ int KvsStoreDB::aio_submit(IoContext *ioc)
 
         cur++;
     }
+
+    TR2 << "AIO SUBMIT DONE - ioc = " << (void*)ioc;
 
     return r;
 }
@@ -455,20 +484,27 @@ int KvsStoreDB::syncio_submit(IoContext *ioc)
     auto cur = ioc->pending_syncios.begin();
     auto end = ioc->pending_syncios.end();
 
-    TR << "submit ioc  = " << (void*)ioc << ", ioc2 = " << (void*)cur->parent;
-    TR << "submit ioc parent = " << ioc->parent << ", ioc2 parent = " << ((IoContext*)cur->parent)->parent;
 
 
     while (cur != end) {
-        switch (cur->opcode) {
+        kvaio_t *aio = (*cur);
+        if (aio) {
+            TR2 << "SEND SYNC op = : " << aio->opcode << " aio = " << (void *) aio << ", aio parent = "
+                << (void *) aio->parent << ", ioc = " << (void *) ioc << ", txc = " << ioc->parent;
+        } else {
+            TR2 << "ERROR AIO is null";
+            TRBACKTRACE;
+        }
+
+        switch (aio->opcode) {
             case nvme_cmd_kv_retrieve:
-                r = kadi.kv_retrieve_aio(cur->spaceid, cur->key, cur->keylength, cur->value, cur->valoffset, cur->vallength, { cur->cb_func,  &(*cur) });
+                r = kadi.kv_retrieve_aio(aio->spaceid, aio->key, aio->keylength, aio->value, aio->valoffset, aio->vallength, { aio->cb_func,  aio });
                 break;
             case nvme_cmd_kv_delete:
-                r = kadi.kv_delete_aio(cur->spaceid, cur->key, cur->keylength, { cur->cb_func,  &(*cur) });
+                r = kadi.kv_delete_aio(aio->spaceid, aio->key, aio->keylength, { aio->cb_func,  aio });
                 break;
             case nvme_cmd_kv_store:
-                r = kadi.kv_store_aio(cur->spaceid, cur->key, cur->keylength, cur->value, cur->valoffset, cur->vallength, { cur->cb_func,  &(*cur)});
+                r = kadi.kv_store_aio(aio->spaceid, aio->key, aio->keylength, aio->value, aio->valoffset, aio->vallength, { aio->cb_func,  aio});
                 break;
         };
 

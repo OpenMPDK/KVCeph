@@ -654,6 +654,7 @@ public:
                 case STATE_PREPARE: return "STATE_PREPARE";
                 case STATE_AIO_SUBMITTED: return "STATE_AIO_WAIT - submitted IO are done(called by c)";
                 case STATE_AIO_DONE: return "STATE_IO_DONE - processing IO done events (called by cb)";
+                case STATE_FINALIZE: return "STATE_FINALIZE - added to the finalize queue";
                 case STATE_FINISHING: return "STATE_FINISHING - releasing resources for IO (called by cb)";
                 case STATE_DONE: return "done";
             }
@@ -684,6 +685,7 @@ public:
         explicit TransContext(void *parent_, CephContext *cct_, Collection *c,  OpSequencer *o, list<Context*> *on_commits)
                 : ch(c), osr(o), ioc( this), parent(parent_)
         {
+            TR2 << "TransContext: created. IOC = " << (void*)ioc.parent;
             if (on_commits) {
                 oncommits.swap(*on_commits);
             }

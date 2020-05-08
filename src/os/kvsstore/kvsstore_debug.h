@@ -189,7 +189,10 @@ struct FtraceObject {
 #define LOGEND ""
 
 #define FTRACE FtraceObject fobj(__FUNCTION__, __LINE__);
-#define TR FLOG << "[" << get_thread_name() << "] " << __FUNCTION__ << ":" << __LINE__ << " - "
+#define TR if (false) std::cout
+//#define TR2 if (false) std::cout
+//#define TR FLOG << "[" << get_thread_name() << "] " << __FUNCTION__ << ":" << __LINE__ << " - "
+#define TR2 FLOG << "[" << get_thread_name() << "] " << __FUNCTION__ << ":" << __LINE__ << " - "
 #define TRERR FLOG << "[" << get_thread_name() << "] " << __FUNCTION__ << ":" << __LINE__ << " - ERR "
 #define TRBACKTRACE { ostringstream oss; oss << BackTrace(1); FLOG << "[" << __FILENAME__ << ":"  << __LINE__ << "] " << "Backtrace: " << oss.str(); }
 
@@ -197,6 +200,7 @@ struct FtraceObject {
 #define TRERR FLOG << pthread_self() << "[" << __FILENAME__ << ":"  << __LINE__ << "] ERR: "
 #define FTRACE
 #define TR if (false) std::cout
+#define TR2 if (false) std::cout
 #define LOGOSD if (false) std::cout
 #define LOGEND ""
 #define TRBACKTRACE
