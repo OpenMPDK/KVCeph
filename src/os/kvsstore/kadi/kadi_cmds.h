@@ -12,6 +12,7 @@
 #include "kadi_types.h"
 #include <unordered_map>
 #include <map>
+#include <atomic>
 
 
 
@@ -26,7 +27,11 @@ class KADI {
 	int aioctx_ctxid;
 	int ksid_oplog;
     int keyspace_sorted;
+
 public:
+    //std::atomic<uint64_t> submitted_ios = {0};
+    //std::atomic<uint64_t> completed_ios = {0};
+
     typedef std::list<std::pair<kv_key *, kv_value *> >::iterator aio_iter;
 
     KADI(void *c): cct(c),nsid(0), aioctx_ctxid(0), ksid_oplog(7) { }

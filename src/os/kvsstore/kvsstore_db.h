@@ -170,9 +170,9 @@ public:
 
 public:
     KvsStoreDB(CephContext *cct_);
-    kvaio_t* _syncio_write(int keyspaceid, bufferlist &bl, IoContext *ioc);
-    kvaio_t* _syncio_write(int keyspaceid, void *addr, uint32_t len, IoContext *ioc);
-    kvaio_t* _syncio_remove(int keyspaceid, IoContext *ioc);
+    //kvaio_t* _syncio_write(int keyspaceid, bufferlist &bl, IoContext *ioc);
+    //kvaio_t* _syncio_write(int keyspaceid, void *addr, uint32_t len, IoContext *ioc);
+    //kvaio_t* _syncio_remove(int keyspaceid, IoContext *ioc);
 
     kvaio_t* _aio_write(int keyspaceid, bufferlist &bl, IoContext *ioc);
     kvaio_t* _aio_write(int keyspaceid, void *addr, uint32_t len, IoContext *ioc);
@@ -185,12 +185,12 @@ public:
 
     int  read_onode(const ghobject_t &oid, bufferlist &bl);
     void aio_read_onode(const ghobject_t &oid, bufferlist &bl, IoContext *ioc);
-    void aio_write_onode(const ghobject_t &oid, bufferlist &bl, IoContext *ioc, bool sync = true);
-    void aio_remove_onode(const ghobject_t &oid, IoContext *ioc, bool sync = true);
+    void aio_write_onode(const ghobject_t &oid, bufferlist &bl, IoContext *ioc);
+    void aio_remove_onode(const ghobject_t &oid, IoContext *ioc);
 
     void aio_read_omap( const uint64_t index, const std::string &strkey, bufferlist &bl, IoContext *ioc);
-    void aio_write_omap( uint64_t index, const std::string &strkey, bufferlist &bl, IoContext *ioc, bool sync = true);
-    void aio_remove_omap( uint64_t index, const std::string &strkey, IoContext *ioc, bool sync = true);
+    void aio_write_omap( uint64_t index, const std::string &strkey, bufferlist &bl, IoContext *ioc);
+    void aio_remove_omap( uint64_t index, const std::string &strkey, IoContext *ioc);
 
     void aio_read_journal(int index, bufferlist &bl, IoContext *ioc);
     void aio_write_journal(int index, void *addr, uint32_t len, IoContext *ioc);
@@ -206,10 +206,10 @@ public:
 
     int read_kvkey(kv_key *key, bufferlist &bl, bool sorted);
 
-    int aio_submit(IoContext *ioc);
-    int aio_submit_and_wait(IoContext *ioc);
-    int syncio_submit(IoContext *ioc);
-    int syncio_submit_and_wait(IoContext *ioc);
+    //int aio_submit(IoContext *ioc);
+    //int aio_submit_and_wait(IoContext *ioc);
+    //int syncio_submit(IoContext *ioc);
+    //int syncio_submit_and_wait(IoContext *ioc);
 
 
 

@@ -60,33 +60,26 @@ class cmd_ctx_manager {
 	std::condition_variable cmdctx_cond;
 	std::vector<aio_cmd_ctx *>   free_cmdctxs;
 	std::map<int, aio_cmd_ctx *> pending_cmdctxs;
+	uint64_t index;
 public:
-	cmd_ctx_manager() {}
+	cmd_ctx_manager(): index(0) {}
 
-	void init(const int qdepth) {
-	    for (int i =0  ; i < qdepth; i++) {
-	    	aio_cmd_ctx *ctx = (aio_cmd_ctx *)calloc(1, sizeof(aio_cmd_ctx));
-	        ctx->index = i;
-	        free_cmdctxs.push_back(ctx);
-	    }
-	}
-
-	void close() {
-        free_cmdctxs.clear();
-        pending_cmdctxs.clear();
+	uint64_t get_cmd_index() {
+	    uint64_t r = index++;
+	    if (index == UINT64_MAX) { index = 0; }
+	    return r;
 	}
 
 	aio_cmd_ctx* get_cmd_ctx(const kv_cb& cb);
 
-
-    inline aio_cmd_ctx* get_pending_cmdctx(int reqid) {
+    inline aio_cmd_ctx* get_pending_cmdctx(uint64_t reqid) {
         std::unique_lock<std::mutex> lock (cmdctx_lock);
         auto p = pending_cmdctxs.find(reqid);
         if (p == pending_cmdctxs.end()) {
             return 0;
         }
         else {
-            aio_cmd_ctx *ctx = p->second;
+            aio_cmd_ctx* ctx = p->second;
             pending_cmdctxs.erase(p);
             return ctx;
         }
@@ -94,11 +87,7 @@ public:
 
     void release_cmd_ctx(aio_cmd_ctx *p)
     {
-        std::lock_guard<std::mutex> lock (cmdctx_lock);
-
-        pending_cmdctxs.erase(p->index);
-        free_cmdctxs.push_back(p);
-        cmdctx_cond.notify_one();
+        delete p;
     }
 };
 

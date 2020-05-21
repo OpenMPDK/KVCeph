@@ -221,24 +221,14 @@ bool iterbuf_reader::nextkey(int *optype, void **key, int *length)
 }
 
 aio_cmd_ctx* cmd_ctx_manager::get_cmd_ctx(const kv_cb& cb) {
-	std::unique_lock<std::mutex> lock (cmdctx_lock);
-
-	while (free_cmdctxs.empty()) {
-		derr << "aio cmd queue is empty. wait..." << dendl;
-		if (cmdctx_cond.wait_for(lock, std::chrono::seconds(5)) == std::cv_status::timeout) {
-			derr << "max queue depth has reached. wait..." << dendl;
-		} else {
-			derr << "found" << dendl;
-		}
-	}
-
-	aio_cmd_ctx *p = free_cmdctxs.back();
-	free_cmdctxs.pop_back();
-
-	p->post_fn   = cb.post_fn;
-	p->post_data = cb.private_data;
-
-	pending_cmdctxs.insert(std::make_pair(p->index, p));
+    aio_cmd_ctx *p = new aio_cmd_ctx();
+    p->post_fn   = cb.post_fn;
+    p->post_data = cb.private_data;
+    {
+        std::unique_lock<std::mutex> lock (cmdctx_lock);
+        p->index     = get_cmd_index();
+        pending_cmdctxs.insert(std::make_pair(p->index, p));
+    }
 	return p;
 }
 

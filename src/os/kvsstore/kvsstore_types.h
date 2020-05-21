@@ -672,26 +672,39 @@ public:
 
         list<Context*> 		oncommits;  		 ///< more commit completions
         list<CollectionRef> removed_collections; ///< colls we removed
-        std::vector<bufferlist> omap_data;       /// temporary write buffer for omap
-        std::vector<bufferlist> coll_data;       /// temporary write buffer for collection
+        std::vector<bufferlist*> omap_data;       /// temporary write buffer for omap
+        std::vector<bufferlist*> coll_data;       /// temporary write buffer for collection
 
-        IoContext ioc;	// I/O operations
+        IoContext *ioc;	// I/O operations
 
-        bool had_ios = false;
         uint64_t seq = 0;
 
         uint64_t last_nid = 0;     ///< if non-zero, highest new nid we allocated
         void *parent;
         explicit TransContext(void *parent_, CephContext *cct_, Collection *c,  OpSequencer *o, list<Context*> *on_commits)
-                : ch(c), osr(o), ioc( this,__func__), parent(parent_)
+                : ch(c), osr(o), parent(parent_)
         {
-            TR2 << "TransContext: created. IOC = " << (void*)ioc.parent;
+            ioc = new IoContext(this,__func__);
+            TR2 << "TransContext: created. IOC = " << (void*)ioc->parent;
             if (on_commits) {
                 oncommits.swap(*on_commits);
             }
         }
 
-        ~TransContext() {}
+        ~TransContext() {
+            //TR3 << "delete TransContext";
+            for (bufferlist* list : omap_data) {
+                delete list;
+            }
+            for (bufferlist* list : coll_data) {
+                delete list;
+            }
+            //TR3 << "delete TransContext - deleted bufferlists";
+
+            delete ioc;
+            //TR3 << "delete IoContext done";
+
+        }
 
         void write_onode(OnodeRef &o) {
             onodes.insert(o);
@@ -747,9 +760,7 @@ public:
 
         void queue_new(TransContext *txc) {
             FTRACE
-            TR << "try getting a qlock";
-            std::lock_guard l(qlock);
-            TR << "qlock acquired";
+            std::lock_guard<std::mutex> l(qlock);
             txc->seq = ++last_seq;
             q.push_back(*txc);
             TR << "queue new " <<  (void*)txc << " - queue size = " << q.size();
@@ -757,18 +768,14 @@ public:
 
         void drain() {
             FTRACE
-            TR << "try getting a qlock";
-            std::unique_lock l(qlock);
-            TR << "qlock acquired";
+            std::unique_lock<std::mutex> l(qlock);
             while (!q.empty())
                 qcond.wait(l);
         }
 
         void drain_preceding(TransContext *txc) {
             FTRACE
-            TR << "try getting a qlock";
-            std::unique_lock l(qlock);
-            TR << "qlock acquired";
+            std::unique_lock<std::mutex> l(qlock);
             while (&q.front() != txc)
                 qcond.wait(l);
         }
@@ -786,9 +793,7 @@ public:
 
         void flush() {
             FTRACE
-            TR << "try getting a qlock";
-            std::unique_lock l(qlock);
-            TR << "qlock acquired";
+            std::unique_lock<std::mutex> l(qlock);
             while (true) {
                 // set flag before the check because the condition
                 // may become true outside qlock, and we need to make
@@ -805,9 +810,7 @@ public:
 
         void flush_all_but_last() {
             FTRACE
-            TR << "try getting a qlock";
-            std::unique_lock l(qlock);
-            TR << "qlock acquired";
+            std::unique_lock<std::mutex> l(qlock);
             assert (q.size() >= 1);
             while (true) {
                 // set flag before the check because the condition
@@ -833,9 +836,7 @@ public:
 
         bool flush_commit(Context *c) {
             FTRACE
-            TR << "try getting a qlock";
-            std::lock_guard l(qlock);
-            TR << "qlock acquired";
+            std::lock_guard<std::mutex> l(qlock);
             if (q.empty()) {
                 return true;
             }
@@ -853,7 +854,6 @@ public:
 
         ~OpSequencer() {
             FTRACE
-            TR << "osr - destroy" << this;
             ceph_assert(q.empty());
         }
     };

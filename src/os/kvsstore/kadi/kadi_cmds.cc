@@ -22,6 +22,7 @@
 #include <time.h>
 #include <atomic>
 #include <vector>
+
 #include <unordered_map>
 #include "../kvsstore_debug.h"
 #include "include/ceph_hash.h"
@@ -174,7 +175,7 @@ int KADI::open(const std::string &devpath, int keyspace_sorted_) {
         return -1;
     }
 
-    cmd_ctx_mgr.init(this->qdepth);
+//    cmd_ctx_mgr.init(this->qdepth);
 
     aioctx_ctxid   = ioevent_mgr.init(this->fd);
     if (aioctx_ctxid == -1) return aioctx_ctxid;
@@ -188,7 +189,7 @@ int KADI::close() {
     	ioevent_mgr.close(this->fd);
         ::close(fd);
 
-        cmd_ctx_mgr.close();
+        //cmd_ctx_mgr.close();
         derr << ">> KV device is closed: fd " << fd << dendl;
         fd = -1;
 
@@ -1192,9 +1193,11 @@ bool KADI::exist(void *key, int length, int spaceid)
 
 int KADI::poll_completion(uint32_t &num_events, uint32_t timeout_us) {
 
-	int num_finished_ios = std::min(ioevent_mgr.poll(timeout_us), MAX_AIO_EVENTS);
+	//int num_finished_ios = std::min(ioevent_mgr.poll(timeout_us), MAX_AIO_EVENTS);
 	int ret = 0;
 	int events = 0;
+    int num_finished_ios = MAX_AIO_EVENTS;
+
     while (num_finished_ios) {
         struct nvme_aioevents aioevents;
         aioevents.nr = num_finished_ios;
@@ -1204,15 +1207,21 @@ int KADI::poll_completion(uint32_t &num_events, uint32_t timeout_us) {
             fprintf(stderr, "fail to read IOEVETS \n");
             ret = -1; goto exit;
         }
+
+        if (aioevents.nr == 0) break;
+
+        //TR3 << "completed " << aioevents.nr << " IOs, total " << completed_ios.load() << "/" << submitted_ios.load();
         for (int i = 0; i < aioevents.nr; i++) {
             const struct nvme_aioevent &event  = aioevents.events[i];
             aio_cmd_ctx *ioctx = cmd_ctx_mgr.get_pending_cmdctx(event.reqid);
             if (ioctx == 0) {
+                exit(1);
             	ret = KVS_ERR_INDEX; goto exit;
             }
 
 			kv_io_context ioresult;
 			fill_ioresult(*ioctx, event, ioresult);
+
 			ioctx->call_post_fn(ioresult);
 			cmd_ctx_mgr.release_cmd_ctx(ioctx);
 			events++;

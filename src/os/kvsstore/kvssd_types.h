@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 #include <boost/container/small_vector.hpp>
+#include "kadi/kadi_cmds.h"
 #include "kadi/kadi_types.h"
 #include "include/buffer.h"
 #include "kvsstore_debug.h"
@@ -66,67 +67,132 @@ private:
     int r = 0;
     int keyspace;
 
+    std::list<kvaio_t*> running_aios;    ///< submitting or submitted
+    int num_running = 0;
+    int num_submitted = 0;
+
+    atomic_bool submitting;
+    bool issync;
 public:
     void *parent;
     std::string loc;
 
-    std::mutex running_aio_lock;
-    std::list<kvaio_t*> pending_syncios; ///< objects to be synchronously written (no lock contention)
+    //std::list<kvaio_t*> pending_syncios; ///< objects to be synchronously written (no lock contention)
     std::list<kvaio_t*> pending_aios;    ///< not yet submitted
-    std::list<kvaio_t*> running_aios;    ///< submitting or submitted
 
-    std::atomic_int num_pending = {0};
-    std::atomic_int num_running = {0};
+
 
     explicit IoContext(void *parent_, const char *fname)
-    : parent(parent_), loc(fname) {
-        //add_live_object(this);
-    }
+    : num_running(0), submitting(false), issync(false), parent(parent_), loc(fname) {}
 
     // no copying
     IoContext(const IoContext& other) = delete;
     IoContext &operator=(const IoContext& other) = delete;
     ~IoContext() {
-        //TR2 << "IOContext destroyed: ptr = " << (void*)this;
-        //std::ostringstream oss; oss << BackTrace(1);
-        //remove_live_object(this, loc);
+        release_running_aios();
     }
 public:
 
     bool has_pending_aios() {
-        return num_pending.load();
+        std::unique_lock<std::mutex> l(lock);
+        return !pending_aios.empty();
     }
 
     void aio_wait() {
-        std::unique_lock l(lock);
-
-        //TR << "Pending IOs :" << num_running.load();
-        while (num_running.load() > 0) {
+        std::unique_lock<std::mutex> l(lock);
+        if (num_running > 0) {
             cond.wait(l);
         }
-        //TR << "IO Finished";
+    }
+
+    bool _prepare_running_aios() {
+        std::unique_lock<std::mutex> l(lock);
+        if (!pending_aios.empty()) {
+            running_aios.splice(running_aios.begin(), pending_aios);
+            num_running = running_aios.size();
+            return (num_running > 0);
+        }
+        return false;
+    }
+
+    int _submit_aios(KADI* kadi, bool debug) {
+        int r = 0;
+        submitting = true;
+        for (kvaio_t *aio : running_aios) {
+            r = -1;
+            switch (aio->opcode) {
+                case nvme_cmd_kv_retrieve:
+                    //if (debug) TR3 << "submit ioc = " << (void*)this << ", op = " << aio->opcode << ", aio key addr = " << (void*)aio->key  << " ," << print_kvssd_key(aio->key, aio->keylength) << ", post data" << (void*)aio << ", ioc = " << (void*)aio->parent;
+                    r = kadi->kv_retrieve_aio(aio->spaceid, aio->key, aio->keylength, aio->value, aio->valoffset, aio->vallength, { aio->cb_func,  aio });
+                    break;
+                case nvme_cmd_kv_delete:
+                    //if (debug) TR3 << "submit ioc = " << (void*)this << ", op = " << aio->opcode << ", aio key addr = " << (void*)aio->key  << " ," << print_kvssd_key(aio->key, aio->keylength) << ", post data" << (void*)aio << ", ioc = " << (void*)aio->parent;
+                    r = kadi->kv_delete_aio(aio->spaceid, aio->key, aio->keylength, { aio->cb_func,  aio });
+                    break;
+                case nvme_cmd_kv_store:
+                    //if (debug) TR3 << "submit ioc = " << (void*)this << ", op = " << aio->opcode << ", aio key addr = " << (void*)aio->key  << " ," << print_kvssd_key(aio->key, aio->keylength) << ", post data" << (void*)aio << ", ioc = " << (void*)aio->parent;
+                    r = kadi->kv_store_aio(aio->spaceid, aio->key, aio->keylength, aio->value, aio->valoffset, aio->vallength, { aio->cb_func,  aio});
+                    break;
+            };
+
+            if (r != 0) {
+                ceph_abort_msg("IO error in aio_submit");
+            }
+        }
+        submitting = false;
+        return r;
+    }
+
+    int aio_submit(KADI* kadi, bool _issync = false) {
+        issync = _issync;
+        if (_prepare_running_aios()) {
+            int r= _submit_aios(kadi, false);
+            return r;
+        }
+        return -1;
+    }
+
+    int aio_submit_and_wait(KADI* kadi, const char *caller) {
+        FTRACE
+        int r = aio_submit(kadi, true);
+        if (r != 0) {
+            return r;
+        }
+
+        aio_wait();
+
+        return get_return_value();
     }
 
     void release_running_aios() {
-        std::unique_lock<std::mutex> lck(running_aio_lock);
-        for (const kvaio_t *p : running_aios) {
-            delete p;
+        FTRACE
+        while (submitting.load()) {
+            usleep(1);
         }
-        running_aios.clear();
+        {
+            std::unique_lock<std::mutex> l(lock);
+            for (kvaio_t *p : running_aios) {
+                delete p;
+            }
+            running_aios.clear();
+        }
     }
+
     uint64_t get_num_ios() const { return 0; }
 
-    bool try_aio_wake() {
+    bool mark_io_complete() {
+        FTRACE
         assert(num_running >= 1);
 
-        std::lock_guard l(lock);
-        if (num_running.fetch_sub(1) == 1) {
+        std::unique_lock<std::mutex> l(lock);
+        num_running--;
 
-            // we might have some pending IOs submitted after the check
-            // as there is no lock protection for aio_submit.
-            // Hence we might have false conditional trigger.
-            // aio_wait has to handle that hence do not care here.
-            cond.notify_all();
+        //TR3 << "io finished: ioc = " <<  (void*) this << ", remaining " << num_running;
+        if (num_running == 0) {
+            if (issync) {
+                cond.notify_all();
+                return false;
+            }
             return true;
         }
         return false;

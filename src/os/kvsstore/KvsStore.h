@@ -172,9 +172,6 @@ public:
     void _txc_finish_io(TransContext *txc);
     void _txc_finish_writes(TransContext *txc);
     void _txc_finish(TransContext *txc);
-    void _txc_release_alloc(TransContext *txc);
-    void _txc_apply_kv(TransContext *txc);
-    void _txc_aio_submit(TransContext *txc);
     int _txc_write_nodes(TransContext *txc);
 
 public:
@@ -195,7 +192,7 @@ public:
     /// Internal Threads for KvsStore
     /// =========================================================
 
-    bool _check_db();
+    //bool _check_db();
     bool _check_onode_validity(kvsstore_onode_t &ori_onode, bufferlist&bl);
     void _kv_callback_thread();
     void _kv_finalize_thread();
