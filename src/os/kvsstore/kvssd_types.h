@@ -122,15 +122,15 @@ public:
             r = -1;
             switch (aio->opcode) {
                 case nvme_cmd_kv_retrieve:
-                    //if (debug) TR3 << "submit ioc = " << (void*)this << ", op = " << aio->opcode << ", aio key addr = " << (void*)aio->key  << " ," << print_kvssd_key(aio->key, aio->keylength) << ", post data" << (void*)aio << ", ioc = " << (void*)aio->parent;
+                    //if (debug || 1) TR3 << "submit ioc = " << (void*)this << ", op = " << aio->opcode << ", aio key addr = " << (void*)aio->key  << " ," << print_kvssd_key(aio->key, aio->keylength) << ", post data" << (void*)aio << ", ioc = " << (void*)aio->parent;
                     r = kadi->kv_retrieve_aio(aio->spaceid, aio->key, aio->keylength, aio->value, aio->valoffset, aio->vallength, { aio->cb_func,  aio });
                     break;
                 case nvme_cmd_kv_delete:
-                    //if (debug) TR3 << "submit ioc = " << (void*)this << ", op = " << aio->opcode << ", aio key addr = " << (void*)aio->key  << " ," << print_kvssd_key(aio->key, aio->keylength) << ", post data" << (void*)aio << ", ioc = " << (void*)aio->parent;
+                    //if (debug || 1) TR3 << "submit ioc = " << (void*)this << ", op = " << aio->opcode << ", aio key addr = " << (void*)aio->key  << " ," << print_kvssd_key(aio->key, aio->keylength) << ", post data" << (void*)aio << ", ioc = " << (void*)aio->parent;
                     r = kadi->kv_delete_aio(aio->spaceid, aio->key, aio->keylength, { aio->cb_func,  aio });
                     break;
                 case nvme_cmd_kv_store:
-                    //if (debug) TR3 << "submit ioc = " << (void*)this << ", op = " << aio->opcode << ", aio key addr = " << (void*)aio->key  << " ," << print_kvssd_key(aio->key, aio->keylength) << ", post data" << (void*)aio << ", ioc = " << (void*)aio->parent;
+                    //if (debug || 1) TR3 << "submit ioc = " << (void*)this << ", op = " << aio->opcode << ", aio key addr = " << (void*)aio->key  << " ," << print_kvssd_key(aio->key, aio->keylength) << ", post data" << (void*)aio << ", ioc = " << (void*)aio->parent;
                     r = kadi->kv_store_aio(aio->spaceid, aio->key, aio->keylength, aio->value, aio->valoffset, aio->vallength, { aio->cb_func,  aio});
                     break;
             };

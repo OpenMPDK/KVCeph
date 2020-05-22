@@ -607,7 +607,7 @@ bool KvsStore::exists(CollectionHandle &c_, const ghobject_t &oid) {
 int KvsStore::read(CollectionHandle &c_, const ghobject_t &oid, uint64_t offset,
                    size_t length, bufferlist &bl, uint32_t op_flags) {
     FTRACE
-    //TR << "read: oid " << oid << ", offset " << offset << ", length " << length ;
+    TR3 << "read: oid " << oid << ", offset " << offset << ", length " << length ;
 
     Collection *c = static_cast<Collection*>(c_.get());
 
@@ -657,9 +657,11 @@ int KvsStore::_do_read_chunks_async(OnodeRef &o, ready_regions_t &ready_regions,
 }
 
 int KvsStore::_do_read(Collection *c,OnodeRef o,uint64_t offset,size_t length,bufferlist& bl,uint32_t op_flags, uint64_t retry_count) {
+    FTRACE
     int r = 0;
     bl.clear();
 
+    TR3 << "read oid = " << o->oid << ", off = " << offset << ", len = " << length << ", object size = " << o->onode.size;
     if (offset >= o->onode.size) {
         return r;
     }
@@ -670,14 +672,21 @@ int KvsStore::_do_read(Collection *c,OnodeRef o,uint64_t offset,size_t length,bu
     ready_regions_t ready_regions;
     chunk2read_t chunk2read;
 
+    TR3 << "read cache oid = " << o->oid;
+
     _read_cache(c->cache, o, offset, length, 0, ready_regions, chunk2read);
 
     if (chunk2read.size()) {
+        TR3 << "read from KVSSD oid = " << o->oid ;
         r = _do_read_chunks_async(o, ready_regions, chunk2read, c->cache);
         if (r != 0) return r;
     }
 
+
+
     _generate_read_result_bl(o, offset, length, ready_regions, bl);
+
+    TR3 << "generate read result oid = " << o->oid << ", final length = " << bl.length();
 
     r = bl.length();
 
@@ -690,6 +699,7 @@ int KvsStore::_prepare_read_chunk_ioc(const ghobject_t &oid, ready_regions_t& re
     int r = 0;
     for (const uint16_t &chunkid : chunk2read) {
         bufferlist &bl = ready_regions[chunkid];
+        TR3 << "Read Chunk: id = " << chunkid;
         db.aio_read_chunk(oid, chunkid, KVS_OBJECT_SPLIT_SIZE, bl, ioc);
     }
     return r;
@@ -1265,6 +1275,7 @@ int KvsStore::_write(TransContext *txc, CollectionRef &c, OnodeRef &o,
     } else {
         _assign_nid(txc, o);
         bufferlist::iterator p = bl.begin();
+        TR3 << "_write: length = " << length << ", bl.length = " << bl.length();
         r = _do_write(txc, c, o, offset, length, &p);
         txc->write_onode(o);
     }
@@ -1290,7 +1301,7 @@ int KvsStore::_do_write_read_chunks_if_needed(CollectionRef& c, OnodeRef &o, con
     }
 
     if (offset > 0) {
-        if (object_length >= offset && object_length != 0) {
+        if (object_length > offset && object_length != 0) {
             head_off = p2align(offset, chunksize);
             if (tail_off == head_off) tail_off = -1;
         }
@@ -1307,9 +1318,11 @@ int KvsStore::_do_write_read_chunks_if_needed(CollectionRef& c, OnodeRef &o, con
 
                 if (chunk_soff < object_length) {
                     //std::cout << "issue zero read: chunk off " << chunk_soff  << std::endl;
+                    TR3 << "chunk to read: index = " << chunk_soff / chunksize;
                     uchunk2read.insert(chunk_soff / chunksize);
                 }
 
+                TR3 << "zero regions: off" << pad_soff << ", len = " << pad_len;
                 zeroregions.push_back(std::make_pair(pad_soff, pad_len));
 
                 pad_soff        += pad_len;
@@ -1342,7 +1355,7 @@ void KvsStore::_do_write_pad_zeros(ready_regions_t &readyregions, zero_regions_t
             bufferptr p = buffer::create_small_page_aligned(chunksize);
             bl.append(std::move(p));
         }
-
+        TR3 << "pad zero: off " <<p_off << ", length = " <<  p.second;
         bl.zero(p_off, p.second);
         //std::cout << " zero: chunk offset " << c_off << " start offset " << p_off << " len " << p.second << " " << print_chunk(c_off, readyregions, chunksize)<< std::endl;
     }
@@ -1353,6 +1366,8 @@ void KvsStore::_do_write_pad_zeros(ready_regions_t &readyregions, zero_regions_t
 int KvsStore::_do_write(TransContext *txc, CollectionRef& c, OnodeRef &o,
         uint64_t offset, uint64_t length, bufferlist::iterator* blp)
 {
+    FTRACE
+    TR3 << "begin - before: onode size " << o->onode.size << ", off " << offset << ", len " << length;
     if (length == 0) {
         return 0;
     }
@@ -1382,7 +1397,7 @@ int KvsStore::_do_write(TransContext *txc, CollectionRef& c, OnodeRef &o,
         uint64_t b_remains = chunksize - b_off;
         uint64_t to_write  = std::min(b_remains, length);
 
-        //TR << "send write : " << o->oid  << " 4 chunk offset " << c_off << " start offset " << b_off << " len " << to_write  ;
+        TR3 << "send write : " << o->oid  << " chunk offset " << c_off << " start offset " << b_off << " len " << to_write  ;
 
         bufferlist &bl = ready_regions[c_off];
         if (bl.length() == 0) {
@@ -1390,9 +1405,12 @@ int KvsStore::_do_write(TransContext *txc, CollectionRef& c, OnodeRef &o,
             bl.append(std::move(p));
         }
 
+        TR3 << "write buffer length = " << bl.length() << ", to_wrtie = " << to_write ;
+
         if (blp) {
             bufferlist t;
             blp->copy(to_write, t);
+            TR3 << "copy in: boff " << b_off << ", to_write " << to_write  << ", input length = " << t.length() ;
             bl.copy_in(b_off, to_write, t);
         } else {
             bl.zero(b_off, to_write);
@@ -1400,6 +1418,7 @@ int KvsStore::_do_write(TransContext *txc, CollectionRef& c, OnodeRef &o,
 
         // buffer cache write
 
+        TR3 << "update buffer cache";
 
         o->bc.write(c->cache, txc->seq, offset, bl, 0);
 
@@ -1410,7 +1429,7 @@ int KvsStore::_do_write(TransContext *txc, CollectionRef& c, OnodeRef &o,
         sum += to_write;
     }
 
-
+    TR3 << "Sending IOs to KVSSD";
     // send write to KVSSD
     void *buf_addr;
     uint64_t buf_len;
@@ -1423,6 +1442,8 @@ int KvsStore::_do_write(TransContext *txc, CollectionRef& c, OnodeRef &o,
         o->bc.get_buffer_address(c->cache, c_off, &buf_addr, &buf_len);
         to_write = std::min(sum, buf_len);
 
+        TR3 << "AIO write: chunk " << chunkid << ", to_write " << to_write  ;
+
         db.aio_write_chunk(o->oid, chunkid, buf_addr, to_write, txc->ioc);
 
         sum   -= to_write;
@@ -1433,6 +1454,7 @@ int KvsStore::_do_write(TransContext *txc, CollectionRef& c, OnodeRef &o,
     if (offset > o->onode.size) {
         o->onode.size = offset;
     }
+    TR3 << "_do_write finished" ;
 
     return 0;
 }
@@ -2124,7 +2146,7 @@ class KvsStore::OmapIteratorImpl : public ObjectMap::ObjectMapIteratorImpl {
     KvsStore *store;
     CollectionRef c;
     OnodeRef o;
-    map<string,bufferlist> omap;
+    //map<string,bufferlist> omap;
     set<std::string>::iterator it;
 public:
     OmapIteratorImpl(KvsStore *store_, CollectionRef c, OnodeRef o)
@@ -2644,6 +2666,7 @@ int KvsStore::_collection_list(Collection *c, const ghobject_t &start,
                     set_next = true;
                     break;
                 }
+                TR3 << "collection_list: found " << oid;
                 ls->push_back(oid);
             }
             it->next();
@@ -2963,7 +2986,7 @@ void KvsStore::_kv_index_thread() {
     // load pages from the AOL
     static double index_interval_us = 1000000.0; // 1 second
     while(true) {
-        db.compact();
+        //db.compact();
 
         {
             std::unique_lock l (kv_lock );

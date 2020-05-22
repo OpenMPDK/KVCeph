@@ -685,7 +685,7 @@ public:
                 : ch(c), osr(o), parent(parent_)
         {
             ioc = new IoContext(this,__func__);
-            TR2 << "TransContext: created. IOC = " << (void*)ioc->parent;
+
             if (on_commits) {
                 oncommits.swap(*on_commits);
             }

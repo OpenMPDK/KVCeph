@@ -24,7 +24,7 @@
 
 #define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 
-//#define ENABLE_FTRACE
+#define ENABLE_FTRACE
 //#define ENABLE_FUNCTION_TRACE
 //#define ENABLE_IOTRACE
 //#define ENABLE_IOTRACE_SUBMIT
@@ -190,9 +190,13 @@ struct FtraceObject {
 
 #define FTRACE FtraceObject fobj(__FUNCTION__, __LINE__);
 #define TR if (false) std::cout
-#define TR2 if (false) std::cout
 //#define TR FLOG << "[" << get_thread_name() << "] " << __FUNCTION__ << ":" << __LINE__ << " - "
-#define TR3 FLOG << "[" << get_thread_name() << "] " << __FUNCTION__ << ":" << __LINE__ << " - "
+
+#define TR2 if (false) std::cout
+
+#define TR3 if (false) std::cout
+//#define TR3 FLOG << "[" << get_thread_name() << "] " << __FUNCTION__ << ":" << __LINE__ << " - "
+
 #define TRERR FLOG << "[" << get_thread_name() << "] " << __FUNCTION__ << ":" << __LINE__ << " - ERR "
 #define TRBACKTRACE { ostringstream oss; oss << BackTrace(1); FLOG << "[" << __FILENAME__ << ":"  << __LINE__ << "] " << "Backtrace: " << oss.str(); }
 
@@ -280,7 +284,7 @@ inline void print_value(int r, int opcode, void *key, unsigned keylen, void *dat
     if(opcode != -1) {
         header = "[IO] ";
     };
-    TR << header << type << " " << cmd << "- ret = " << r  << ", key " << keystr << ss.str();
+    TR3 << header << type << " " << cmd << "- ret = " << r  << ", key " << keystr << ss.str();
 }
 
 #include <set>
