@@ -25,7 +25,7 @@
 
 #include <unordered_map>
 #include "../kvsstore_debug.h"
-#include "include/ceph_hash.h"
+
 using namespace std;
 
 #undef dout_prefix
@@ -225,20 +225,7 @@ int KADI::kv_store_sync(uint8_t space_id, kv_key *key, kv_value *value) {
     }
 
     int ret =ioctl(fd, NVME_IOCTL_IO_KV_CMD, &cmd);
-#ifdef ENABLE_IOTRACE
-    std::string itermsg = (cmd.cdw4 == OPTION_NOLOGGING)? "NOAOL":"AOL";
-    if (ret == 0) {
-        TRIO << "<kv_store_sync> " << print_kvssd_key(std::string((const char*)key->key, key->length))
-             << " space_id = " << space_id
-           << ", value = " << value->value << ", value offset = " << value->offset << ", value length = " << value->length << ", LOG? " << itermsg << ", hash " << ceph_str_hash_linux((const char*)value->value, value->length) << " OK" ;
 
-    } else {
-        TR << "<kv_store_sync> " << print_kvssd_key(std::string((const char*)key->key, key->length))
-           << ", value = " << value->value << ", value offset = " << value->offset << ", value length = " << value->length
-           << " space_id = " << space_id
-           << ", retcode = " << ret << ", FAILED" ;
-    }
-#endif
     if (ret < 0) {
         return -1;
     }
@@ -696,15 +683,9 @@ int KADI::iter_open(kv_iter_context *iter_handle, int space_id)
     cmd.cdw13 = iter_handle->bitmask;
 
     int ret = ioctl(fd, NVME_IOCTL_IO_KV_CMD, &cmd);
-#ifdef ENABLE_IOTRACE
-    if (ret == 0) {
-        TRIO << "<ITER_OPEN>  OK" ;
-    } else {
-        TR << "<ITER_OPEN> , retcode = " << ret << ", FAILED" ;
-    }
-#endif
+
     if (ret < 0) {
-    	cout << "open failed " << ret << endl;
+    	std::cout << "iter open failed: " << ret << endl;
         return -1;
     }
 
@@ -736,42 +717,34 @@ int KADI::iter_close(kv_iter_context *iter_handle, int space_id) {
     return cmd.status;
 }
 
-#if 0
-int KADI::iter_read(kv_iter_context *iter_handle, int space_id) {
+int KADI::iter_read(int space_id, unsigned char handle, void *buf, uint32_t buflen, int &byteswritten, bool &end) {
     struct nvme_passthru_kv_cmd cmd;
     memset(&cmd, 0, sizeof(struct nvme_passthru_kv_cmd));
     cmd.opcode = nvme_cmd_kv_iter_read;
     cmd.nsid = nsid;
     cmd.cdw3 = space_id;
-    cmd.cdw5 = iter_handle->handle;
-    cmd.data_addr = (__u64)iter_handle->buf;
-    cmd.data_length = iter_handle->buflen;
+    cmd.cdw5 = handle;
+    cmd.data_addr = (__u64)buf;
+    cmd.data_length = buflen;
 
     int ret = ioctl(fd, NVME_IOCTL_IO_KV_CMD, &cmd);
-#ifdef ENABLE_IOTRACE
-    if (ret == 0) {
-        TRIO << "<ITER_READ> , length = " << iter_handle->byteswritten << ", OK" ;
-    } else {
-        TR << "<ITER_READ> , retcode = " << ret << ", FAILED" ;
-    }
-#endif
+
     if (ret < 0) { return -1; }
 
-    iter_handle->byteswritten = cmd.result & 0xffff;
-    if (iter_handle->byteswritten > iter_handle->buflen) {
-    	derr <<" # of read bytes > buffer length" << dendl;
-    	return -1;
+    byteswritten = cmd.result & 0xffff;
+    if (byteswritten > (int)buflen) {
+        return -1;
     }
 
     if (cmd.status == 0x0393) { /* scan finished, but data is valid */
-        iter_handle->end = true;
+        end = true;
+        cmd.status =0;
     }
     else
-        iter_handle->end = false;
+        end = false;
 
     return cmd.status;
 }
-#endif
 
 int KADI::iter_read_aio(int space_id, unsigned char handle, void *buf, uint32_t buflen, const kv_cb& cb) {
 
@@ -830,7 +803,7 @@ void oplogpage_callback(kv_io_context &op, void* private_data)
 	ctx->byteswritten = op.value.length;
 
     if (ctx->parent) {
-        TR << "fire, read bytes = " << op.value.length << ", ret = " << op.retcode;
+        //TR << "fire, read bytes = " << op.value.length << ", ret = " << op.retcode;
         ((KvsAioContext<oplog_page>*)ctx->parent)->fire_event(ctx);
     }
 
@@ -845,7 +818,7 @@ int KADI::read_oplogpage_dir(struct oplog_info &info)
     ctx.prefix = info.prefix;
     ctx.bitmask = 0xffffffff;
 
-    r = retrieve_oplogpage_dir(&ctx, info);	// async
+    r = retrieve_oplogpage_dir_sync(&ctx, info);	// async
     if (r != 0) return r;
 
     for (const auto &p: info.oplogpage_dir) {
@@ -857,6 +830,33 @@ int KADI::read_oplogpage_dir(struct oplog_info &info)
 
     return r;
     // oplog_keys now contain keys, buflist contains the buffers that have keys
+}
+
+
+int KADI::retrieve_oplogpage_dir_sync(kv_iter_context *iter_ctx, struct oplog_info &info)
+{
+    FTRACE
+    int r = iter_open(iter_ctx, info.spaceid);
+    if (r != 0) return r;
+
+    int id = 0;
+    bool end = false;
+
+    while (!end) {
+            oplog_page *sub_iter_ctx = new oplog_page(id++, iter_ctx->handle, ITER_BUFSIZE, 0);
+
+            r = iter_read(info.spaceid, iter_ctx->handle, sub_iter_ctx->buf, sub_iter_ctx->buflen, sub_iter_ctx->byteswritten, end );
+            if (r != 0) { delete sub_iter_ctx; goto error_exit; }
+
+            info.oplogpage_dir.push_back(sub_iter_ctx);
+    }
+
+
+error_exit:
+
+    if (iter_ctx) iter_close(iter_ctx, info.spaceid);
+
+    return r;
 }
 
 int KADI::retrieve_oplogpage_dir(kv_iter_context *iter_ctx, struct oplog_info &info)
@@ -873,7 +873,7 @@ int KADI::retrieve_oplogpage_dir(kv_iter_context *iter_ctx, struct oplog_info &i
     int id = 0;
     do {
         if (!finished) {
-            for (size_t i =0 ; i < qdepth; i++) {
+            while (sent < qdepth) {
                 oplog_page *sub_iter_ctx = new oplog_page(id++, iter_ctx->handle, ITER_BUFSIZE, &iter_aioctx);
 
                 r = iter_read_aio(info.spaceid, iter_ctx->handle, sub_iter_ctx->buf, sub_iter_ctx->buflen, { iter_callback, sub_iter_ctx } );
@@ -906,7 +906,7 @@ int KADI::retrieve_oplogpage_dir(kv_iter_context *iter_ctx, struct oplog_info &i
 
 error_exit:
 
-    if (iter_ctx) r = iter_close(iter_ctx, info.spaceid);
+    if (iter_ctx) iter_close(iter_ctx, info.spaceid);
 
     return r;
 }
@@ -927,7 +927,7 @@ int KADI::read_oplogpages(struct oplog_info &info)
     int id = 0;
     kv_key k;
     kv_value v;
-
+    TRI << "total number of oplogpage keys = " << max;
     do {
         {
             for (size_t i =0 ; i < qdepth && it != end; ++i, ++it) {
@@ -942,7 +942,7 @@ int KADI::read_oplogpages(struct oplog_info &info)
                 oplog->groupid = oplogkey->groupid;
                 oplog->sequence = oplogkey->sequenceid;
 
-                //TR << "oplog key " << print_kvssd_key(k.key, k.length) << ", length = " << k.length;
+                //TR << "oplogpage key: id " << oplog->id << "/" << max << ", key = " << print_kvssd_key(k.key, k.length) << ", length = " << (int)k.length;
 
                 r = kv_retrieve_aio(ksid_oplog, &k, &v, { oplogpage_callback, oplog });
                 if (r != 0) { TR << "oplog page - read error "; return true; }
@@ -958,6 +958,7 @@ int KADI::read_oplogpages(struct oplog_info &info)
                 max  -= ctxs.size();
 
                 for (oplog_page *oplog: ctxs) {
+                    //TR << "oplog read: id = " << oplog->id;
                     if (oplog->byteswritten > 0) {
                         info.oplog_list[oplog->groupid].insert(std::make_pair(oplog->sequence, std::make_pair(oplog->buf, oplog->byteswritten)));
                     }
@@ -1028,13 +1029,14 @@ uint64_t KADI::list_oplog(const uint8_t spaceid, const uint32_t prefix, const st
 
     // step 1. read oplog page list
     r = read_oplogpage_dir(info);
+    TRI << "oplog dir pages = " << info.oplogpage_dir.size() << ", r = " << r;
     if (r != 0) return 0;
 
     // step 2. read oplog pages
     r = read_oplogpages(info);
     if (r != 0) return 0;
 
-    TR << "read is done, updating the index structure, pages read = " << info.oplog_list.size();
+    TRI << "read is done, updating the index structure, pages read = " << info.oplog_list.size();
 
     for (const auto &groups: info.oplog_list) {
         const int groupid = groups.first;
@@ -1042,15 +1044,13 @@ uint64_t KADI::list_oplog(const uint8_t spaceid, const uint32_t prefix, const st
             int cur = 0;
             opbuf_reader reader(nullptr, groupid, sequences.second.first, sequences.second.second);
             while (reader.nextkey(&opcode, &key, &length)) {
-                TR << "oplog key " << print_kvssd_key(key, length) ;
+                TRI << "oplog key " << print_kvssd_key(key, length) ;
                 key_listener(opcode, groupid, sequences.first, (const char*)key, length);
                 cur++;
             }
             total_keys += reader.numkeys_ret();
         }
     }
-
-    TR << total_keys << " are processed";
 
     delete_oplogpages(info);
 
@@ -1210,7 +1210,7 @@ int KADI::poll_completion(uint32_t &num_events, uint32_t timeout_us) {
 
         if (aioevents.nr == 0) break;
 
-        //TR3 << "completed " << aioevents.nr << " IOs, total " << completed_ios.load() << "/" << submitted_ios.load();
+        //TRI << "completed " << aioevents.nr << " IOs, total " << completed_ios.load() << "/" << submitted_ios.load();
         for (int i = 0; i < aioevents.nr; i++) {
             const struct nvme_aioevent &event  = aioevents.events[i];
             aio_cmd_ctx *ioctx = cmd_ctx_mgr.get_pending_cmdctx(event.reqid);

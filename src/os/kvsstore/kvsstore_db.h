@@ -163,7 +163,6 @@ public:
 	//std::atomic_bool is_compaction_started;
 	std::mutex compact_lock;
 	std::condition_variable compact_cond;
-	static const int skip_skp = 1;
 
     int keyspace_sorted;
     int keyspace_notsorted;

@@ -82,7 +82,6 @@ void bptree_pool::flush(const bp_addr_t &newrootaddr) {
 
 bptree_meta *bptree_pool::_fetch_meta() {
     FTRACE
-    //TR << "fetch meta for " << prefix;
 	bp_addr_t addr = create_metanode_addr(prefix);
     bptree_meta *n = 0;
 
@@ -95,7 +94,7 @@ bptree_meta *bptree_pool::_fetch_meta() {
 
 	if (read_page(addr, n->get_raw_buffer(), bptree_meta::META_SIZE) != bptree_meta::META_SIZE){
 		// new meta
-        //TR << "create new metadata " << desc(addr) ;
+        //TRI << "create new metadata " << desc(addr) ;
         n->init(prefix);
 	}
 
@@ -107,7 +106,6 @@ bptree_meta *bptree_pool::_fetch_meta() {
 kv_indexnode *bptree_pool::_fetch_node(const bp_addr_t &addr) {
 	// search the cache
 	if (addr == invalid_key_addr) {
-        TR << "invalid key addr = " << addr;
 	    return 0;
 	}
 

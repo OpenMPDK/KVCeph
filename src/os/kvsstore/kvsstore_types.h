@@ -692,18 +692,14 @@ public:
         }
 
         ~TransContext() {
-            //TR3 << "delete TransContext";
             for (bufferlist* list : omap_data) {
                 delete list;
             }
             for (bufferlist* list : coll_data) {
                 delete list;
             }
-            //TR3 << "delete TransContext - deleted bufferlists";
 
             delete ioc;
-            //TR3 << "delete IoContext done";
-
         }
 
         void write_onode(OnodeRef &o) {
@@ -763,7 +759,6 @@ public:
             std::lock_guard<std::mutex> l(qlock);
             txc->seq = ++last_seq;
             q.push_back(*txc);
-            TR << "queue new " <<  (void*)txc << " - queue size = " << q.size();
         }
 
         void drain() {

@@ -125,11 +125,11 @@ struct __attribute__((packed)) oplog_entry
 class iterbuf_reader {
 protected:
     void *cct;
-    void *buf;
+    char *buf;
     int bufoffset;
     int byteswritten;
 
-    int numkeys;
+    unsigned int numkeys;
 public:
     iterbuf_reader(void *c, void *buf_, int length_);
     virtual ~iterbuf_reader() {}
@@ -142,7 +142,7 @@ public:
 
 
 class opbuf_reader: public iterbuf_reader {
-	int curkeyid;
+	unsigned int curkeyid;
     struct oplog_header* hdr;
 public:
     opbuf_reader(void *c, int gropuid_, void *buf_, int length_);

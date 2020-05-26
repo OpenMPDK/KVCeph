@@ -122,15 +122,15 @@ public:
             r = -1;
             switch (aio->opcode) {
                 case nvme_cmd_kv_retrieve:
-                    //if (debug || 1) TR3 << "submit ioc = " << (void*)this << ", op = " << aio->opcode << ", aio key addr = " << (void*)aio->key  << " ," << print_kvssd_key(aio->key, aio->keylength) << ", post data" << (void*)aio << ", ioc = " << (void*)aio->parent;
+                    //if (debug || 1) TRR << "submit ioc = " << (void*)this << ", op = " << aio->opcode << ", aio key addr = " << (void*)aio->key  << " ," << print_kvssd_key(aio->key, aio->keylength) << ", post data" << (void*)aio << ", ioc = " << (void*)aio->parent;
                     r = kadi->kv_retrieve_aio(aio->spaceid, aio->key, aio->keylength, aio->value, aio->valoffset, aio->vallength, { aio->cb_func,  aio });
                     break;
                 case nvme_cmd_kv_delete:
-                    //if (debug || 1) TR3 << "submit ioc = " << (void*)this << ", op = " << aio->opcode << ", aio key addr = " << (void*)aio->key  << " ," << print_kvssd_key(aio->key, aio->keylength) << ", post data" << (void*)aio << ", ioc = " << (void*)aio->parent;
+                    //if (debug || 1) TRW << "submit ioc = " << (void*)this << ", op = " << aio->opcode << ", aio key addr = " << (void*)aio->key  << " ," << print_kvssd_key(aio->key, aio->keylength) << ", post data" << (void*)aio << ", ioc = " << (void*)aio->parent;
                     r = kadi->kv_delete_aio(aio->spaceid, aio->key, aio->keylength, { aio->cb_func,  aio });
                     break;
                 case nvme_cmd_kv_store:
-                    //if (debug || 1) TR3 << "submit ioc = " << (void*)this << ", op = " << aio->opcode << ", aio key addr = " << (void*)aio->key  << " ," << print_kvssd_key(aio->key, aio->keylength) << ", post data" << (void*)aio << ", ioc = " << (void*)aio->parent;
+                    //if (debug || 1) TRW << "submit ioc = " << (void*)this << ", op = " << aio->opcode << ", aio key addr = " << (void*)aio->key  << " ," << print_kvssd_key(aio->key, aio->keylength) << ", post data" << (void*)aio << ", ioc = " << (void*)aio->parent;
                     r = kadi->kv_store_aio(aio->spaceid, aio->key, aio->keylength, aio->value, aio->valoffset, aio->vallength, { aio->cb_func,  aio});
                     break;
             };
@@ -187,7 +187,6 @@ public:
         std::unique_lock<std::mutex> l(lock);
         num_running--;
 
-        //TR3 << "io finished: ioc = " <<  (void*) this << ", remaining " << num_running;
         if (num_running == 0) {
             if (issync) {
                 cond.notify_all();

@@ -52,7 +52,7 @@ void aio_callback(kv_io_context &op, void *post_data)
     }
     //TR << "callback2 ioc parent = " << ioc->parent;
 
-    print_value(r, op.opcode, op.key.key, op.key.length, op.value.value,op.value.length);
+    //TR << print_value(r, op.opcode, op.key.key, op.key.length, op.value.value,op.value.length);
 
     bool islastio_in_tr = ioc->mark_io_complete();
     if (islastio_in_tr)
@@ -278,7 +278,7 @@ int KvsStoreDB::read_kvkey(kv_key *key, bufferlist &bl, bool sorted)
 
     int r =  this->kadi.kv_retrieve_sync(keyspaceid, key, &value);
     if (r == 0) {
-        print_value(r, 0x90, key->key, key->length, value.value, value.length);
+        //TR << print_value(r, 0x90, key->key, key->length, value.value, value.length);
         bp.set_length(value.length);
         bl.append(std::move(bp));
     }
@@ -485,7 +485,7 @@ int KvsStoreDB::syncio_submit(IoContext *ioc)
 KvsIterator *KvsStoreDB::get_iterator(uint32_t prefix)
 {
     FTRACE
-	return new KvsBptreeIterator(&kadi, skip_skp, prefix);
+	return new KvsBptreeIterator(&kadi, keyspace_notsorted, prefix);
 }
 
 uint64_t KvsStoreDB::compact() {
@@ -493,16 +493,19 @@ uint64_t KvsStoreDB::compact() {
     {
         std::unique_lock<std::mutex> cl (compact_lock);
         if (compaction_started) {
+            TRI << "wait...";
             compact_cond.wait(cl);
             return 0;
         } else {
             compaction_started = true;
         }
     };
-	uint64_t processed_keys = 0;
 
-	bptree onode_tree(&kadi, 1, GROUP_PREFIX_ONODE);
-	bptree  coll_tree(&kadi, 1, GROUP_PREFIX_COLL);
+	TRI << "started";
+	uint64_t processed_keys = 0;
+    uint64_t keys = 0;
+	bptree onode_tree(&kadi, keyspace_notsorted, GROUP_PREFIX_ONODE);
+	bptree  coll_tree(&kadi, keyspace_notsorted, GROUP_PREFIX_COLL);
 	bptree *tree;
 
 	processed_keys = kadi.list_oplog(keyspace_sorted, 0xffffffff,
@@ -529,23 +532,24 @@ uint64_t KvsStoreDB::compact() {
 
 			}
 
+                keys++;
 			//cout << "read: group"  << groupid << ", seq " << sequence << ", " << print_key((const char*)key, length) << ", length = " << length << endl;
 	});
 
-    //TR << "compaction 1: found and read " << processed_keys << " oplog pages" ;
+    TRI << "compaction 1: found and read " << processed_keys << " oplog pages, inserted/removed keys = " << keys ;
 
     onode_tree.flush();
 
     coll_tree.flush();
 
-    //TR << "compaction 2: updated the index structure " ;
+    TRI << "compaction 2: updated the index structure " ;
 
     {
         std::unique_lock<std::mutex> cl (compact_lock);
         compaction_started = false;
         compact_cond.notify_all();
     };
-
+    TRI << "finished";
 	return processed_keys;
 }
 

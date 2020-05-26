@@ -17,9 +17,8 @@
 #define dout_prefix *_dout << "[kvsstore] "
 
 // from kvsstore_debug.h
-std::mutex FtraceFile::mutex;
-std::ofstream FtraceFile::fp;
 FtraceFile FLOG;
+FtraceTerm TLOG;
 
 
 MEMPOOL_DEFINE_OBJECT_FACTORY(KvsStoreTypes::Onode, kvsstore_onode, kvsstore_cache_onode);

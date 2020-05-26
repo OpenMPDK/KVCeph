@@ -11,6 +11,8 @@
 #include "linux_nvme_ioctl.h"
 #include <pthread.h>
 #include <map>
+#include <fcntl.h>
+#include <sys/ioctl.h>
 #include <vector>
 #include <mutex>
 #include <memory>

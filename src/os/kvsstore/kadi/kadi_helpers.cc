@@ -163,7 +163,7 @@ inline int test_cmp(InputIt1 first1, InputIt1 last1, InputIt2 first2, InputIt2 l
 bool opbuf_reader::nextkey(int *optype, void **key, int *length)
 {
 	if (numkeys == curkeyid) return false;
-	//cout << "nextkey: " <<curkeyid + 1 << "/" << numkeys << ", offset = " << bufoffset << "/" << byteswritten<< endl;
+	TRI << "nextkey: " <<curkeyid + 1 << "/" << numkeys << ", offset = " << bufoffset << "/" << byteswritten ;
 	if (bufoffset + (int)sizeof(oplog_entry) >= byteswritten) {
 		return false;
 	}
@@ -190,32 +190,35 @@ bool opbuf_reader::nextkey(int *optype, void **key, int *length)
 }
 
 iterbuf_reader::iterbuf_reader(void *c, void *buf_, int length_):
-    cct(c), buf(buf_), bufoffset(0), byteswritten(length_),  numkeys(0)
+    cct(c), buf((char*)buf_), bufoffset(0), byteswritten(length_),  numkeys(0)
 {
+    std::string out;
+
 	if (hasnext()) {
 		numkeys = *((unsigned int*)buf);
+		if (numkeys == 0) { byteswritten =  0; }
 		bufoffset += 4;
 	}
 }
 
+struct __attribute__((__packed__, aligned(1))) oplogpagekey {
+    char hdr[4]; // LOG_
+    uint64_t seq;
+    uint32_t groupid;
+};
 
 bool iterbuf_reader::nextkey(int *optype, void **key, int *length)
 {
-	if (numkeys == 0) return false;
-
-    int afterKeygap = 0;
-    char *current_pos = ((char *)buf) ;
-
     if (bufoffset + 4 >= byteswritten) return false;
 
-    *length = *((unsigned int*)(current_pos+bufoffset)); bufoffset += 4;
 
-    if (bufoffset + *length > byteswritten) return false;
+    unsigned int len = *((unsigned int*)(buf+bufoffset)); bufoffset += 4;
 
     *optype = 0;
-    *key    = (current_pos+bufoffset);
-    afterKeygap = (((*length + 3) >> 2) << 2);
-    bufoffset += afterKeygap;
+    *key    = buf+bufoffset;
+
+    bufoffset += (((len + 3) >> 2) << 2);
+    *length = len;
 
     return true;
 }

@@ -258,7 +258,7 @@ public:
 			root = 0;
 		}
 		else {
-            TR << "meta node is being fetched: " << pool.get_meta()->get_root_addr();
+            //TR << "meta node is being fetched: " << pool.get_meta()->get_root_addr();
 			root = pool.fetch_tree_node(pool.get_meta()->get_root_addr());
 			if (root == 0) {
 			    TR << "cannot find the root node";
@@ -387,6 +387,7 @@ private:
 		//std::cout << "binary search result = " << insert << std::endl;
 		if (insert >= 0) {
 			/* Already exists */
+			//TRI << "existing key";
 			return 0;
 		}
 
@@ -1239,7 +1240,7 @@ private:
 		bptree_iterator_impl(bptree *tree_, int keyindex_ = 0, bp_addr_t nodeaddr_ = 0):
 			bptree_iterator(tree_, keyindex_, nodeaddr_)
 		{
-		    TR << "bptree iterator: index = " << keyindex << ", nodeaddr == " << nodeaddr ;
+		    //TR << "bptree iterator: index = " << keyindex << ", nodeaddr == " << nodeaddr ;
             root_tree = tree_;
             root_addr = nodeaddr_;
 		    if (nodeaddr == 0) {
@@ -1254,7 +1255,6 @@ private:
 		}
 
 		virtual void move_next(const long int movement) {
-            TR << "MOVE NEXT " ;
 			if (tree == 0) {
                 end();
                 return;
@@ -1267,17 +1267,16 @@ private:
 				return;
 			}
 
-            TR << "MOVE NEXT - index+1" ;
 			this->keyindex++;
 
 			if (this->keyindex >= node->get_children()) {
 
 				node = tree->pool.fetch_tree_node(node->header()->next);
 				if (node == 0) {
-                    TR << "REACHED TO THE END" ;
+                    //TR << "REACHED TO THE END" ;
 					end();
 				} else {
-                    TR << "REACHED TO THE NODE END" ;
+                    //TR << "REACHED TO THE NODE END" ;
 					this->keyindex = 0;
 					nodeaddr = node->addr;
 				}
@@ -1289,12 +1288,7 @@ private:
 
 			if (is_end()) return false;
 			auto *node = tree->pool.fetch_tree_node(nodeaddr);
-            TR << "fetch  NODE  " << node ;
 			if (!node) return false;
-
-            TR << "get key from  NODE addr " << nodeaddr ;
-            //node->dump();
-
 
             return tree->get_key_from_datanode(node->key()[keyindex], key, length);
 		}
@@ -1392,7 +1386,7 @@ private:
 	};
 public:
 	bptree_iterator *get_iterator() {
-        TR << "bptree iterator::get_iterator";
+        //TR << "bptree iterator::get_iterator";
 		return new bptree_iterator_impl(this, 0, (this->root)? this->root->addr:0);
 	}
 };

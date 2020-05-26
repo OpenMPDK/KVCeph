@@ -72,7 +72,7 @@ public:
 
     int iter_open(kv_iter_context *iter_handle, int space_id);
     int iter_close(kv_iter_context *iter_handle, int space_id);
-    //int iter_read(kv_iter_context *iter_handle, int space_id);
+    int iter_read(int space_id, unsigned char handle, void *buf, uint32_t buflen, int &byteswritten, bool &end);
     int iter_read_aio(int space_id, unsigned char handle, void *buf, uint32_t buflen, const kv_cb& cb);
     //int iter_readall(kv_iter_context *iter_ctx, buflist_t &buflist, int space_id);
 
@@ -83,6 +83,7 @@ public:
     int read_oplogpage_dir(struct oplog_info &info);
     int read_oplogpages(struct oplog_info &info);
     int retrieve_oplogpage_dir(kv_iter_context *iter_ctx, struct oplog_info &info);
+    int retrieve_oplogpage_dir_sync(kv_iter_context *iter_ctx, struct oplog_info &info);
     int delete_oplogpages(struct oplog_info &info);
 
    	uint64_t list_oplog(const uint8_t spaceid, const uint32_t prefix, const std::function< void (int, int, uint64_t, const char*, int) > &key_listener);
