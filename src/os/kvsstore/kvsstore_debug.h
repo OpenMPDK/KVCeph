@@ -3,7 +3,7 @@
 
 #define _KVSFILELOGGING
 #include "kvsstore_debug_impl.h"
-#define ENABLE_FTRACE
+//#define ENABLE_FTRACE
 
 // common
 #define _KVSLOGGER_IMPL(a,b) SimpleLoggerBuffer() << "[" << get_thread_name() << "," << std::setw(15) << get_fixed_func_name(a) << "," << std::setw(5) << b << "] " 
