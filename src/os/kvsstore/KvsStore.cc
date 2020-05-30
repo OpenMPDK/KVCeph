@@ -39,7 +39,7 @@
 
 #define SB_FLUSH_FREQUENCY 1024
 //#define OBJECT_MAX_SIZE 536870912
-// blues tore has 4294967295
+// make it consistent to bluestore 4294967295
 #define OBJECT_MAX_SIZE 4294967295
 /// -----------------------------------------------------------------------------------------------
 ///  Constructor / Mount / Unmount
