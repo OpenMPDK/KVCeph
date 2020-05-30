@@ -1918,7 +1918,7 @@ int heap(CephContext& cct, const cmdmap_t& cmdmap, Formatter& f, std::ostream& o
 int OSD::mkfs(CephContext *cct, ObjectStore *store, uuid_d fsid, int whoami)
 {
   int ret;
-  LOGOSD << "mkfs: started" << LOGEND;
+  //LOGOSD << "mkfs: started" << LOGEND;
   OSDSuperblock sb;
   bufferlist sbbl;
   ObjectStore::CollectionHandle ch;
@@ -1926,41 +1926,41 @@ int OSD::mkfs(CephContext *cct, ObjectStore *store, uuid_d fsid, int whoami)
   // if we are fed a uuid for this osd, use it.
   store->set_fsid(cct->_conf->osd_uuid);
 
-  LOGOSD << "mkfs: store->mkfs" << LOGEND;
+  //LOGOSD << "mkfs: store->mkfs" << LOGEND;
   ret = store->mkfs();
   if (ret) {
     derr << "OSD::mkfs: ObjectStore::mkfs failed with error "
          << cpp_strerror(ret) << dendl;
     goto free_store;
   }
-  LOGOSD << "mkfs done" << LOGEND;
+  //LOGOSD << "mkfs done" << LOGEND;
   store->set_cache_shards(1);  // doesn't matter for mkfs!
 
-  LOGOSD << "mkfs: store->mount" << LOGEND;
+  //LOGOSD << "mkfs: store->mount" << LOGEND;
   ret = store->mount();
   if (ret) {
     derr << "OSD::mkfs: couldn't mount ObjectStore: error "
          << cpp_strerror(ret) << dendl;
     goto free_store;
   }
-  LOGOSD << "mkfs- open collection: " << coll_t::meta() << LOGEND;
+  //LOGOSD << "mkfs- open collection: " << coll_t::meta() << LOGEND;
   ch = store->open_collection(coll_t::meta());
 
   if (ch) {
-    LOGOSD << "mkfs- read superblock " << LOGEND;
+    //LOGOSD << "mkfs- read superblock " << LOGEND;
     ret = store->read(ch, OSD_SUPERBLOCK_GOBJECT, 0, 0, sbbl);
     if (ret < 0) {
-      LOGOSD << "mkfs- ERR have meta collection but no superblock " << LOGEND;
+      //LOGOSD << "mkfs- ERR have meta collection but no superblock " << LOGEND;
       derr << "OSD::mkfs: have meta collection but no superblock" << dendl;
       goto free_store;
     }
-    LOGOSD << "mkfs- found superblock " << LOGEND;
+    //LOGOSD << "mkfs- found superblock " << LOGEND;
     /* if we already have superblock, check content of superblock */
     dout(0) << " have superblock" << dendl;
     auto p = sbbl.cbegin();
     decode(sb, p);
 
-    LOGOSD << "mkfs- superblock contents: " << sb << LOGEND;
+    //LOGOSD << "mkfs- superblock contents: " << sb << LOGEND;
     if (whoami != sb.whoami) {
       derr << "provided osd id " << whoami << " != superblock's " << sb.whoami
 	   << dendl;
@@ -1974,27 +1974,27 @@ int OSD::mkfs(CephContext *cct, ObjectStore *store, uuid_d fsid, int whoami)
       goto umount_store;
     }
   } else {
-    LOGOSD << "mkfs- create a new superblock " << LOGEND;
+    //LOGOSD << "mkfs- create a new superblock " << LOGEND;
     // create superblock
     sb.cluster_fsid = fsid;
     sb.osd_fsid = store->get_fsid();
     sb.whoami = whoami;
     sb.compat_features = get_osd_initial_compat_set();
 
-    LOGOSD << "mkfs- superblock contents " << sb << LOGEND;
+    //LOGOSD << "mkfs- superblock contents " << sb << LOGEND;
     bufferlist bl;
     encode(sb, bl);
-    LOGOSD << "mkfs- superblock hash " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", length = " << bl.length() << LOGEND;
+    //LOGOSD << "mkfs- superblock hash " << ceph_str_hash_linux(bl.c_str(), bl.length()) << ", length = " << bl.length() << LOGEND;
 
-    LOGOSD << "mkfs- create a new meta collection" << LOGEND;
+    //LOGOSD << "mkfs- create a new meta collection" << LOGEND;
     ObjectStore::CollectionHandle ch = store->create_new_collection(
       coll_t::meta());
     ObjectStore::Transaction t;
     t.create_collection(coll_t::meta(), 0);
-    LOGOSD << "mkfs- write superblock" << LOGEND;
+    //LOGOSD << "mkfs- write superblock" << LOGEND;
     t.write(coll_t::meta(), OSD_SUPERBLOCK_GOBJECT, 0, bl.length(), bl);
 
-    LOGOSD << "mkfs-queue transaction" << LOGEND;
+    //LOGOSD << "mkfs-queue transaction" << LOGEND;
     ret = store->queue_transaction(ch, std::move(t));
     if (ret) {
       derr << "OSD::mkfs: error while writing OSD_SUPERBLOCK_GOBJECT: "
@@ -2004,14 +2004,14 @@ int OSD::mkfs(CephContext *cct, ObjectStore *store, uuid_d fsid, int whoami)
 
   }
 
-  LOGOSD << "mkfs-write meta" << LOGEND;
+  //LOGOSD << "mkfs-write meta" << LOGEND;
   ret = write_meta(cct, store, sb.cluster_fsid, sb.osd_fsid, whoami);
   if (ret) {
     derr << "OSD::mkfs: failed to write fsid file: error "
          << cpp_strerror(ret) << dendl;
     goto umount_store;
   }
-  LOGOSD << "mkfs-success" << LOGEND;
+  //LOGOSD << "mkfs-success" << LOGEND;
 umount_store:
   if (ch) {
     ch.reset();
@@ -2019,7 +2019,7 @@ umount_store:
   store->umount();
 free_store:
   delete store;
-    LOGOSD << "mkfs-finished with ret = " << ret << LOGEND;
+    //LOGOSD << "mkfs-finished with ret = " << ret << LOGEND;
   return ret;
 }
 
@@ -3272,13 +3272,13 @@ int OSD::init()
 
   boot_finisher.start();
 
-  LOGOSD << "read meta "<< LOGEND;
+  //LOGOSD << "read meta "<< LOGEND;
 
   {
     string val;
     store->read_meta("require_osd_release", &val);
     last_require_osd_release = ceph_release_from_name(val);
-    LOGOSD << "meta: val = " << val << ", last_require_osd_release = " << last_require_osd_release << LOGEND;
+    //LOGOSD << "meta: val = " << val << ", last_require_osd_release = " << last_require_osd_release << LOGEND;
   }
 
   // mount.
@@ -3288,29 +3288,29 @@ int OSD::init()
   dout(2) << "journal " << journal_path << dendl;
   ceph_assert(store);  // call pre_init() first!
 
-  LOGOSD << "set cache shards" << LOGEND;
+  //LOGOSD << "set cache shards" << LOGEND;
   store->set_cache_shards(get_num_op_shards());
 
-  LOGOSD << "mount" << LOGEND;
+  //LOGOSD << "mount" << LOGEND;
   int r = store->mount();
   if (r < 0) {
     derr << "OSD:init: unable to mount object store" << dendl;
     return r;
   }
-  LOGOSD << "mount done: r = " << r << LOGEND;
+  //LOGOSD << "mount done: r = " << r << LOGEND;
   journal_is_rotational = store->is_journal_rotational();
   dout(2) << "journal looks like " << (journal_is_rotational ? "hdd" : "ssd")
           << dendl;
 
-  LOGOSD << "journal_is_rotational? " << journal_is_rotational << LOGEND;
+  //LOGOSD << "journal_is_rotational? " << journal_is_rotational << LOGEND;
   enable_disable_fuse(false);
 
   dout(2) << "boot" << dendl;
 
-  LOGOSD << "open_collection(coll_t::meta())" << LOGEND;
+  //LOGOSD << "open_collection(coll_t::meta())" << LOGEND;
   service.meta_ch = store->open_collection(coll_t::meta());
 
-  LOGOSD << "service.meta_ch = " << service.meta_ch->cid << LOGEND;
+  //LOGOSD << "service.meta_ch = " << service.meta_ch->cid << LOGEND;
 
   // initialize the daily loadavg with current 15min loadavg
   double loadavgs[3];
@@ -3350,7 +3350,7 @@ int OSD::init()
     }
   }
 
-  LOGOSD << "read_superblock" << LOGEND;
+  //LOGOSD << "read_superblock" << LOGEND;
   // read superblock
   r = read_superblock();
   if (r < 0) {
@@ -3359,7 +3359,7 @@ int OSD::init()
     goto out;
   }
 
-  LOGOSD << "read_superblock done: r = " << r << LOGEND;
+  //LOGOSD << "read_superblock done: r = " << r << LOGEND;
 
   if (osd_compat.compare(superblock.compat_features) < 0) {
 
@@ -4357,8 +4357,8 @@ int OSD::update_crush_device_class()
 
 void OSD::write_superblock(ObjectStore::Transaction& t)
 {
-  LOGOSD << "write superblock" << LOGEND;
-  LOGOSD << "write superblock contents: "  << superblock << LOGEND;
+  //LOGOSD << "write superblock" << LOGEND;
+  //LOGOSD << "write superblock contents: "  << superblock << LOGEND;
   //{ ostringstream oss; oss << BackTrace(1); LOGOSD << oss.str() << LOGEND; }
 
   dout(10) << "write_superblock " << superblock << dendl;
@@ -4370,7 +4370,7 @@ void OSD::write_superblock(ObjectStore::Transaction& t)
   bufferlist bl;
   encode(superblock, bl);
 
-  LOGOSD << "write superblock encoded length: "  << bl.length() << LOGEND;
+  //LOGOSD << "write superblock encoded length: "  << bl.length() << LOGEND;
   t.write(coll_t::meta(), OSD_SUPERBLOCK_GOBJECT, 0, bl.length(), bl);
 }
 
@@ -4381,11 +4381,11 @@ int OSD::read_superblock()
   if (r < 0)
     return r;
 
-  LOGOSD << "superblock read done: r = " << r << ", bl length = " << bl.length() << LOGEND;
+  //LOGOSD << "superblock read done: r = " << r << ", bl length = " << bl.length() << LOGEND;
   auto p = bl.cbegin();
   decode(superblock, p);
 
-  LOGOSD << "superblock contents: " << superblock << LOGEND;
+  //LOGOSD << "superblock contents: " << superblock << LOGEND;
 
   dout(10) << "read_superblock " << superblock << dendl;
 
