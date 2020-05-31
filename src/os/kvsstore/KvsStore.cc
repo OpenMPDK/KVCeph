@@ -65,7 +65,7 @@ KvsStore::KvsStore(CephContext *cct, const std::string &path) :
     // create onode LRU cache
     set_cache_shards(1);
 
-    cp = Compressor::create(cct, "lz4");
+    cp = Compressor::create(cct, "zstd");
 }
 
 // configure onode and data caches
@@ -849,7 +849,7 @@ int KvsStore::_txc_write_nodes(TransContext *txc) {
             auto p = bl->get_contiguous_appender(bound, true);
             denc(o->onode, p);
         }
-        TRC << "onode size = " << bl->length();
+        //TRERR << "onode size = " << bl->length();
         /*{
             std::set<std::string> out;
             kvsstore_omap_list omap_list(&o->onode);

@@ -378,7 +378,7 @@ int KADI::kv_retrieve_aio(uint8_t space_id, kv_key *key, kv_value *value, const 
 int KADI::kv_retrieve_sync(uint8_t space_id, kv_key *key, kv_value *value) {
     struct nvme_passthru_kv_cmd cmd;
     memset((void*)&cmd, 0, sizeof(struct nvme_passthru_kv_cmd));
-    //TR << "kv retrieve sync: key = " << print_kvssd_key(key->key, key->length) << ", buffer  length = " << value->length << ", buffer offset =  " << value->offset << ", buffer = " << value->value ;
+
     cmd.opcode = nvme_cmd_kv_retrieve;
     cmd.nsid = nsid;
     cmd.cdw3 = space_id;
@@ -395,6 +395,7 @@ int KADI::kv_retrieve_sync(uint8_t space_id, kv_key *key, kv_value *value) {
     }
 
     int ret = ioctl(fd, NVME_IOCTL_IO_KV_CMD, &cmd);
+
 #ifdef ENABLE_IOTRACE
     if (ret == 0) {
         TRIO << "<kv_retrieve_sync> " << print_kvssd_key(std::string((const char*)key->key, key->length))

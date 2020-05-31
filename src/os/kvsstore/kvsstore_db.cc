@@ -307,12 +307,13 @@ int KvsStoreDB::read_onode(const ghobject_t &oid, bufferlist &bl)
     key.length = construct_onode_key(cct, oid, keybuffer);
 
     kv_value value;
-    bufferptr bp = buffer::create_small_page_aligned(8192 + 2048);
+    bufferptr bp = buffer::create_small_page_aligned(8192+4096);
     value.value  = bp.c_str();
     value.length = bp.length();
     value.offset = 0;
 
     int r =  this->kadi.kv_retrieve_sync(keyspace_sorted, &key, &value);
+
     if (r == 0) {
         bp.set_length(value.length);
         bl.append(std::move(bp));

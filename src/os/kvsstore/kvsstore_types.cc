@@ -127,7 +127,7 @@ KvsStoreTypes::OnodeRef KvsStoreTypes::Collection::get_onode(const ghobject_t &o
 	} else if (r == KV_SUCCESS) {
 		on = KvsStoreTypes::Onode::decode(this, oid, v);
     } else {
-		TR << "KV I/O error: ret = " << r ;
+		TRERR << "KV I/O error: ret = " << r ;
 		ceph_abort_msg("Failed to read an onode due to an I/O error");
 	}
 

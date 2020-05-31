@@ -25,6 +25,15 @@ void kvsstore_omap_list::serialize_key(const std::string &key, bufferptr &buffer
     TRU << "serialize key: " << key << ", buffer length = " << buffer.length();
 }
 
+int kvsstore_omap_list::compress(CephContext* cct, bufferlist &in, bufferlist &out) {
+    out.clear();
+    return cp->compress(in, out);
+}
+
+int kvsstore_omap_list::decompress(CephContext* cct, bufferlist &in, bufferlist &out) {
+    out.clear();
+    return cp->decompress(in, out);
+}
 
 void kvsstore_omap_list::load_omap(CephContext* cct, const readfunc_t &reader) {
     FTRACE
@@ -39,19 +48,14 @@ void kvsstore_omap_list::load_omap(CephContext* cct, const readfunc_t &reader) {
         insert_keys_from_buffer(data.c_str(), data.length(), onode->omaps);
 
     }
+
+    if (onode->omap_wb.have_raw() && onode->omap_wb.length() > 0) {
+        insert_keys_from_buffer(onode->omap_wb.c_str(), onode->omap_wb.length(), onode->omaps);
+    }
     onode->omap_loaded = true;
 
 }
 
-int kvsstore_omap_list::compress(CephContext* cct, bufferlist &in, bufferlist &out) {
-    out.clear();
-    return cp->compress(in, out);
-}
-
-int kvsstore_omap_list::decompress(CephContext* cct, bufferlist &in, bufferlist &out) {
-    out.clear();
-    return cp->decompress(in, out);
-}
 
 void kvsstore_omap_list::flush(CephContext* cct, IoContext &ioc, const writefunc_t &writer, std::vector<bufferlist*> &tempbuffers)
 {
@@ -72,6 +76,12 @@ void kvsstore_omap_list::flush(CephContext* cct, IoContext &ioc, const writefunc
             compress(cct, in, onode->omap_keys);
 
             TRC << "compressed data: " << in.length() << "->" << onode->omap_keys.length();
+            onode->omaps.clear();
+            onode->omap_loaded = false;
+            if (onode->omap_wb.have_raw()) {
+                onode->omap_wb.set_length(0);
+            }
+
         }
         onode->omap_dirty = false;
     }
@@ -80,12 +90,33 @@ void kvsstore_omap_list::flush(CephContext* cct, IoContext &ioc, const writefunc
 
 void kvsstore_omap_list::insert(CephContext* cct, const std::string &key, const readfunc_t &reader) {
     FTRACE
+    if (onode->omap_loaded) {
+        onode->omaps.insert(key);
+        onode->omap_dirty = true;
+    }
+
+    if (!onode->omap_wb.have_raw()) {
+        onode->omap_wb = buffer::create_small_page_aligned(2048);
+        onode->omap_wb.set_length(0);
+    }
+
+    if (onode->omap_wb.length() + key.length() + 1 > 2048) {
+        load_omap(cct, reader);
+        onode->omaps.insert(key);
+        onode->omap_dirty = true;
+        onode->omap_wb.set_length(0);
+    } else {
+        serialize_key(key, onode->omap_wb);
+    }
+
+#if 0
     if (!onode->omap_loaded) {
         load_omap(cct, reader);
     }
 
     onode->omaps.insert(key);
     onode->omap_dirty = true;
+#endif
 };
 
 void kvsstore_omap_list::clear(IoContext &ioc, const removefunc_t &removefunc)
@@ -94,6 +125,9 @@ void kvsstore_omap_list::clear(IoContext &ioc, const removefunc_t &removefunc)
     // clear write buffer
     if (onode->omap_keys.length() > 0 && onode->omap_keys.get_num_buffers() > 0)
         onode->omap_keys.clear();
+    if (onode->omap_wb.have_raw()) {
+        onode->omap_wb.set_length(0);
+    }
     onode->omaps.clear();
     onode->omap_dirty = false;
 

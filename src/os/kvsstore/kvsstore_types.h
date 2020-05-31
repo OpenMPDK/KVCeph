@@ -143,9 +143,9 @@ struct kvsstore_onode_t {
             denc_varint(v.nid, p);
             denc_varint(v.size, p);
             denc(v.attrs, p);
-            denc(v.num_omap_extents, p);
+            //denc(v.num_omap_extents, p);
             denc(v.omap_keys, p);
-            //denc(v.omap_wb, p);
+            denc(v.omap_wb, p);
             denc(v.omap_header, p);
             //denc(v.flags, p);
         DENC_FINISH(p);
