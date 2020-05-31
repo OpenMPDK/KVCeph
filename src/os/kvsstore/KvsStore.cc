@@ -850,12 +850,6 @@ int KvsStore::_txc_write_nodes(TransContext *txc) {
             denc(o->onode, p);
         }
 
-        if (o->onode.omap_bp.get_raw()) {
-            TRU << "onode = " << o->oid << ", omap size " << o->onode.omaps.size() << ", onode size = " << bl->length() << ", write buffer len: " << o->onode.omap_bp.length();
-        }
-        else
-            TRU << "onode = " << o->oid << ", omap size " << o->onode.omaps.size() << ", onode size = " << bl->length() << ", no write buffer";
-
         /*{
             std::set<std::string> out;
             kvsstore_omap_list omap_list(&o->onode);
@@ -891,12 +885,16 @@ int KvsStore::_txc_write_nodes(TransContext *txc) {
         db.aio_write_sb(sbbl, ioc);
     }
 
+    if (!ioc->has_pending_aios())
+        return 0;
+
     int r =  ioc->aio_submit_and_wait(&db.kadi, __func__);
 
     for (bufferlist *bl : bls) {
         delete bl;
     }
 
+    std::cout << "r = " << r << std::endl;
     delete ioc;
     return r;
 }
@@ -1327,7 +1325,7 @@ int KvsStore::_do_write_read_chunks_if_needed(CollectionRef& c, OnodeRef &o, con
     }
 
     if (offset > 0) {
-        if (object_length > offset && object_length != 0) {
+        if (object_length >= offset && object_length != 0) {
             head_off = p2align(offset, chunksize);
             if (tail_off == head_off) tail_off = -1;
         }
@@ -1375,11 +1373,17 @@ void KvsStore::_do_write_pad_zeros(ready_regions_t &readyregions, zero_regions_t
     for (const auto &p : zeroregions) {
         const uint64_t c_off = p2align(p.first, chunksize);
         const uint64_t p_off = p2phase(p.first, chunksize);
+        const uint64_t e_off =  p_off + p.second;
 
         bufferlist &bl = readyregions[c_off];
+
         if (bl.length() == 0) {
             bufferptr p = buffer::create_small_page_aligned(chunksize);
             bl.append(std::move(p));
+        } else if (bl.length() < e_off) {
+            bufferptr p = buffer::create_small_page_aligned(e_off-bl.length());
+            bl.append(std::move(p));
+            bl.c_str(); // rebuild
         }
         TRW << "pad zero: off " << p_off << ", length = " <<  p.second << ", bl.size " << bl.length();
         bl.zero(p_off, p.second);
@@ -1414,7 +1418,7 @@ int KvsStore::_do_write(TransContext *txc, CollectionRef& c, OnodeRef &o,
     const uint64_t start_c_off = p2align(offset, chunksize);
     const uint64_t end_c_off   = p2align(e     , chunksize);
 
-    uint64_t bl_offset  = 0;
+    //uint64_t bl_offset  = 0;
 
     uint64_t sum = 0;
     uint64_t nc = 0;
@@ -1423,13 +1427,17 @@ int KvsStore::_do_write(TransContext *txc, CollectionRef& c, OnodeRef &o,
         uint64_t b_off     = offset - c_off;
         uint64_t b_remains = chunksize - b_off;
         uint64_t to_write  = std::min(b_remains, length);
-
-        TRW << "send write : " << o->oid  << " chunk offset " << c_off << " start offset " << b_off << " len " << to_write  ;
+        uint64_t e_off     = to_write + b_off;
+        TRW << "write : " << o->oid  << " chunk offset " << c_off << " start offset " << b_off << " len " << to_write  ;
 
         bufferlist &bl = ready_regions[c_off];
         if (bl.length() == 0) {
             bufferptr p = buffer::create_small_page_aligned(chunksize);
             bl.append(std::move(p));
+        } else if (bl.length() < e_off) {
+            bufferptr p = buffer::create_small_page_aligned(e_off-bl.length());
+            bl.append(std::move(p));
+            bl.c_str(); // rebuild
         }
 
         TRW << "write buffer length = " << bl.length() << ", to_wrtie = " << to_write ;
@@ -1445,13 +1453,13 @@ int KvsStore::_do_write(TransContext *txc, CollectionRef& c, OnodeRef &o,
 
         // buffer cache write
 
-        TRW << "update buffer cache";
+        TRW << "update buffer cache, off = " << offset;
 
-        o->bc.write(c->cache, txc->seq, offset, bl, 0);
+        o->bc.write(c->cache, txc->seq, c_off/*offset*/, bl, 0);
 
         length    -= to_write;
         offset    += to_write;
-        bl_offset += to_write;
+        //bl_offset += to_write;
         nc++;
         sum += to_write;
     }
