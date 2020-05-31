@@ -65,7 +65,7 @@ KvsStore::KvsStore(CephContext *cct, const std::string &path) :
     // create onode LRU cache
     set_cache_shards(1);
 
-    cp = Compressor::create(cct, "zstd");
+    cp = Compressor::create(cct, "lz4");
 }
 
 // configure onode and data caches
@@ -849,7 +849,7 @@ int KvsStore::_txc_write_nodes(TransContext *txc) {
             auto p = bl->get_contiguous_appender(bound, true);
             denc(o->onode, p);
         }
-
+        TRC << "onode size = " << bl->length();
         /*{
             std::set<std::string> out;
             kvsstore_omap_list omap_list(&o->onode);
@@ -1627,7 +1627,7 @@ int KvsStore::_clone(TransContext *txc, CollectionRef &c, OnodeRef &oldo, OnodeR
 
     // clone omap
     kvsstore_omap_list omap_list(&oldo->onode, cp);
-    omap_list.load_omap(cct); //, db.omap_readfunc);
+    omap_list.load_omap(cct, db.omap_readfunc);
 
     // clone attrs, omap , omap header
     //newo->onode.omaps = oldo->onode.omaps;
@@ -1915,7 +1915,7 @@ int KvsStore::getattrs(CollectionHandle &c_, const ghobject_t &oid,
 void KvsStore::_do_omap_clear(TransContext *txc, OnodeRef &o) {
     FTRACE
     kvsstore_omap_list omap_list(&o->onode, cp);
-    omap_list.load_omap(cct); //, db.omap_readfunc);
+    omap_list.load_omap(cct, db.omap_readfunc);
 
     for (const std::string &user_key: o->onode.omaps) {
         db.aio_remove_omap(o->onode.nid, user_key, txc->ioc);

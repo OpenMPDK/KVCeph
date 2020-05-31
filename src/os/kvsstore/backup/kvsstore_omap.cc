@@ -81,7 +81,7 @@ void kvsstore_omap_list::flush(CephContext* cct, IoContext &ioc, const writefunc
 void kvsstore_omap_list::insert(CephContext* cct, const std::string &key, const readfunc_t &reader) {
     FTRACE
     if (!onode->omap_loaded) {
-        load_omap(cct, reader);
+        load_omap(cct);
     }
 
     onode->omaps.insert(key);

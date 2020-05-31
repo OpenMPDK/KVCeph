@@ -20,6 +20,7 @@
 #define TRW  _KVSNULLLOGGER
 #define TRR  _KVSNULLLOGGER
 #define TRIO _KVSNULLLOGGER
+#define TRC  _KVSNULLLOGGER
 
 #ifdef ENABLE_FTRACE
 struct FtraceObject {

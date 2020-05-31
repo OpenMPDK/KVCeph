@@ -123,18 +123,19 @@ struct kvsstore_onode_t {
     // omap
     bool omap_loaded = false;
     bool omap_dirty  = false;
-    std::set<std::string> omaps_write_buffer;
+    //std::set<std::string> omaps_write_buffer;
     std::set<std::string> omaps;
+    bufferptr omap_wb;
     //std::set<std::string> omaps_cache;
     uint8_t  num_omap_extents = 0;
-    bufferptr omap_bp;
     bufferlist omap_keys;
-//            denc(v.num_omap_extents, p);
+    //bufferlist omap_wb;
+//
     map<mempool::kvsstore_cache_other::string, bufferptr>  attrs;        ///< attrs
 
     inline bool has_omap() const {
         if (omap_loaded) return !omaps.empty();
-        return !omaps_write_buffer.empty() || num_omap_extents > 0;
+        return (omap_wb.have_raw() && omap_wb.length() > 0) || num_omap_extents > 0;
     }
 
     DENC(kvsstore_onode_t, v, p) {
@@ -142,7 +143,9 @@ struct kvsstore_onode_t {
             denc_varint(v.nid, p);
             denc_varint(v.size, p);
             denc(v.attrs, p);
+            denc(v.num_omap_extents, p);
             denc(v.omap_keys, p);
+            //denc(v.omap_wb, p);
             denc(v.omap_header, p);
             //denc(v.flags, p);
         DENC_FINISH(p);

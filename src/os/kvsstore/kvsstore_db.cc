@@ -307,7 +307,7 @@ int KvsStoreDB::read_onode(const ghobject_t &oid, bufferlist &bl)
     key.length = construct_onode_key(cct, oid, keybuffer);
 
     kv_value value;
-    bufferptr bp = buffer::create_small_page_aligned(8192);
+    bufferptr bp = buffer::create_small_page_aligned(8192 + 2048);
     value.value  = bp.c_str();
     value.length = bp.length();
     value.offset = 0;

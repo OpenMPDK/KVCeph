@@ -108,12 +108,6 @@ KvsStoreTypes::OnodeRef KvsStoreTypes::Collection::get_onode(const ghobject_t &o
 
 	KvsStoreTypes::OnodeRef o = onode_map.lookup(oid);
 	if (o) {
-        if (o->onode.omap_bp.get_raw()) {
-            TRU << "onode = " << o->oid << ", omap size = " << o->onode.omaps.size() << ", write buffer len: " << o->onode.omap_bp.length();
-        }
-        else
-            TRU << "onode = " << o->oid << ", omapsize = " << o->onode.omaps.size() << ", no write buffer";
-
         return o;
     }
 
@@ -131,15 +125,7 @@ KvsStoreTypes::OnodeRef KvsStoreTypes::Collection::get_onode(const ghobject_t &o
 		// new object, new onode
 		on = new KvsStoreTypes::Onode(this, oid);
 	} else if (r == KV_SUCCESS) {
-
 		on = KvsStoreTypes::Onode::decode(this, oid, v);
-
-        if (on->onode.omap_bp.get_raw()) {
-            TRU << "onode = " << on->oid << ", onode size = " << v.length() << ", write buffer len: " << on->onode.omap_bp.length();
-        }
-        else
-            TRU << "onode = " << on->oid << ", onode size = " << v.length() << ", no write buffer";
-
     } else {
 		TR << "KV I/O error: ret = " << r ;
 		ceph_abort_msg("Failed to read an onode due to an I/O error");
