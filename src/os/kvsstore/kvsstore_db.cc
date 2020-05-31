@@ -98,6 +98,7 @@ int KvsStoreDB::aio_delete_omap_keyblock(uint64_t nid, uint32_t startid, uint32_
         kvaio_t *aio= _aio_remove(keyspace_notsorted, &ioc);
         aio->keylength = construct_omapblockkey_impl( aio->key, nid, id);
     }
+    return 0;
 }
 
 int KvsStoreDB::aio_read_omap_keyblock(uint64_t nid,uint32_t start_id, uint32_t end_id, std::vector<bufferlist*> &bls) {

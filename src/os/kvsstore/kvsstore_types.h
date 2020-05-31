@@ -128,7 +128,8 @@ struct kvsstore_onode_t {
     //std::set<std::string> omaps_cache;
     uint8_t  num_omap_extents = 0;
     bufferptr omap_bp;
-
+    bufferlist omap_keys;
+//            denc(v.num_omap_extents, p);
     map<mempool::kvsstore_cache_other::string, bufferptr>  attrs;        ///< attrs
 
     inline bool has_omap() const {
@@ -141,8 +142,7 @@ struct kvsstore_onode_t {
             denc_varint(v.nid, p);
             denc_varint(v.size, p);
             denc(v.attrs, p);
-            denc(v.num_omap_extents, p);
-            denc(v.omap_bp, p);
+            denc(v.omap_keys, p);
             denc(v.omap_header, p);
             //denc(v.flags, p);
         DENC_FINISH(p);

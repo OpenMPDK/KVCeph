@@ -709,6 +709,7 @@ int KvsStore::_prepare_read_chunk_ioc(const ghobject_t &oid, ready_regions_t& re
 
 int KvsStore::_generate_read_result_bl(OnodeRef o,uint64_t offset,size_t length, ready_regions_t& ready_regions, bufferlist& bl)
 {
+    FTRACE
     auto pr = ready_regions.begin();
     auto pr_end = ready_regions.end();
     uint64_t pos = 0;
@@ -837,6 +838,7 @@ int KvsStore::_txc_write_nodes(TransContext *txc) {
 
     for (const OnodeRef& o : txc->onodes) {
         kvsstore_omap_list omap_list(&o->onode, cp);
+        TRU << "omap flush" << o->oid;
         omap_list.flush(cct, *ioc, db.omap_writefunc, bls);
 
         size_t bound = 0;
@@ -847,6 +849,12 @@ int KvsStore::_txc_write_nodes(TransContext *txc) {
             auto p = bl->get_contiguous_appender(bound, true);
             denc(o->onode, p);
         }
+
+        if (o->onode.omap_bp.get_raw()) {
+            TRU << "onode = " << o->oid << ", omap size " << o->onode.omaps.size() << ", onode size = " << bl->length() << ", write buffer len: " << o->onode.omap_bp.length();
+        }
+        else
+            TRU << "onode = " << o->oid << ", omap size " << o->onode.omaps.size() << ", onode size = " << bl->length() << ", no write buffer";
 
         /*{
             std::set<std::string> out;
@@ -1336,11 +1344,11 @@ int KvsStore::_do_write_read_chunks_if_needed(CollectionRef& c, OnodeRef &o, con
 
                 if (chunk_soff < object_length) {
                     //std::cout << "issue zero read: chunk off " << chunk_soff  << std::endl;
-                    TRR << "chunk to read: index = " << chunk_soff / chunksize;
+                    TRW << "chunk to read: index = " << chunk_soff / chunksize;
                     uchunk2read.insert(chunk_soff / chunksize);
                 }
 
-                TRR << "zero regions: off" << pad_soff << ", len = " << pad_len;
+                TRW << "zero regions: off" << pad_soff << ", len = " << pad_len;
                 zeroregions.push_back(std::make_pair(pad_soff, pad_len));
 
                 pad_soff        += pad_len;
@@ -1373,7 +1381,7 @@ void KvsStore::_do_write_pad_zeros(ready_regions_t &readyregions, zero_regions_t
             bufferptr p = buffer::create_small_page_aligned(chunksize);
             bl.append(std::move(p));
         }
-        TRW << "pad zero: off " <<p_off << ", length = " <<  p.second;
+        TRW << "pad zero: off " << p_off << ", length = " <<  p.second << ", bl.size " << bl.length();
         bl.zero(p_off, p.second);
         //std::cout << " zero: chunk offset " << c_off << " start offset " << p_off << " len " << p.second << " " << print_chunk(c_off, readyregions, chunksize)<< std::endl;
     }
@@ -1611,7 +1619,7 @@ int KvsStore::_clone(TransContext *txc, CollectionRef &c, OnodeRef &oldo, OnodeR
 
     // clone omap
     kvsstore_omap_list omap_list(&oldo->onode, cp);
-    omap_list.load_omap(cct, db.omap_readfunc);
+    omap_list.load_omap(cct); //, db.omap_readfunc);
 
     // clone attrs, omap , omap header
     //newo->onode.omaps = oldo->onode.omaps;
@@ -1628,6 +1636,7 @@ int KvsStore::_clone(TransContext *txc, CollectionRef &c, OnodeRef &oldo, OnodeR
 
             for (const std::string &name : oldo->onode.omaps) {
                 new_omap_list.insert(cct, name, db.omap_readfunc);
+                TRU << "onode = " << newo->oid << ", insert " << name ;
                 bufferlist *bl = new bufferlist();
                 old_omap_values.push_back(bl);
                 db.aio_read_omap(oldo->onode.nid, name, *bl, &ioc);
@@ -1898,7 +1907,7 @@ int KvsStore::getattrs(CollectionHandle &c_, const ghobject_t &oid,
 void KvsStore::_do_omap_clear(TransContext *txc, OnodeRef &o) {
     FTRACE
     kvsstore_omap_list omap_list(&o->onode, cp);
-    omap_list.load_omap(cct, db.omap_readfunc);
+    omap_list.load_omap(cct); //, db.omap_readfunc);
 
     for (const std::string &user_key: o->onode.omaps) {
         db.aio_remove_omap(o->onode.nid, user_key, txc->ioc);
@@ -1946,6 +1955,7 @@ int KvsStore::_omap_setkeys(TransContext *txc, CollectionRef &c,
         decode(*list, p);
         // key: stored in onode
         omap_list.insert(cct, key, db.omap_readfunc);
+        TRU << "onode = " << o->oid << ", inserted " << key ;
 
         if (list->length() > 0)
             db.aio_write_omap(o->onode.nid, key, *list, txc->ioc);
@@ -2073,6 +2083,8 @@ int KvsStore::omap_get_keys(CollectionHandle &c_, const ghobject_t &oid,
 
     omap_list.list(cct, keys, db.omap_readfunc);
 
+    TRU << "omap list oid = " << o->oid << ", output = " << keys->size();
+
     return 0;
 }
 
@@ -2171,7 +2183,7 @@ int KvsStore::omap_get_impl(Collection *c, const ghobject_t &oid,
     std::set<std::string> existing_keys;
     kvsstore_omap_list omap_list(&o->onode, cp);
     omap_list.list(cct, &existing_keys, db.omap_readfunc);
-
+    TRU << "omap list oid = " << o->oid << ", output = " << existing_keys.size();
     for (const std::string &p : existing_keys) {
         bufferlist &bl = (*out)[p];
         db.aio_read_omap(o->onode.nid, p, bl, &ioc);
@@ -2195,6 +2207,7 @@ public:
 
         kvsstore_omap_list omap_list(&o->onode, store->cp);
         omap_list.list(store->cct, &omaps, store->db.omap_readfunc);
+        TRU << "omap list oid = " << o->oid << ", output = " << omaps.size();
         seek_to_first();
     }
 

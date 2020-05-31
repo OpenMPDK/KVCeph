@@ -30,7 +30,7 @@ public:
     }
 
     void insert(CephContext* cct, const std::string &key, const readfunc_t &reader);
-    void load_omap(CephContext* cct, const readfunc_t &reader);
+    void load_omap(CephContext* cct); //, const readfunc_t &reader);
     void flush(CephContext* cct, IoContext &ioc, const writefunc_t &writer, std::vector<bufferlist*> &tempbuffers);
     int  compress(CephContext* cct, bufferlist &in, bufferlist &out);
     int  decompress(CephContext* cct, bufferlist &in, bufferlist &out);
