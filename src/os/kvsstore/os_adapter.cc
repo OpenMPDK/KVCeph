@@ -138,6 +138,7 @@ int ObjectStoreAdapter::_read_fsid(uuid_d *uuid) {
         fsid_str[36] = 0;
     else
         fsid_str[ret] = 0;
+
     if (!uuid->parse(fsid_str)) {
         derr << __func__ << " unparsable uuid " << fsid_str << dendl;
         return -EINVAL;

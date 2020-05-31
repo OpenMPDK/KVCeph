@@ -53,7 +53,6 @@ struct kvaio_t {
     kvaio_t(int opcode_, int spaceid_, aio_callback_t c, IoContext *p, void *db_):
         opcode(opcode_), spaceid(spaceid_), keylength(0), value(0), vallength(0), valoffset(0), parent(p), cb_func(c), rval(-1000), db(db_)
     {
-        TR2 << "kvaio_t created: " << (void*)this << ", parent (ioc) = " << (void*)parent;
     }
 
 };
@@ -118,6 +117,23 @@ public:
     int _submit_aios(KADI* kadi, bool debug) {
         int r = 0;
         submitting = true;
+/*
+        for (kvaio_t *aio : running_aios) {
+            switch (aio->opcode) {
+                case nvme_cmd_kv_retrieve:
+                    break;
+                case nvme_cmd_kv_delete:
+                    //num_running--;
+                    break;
+                case nvme_cmd_kv_store:
+                    if (aio->vallength > 10000) {
+                        num_running--;
+                    }
+                    break;
+            };
+        }
+*/
+
         for (kvaio_t *aio : running_aios) {
             r = -1;
             switch (aio->opcode) {
@@ -128,10 +144,19 @@ public:
                 case nvme_cmd_kv_delete:
                     //if (debug || 1) TRW << "submit ioc = " << (void*)this << ", op = " << aio->opcode << ", aio key addr = " << (void*)aio->key  << " ," << print_kvssd_key(aio->key, aio->keylength) << ", post data" << (void*)aio << ", ioc = " << (void*)aio->parent;
                     r = kadi->kv_delete_aio(aio->spaceid, aio->key, aio->keylength, { aio->cb_func,  aio });
+                    //r = 0;
                     break;
                 case nvme_cmd_kv_store:
                     //if (debug || 1) TRW << "submit ioc = " << (void*)this << ", op = " << aio->opcode << ", aio key addr = " << (void*)aio->key  << " ," << print_kvssd_key(aio->key, aio->keylength) << ", post data" << (void*)aio << ", ioc = " << (void*)aio->parent;
-                    r = kadi->kv_store_aio(aio->spaceid, aio->key, aio->keylength, aio->value, aio->valoffset, aio->vallength, { aio->cb_func,  aio});
+
+                    /*if (aio->vallength > 10000) {
+                        r = 0;
+                        TR << "large IO: space " << aio->spaceid << ", " << print_kvssd_key(aio->key, aio->keylength) << ", value length = " <<  aio->vallength;
+
+                    }
+                    else*/
+                        r = kadi->kv_store_aio(aio->spaceid, aio->key, aio->keylength, aio->value, aio->valoffset, aio->vallength, { aio->cb_func,  aio});
+
                     break;
             };
 

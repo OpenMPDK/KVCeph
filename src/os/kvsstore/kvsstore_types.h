@@ -45,7 +45,7 @@
 
 #include "keyencoder.h"
 #include "kvssd_types.h"
-
+#include "kvsstore_omap.h"
 
 class KvsStore;
 class KvsStoreCache;
@@ -115,29 +115,34 @@ bool map_compare2 (Map const &lhs, Map const &rhs) {
     return true;
 }
 
-
 /// onode: per-object metadata
 struct kvsstore_onode_t {
     uint64_t nid = 0;
     uint64_t size = 0;
     bufferlist omap_header;
-    set<std::string>             omaps;        ///< omap keys
+    // omap
+    bool omap_loaded = false;
+    bool omap_dirty  = false;
+    std::set<std::string> omaps_write_buffer;
+    std::set<std::string> omaps;
+    //std::set<std::string> omaps_cache;
+    uint8_t  num_omap_extents = 0;
+    bufferptr omap_bp;
+
     map<mempool::kvsstore_cache_other::string, bufferptr>  attrs;        ///< attrs
 
-    inline bool has_omap() const { return omaps.size() > 0; }
-    inline bool equals(kvsstore_onode_t &other) {
-
-        return nid == other.nid && size == other.size &&
-               omap_header.contents_equal(other.omap_header) &&
-               map_compare(omaps, other.omaps) &&
-               map_compare2(attrs, other.attrs);
+    inline bool has_omap() const {
+        if (omap_loaded) return !omaps.empty();
+        return !omaps_write_buffer.empty() || num_omap_extents > 0;
     }
+
     DENC(kvsstore_onode_t, v, p) {
         DENC_START(1, 1, p);
             denc_varint(v.nid, p);
             denc_varint(v.size, p);
             denc(v.attrs, p);
-            denc(v.omaps, p);
+            denc(v.num_omap_extents, p);
+            denc(v.omap_bp, p);
             denc(v.omap_header, p);
             //denc(v.flags, p);
         DENC_FINISH(p);

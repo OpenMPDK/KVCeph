@@ -164,8 +164,12 @@ public:
 	std::mutex compact_lock;
 	std::condition_variable compact_cond;
 
-    int keyspace_sorted;
-    int keyspace_notsorted;
+    int keyspace_sorted = 0;
+    int keyspace_notsorted = 1;
+
+    std::function< bool (uint64_t,int, int, std::vector<bufferlist*>&)>       omap_readfunc;
+    std::function< void (uint64_t, bufferlist*, int, IoContext &ctx)>         omap_writefunc;
+    std::function< bool (uint64_t,int start_id, int end_id, IoContext &ctx)>  omap_removefunc;
 
 public:
     KvsStoreDB(CephContext *cct_);
@@ -186,6 +190,10 @@ public:
     void aio_read_onode(const ghobject_t &oid, bufferlist &bl, IoContext *ioc);
     void aio_write_onode(const ghobject_t &oid, bufferlist &bl, IoContext *ioc);
     void aio_remove_onode(const ghobject_t &oid, IoContext *ioc);
+
+    int aio_write_omap_keyblock(uint64_t nid, bufferlist * iolist, int start_id, IoContext &ioc);
+    int aio_read_omap_keyblock(uint64_t nid, uint32_t start_id, uint32_t end_id, std::vector<bufferlist*> &bls);
+    int aio_delete_omap_keyblock(uint64_t nid, uint32_t startid, uint32_t endid, IoContext &ioc);
 
     void aio_read_omap( const uint64_t index, const std::string &strkey, bufferlist &bl, IoContext *ioc);
     void aio_write_omap( uint64_t index, const std::string &strkey, bufferlist &bl, IoContext *ioc);

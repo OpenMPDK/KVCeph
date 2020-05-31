@@ -100,7 +100,7 @@ protected:
 public:
 	virtual bool get_key(char **key, int &length) { return false; }
 	virtual void move_next(const long int movement) {};
-	virtual void begin() { std::cout << "begin" << std::endl; };
+	virtual void begin() {  };
 	virtual void end() {};
 	virtual void lower_bound(const char *key, int length) {};
 	virtual void upper_bound(const char *key, int length) {};
@@ -442,23 +442,23 @@ private:
 
 	void right_node_add(bptree_node *node, bptree_node *right)
 	{
-		std::cout << ">> add right node" << std::endl;
-		std::cout << "current node: curr = " << node->header()->self
-				  << ", next = " << node->header()->next << ", invalid key = " << invalid_key_addr << std::endl;
+		//std::cout << ">> add right node" << std::endl;
+		//std::cout << "current node: curr = " << node->header()->self
+        //   		  << ", next = " << node->header()->next << ", invalid key = " << invalid_key_addr << std::endl;
 
 		bptree_node *next = pool.fetch_tree_node(node->header()->next);
 		if (next != NULL) {
-				std::cout << "current right is not null" << std::endl;
+				//std::cout << "current right is not null" << std::endl;
 				next->header()->prev = right->header()->self;
 				right->header()->next = next->header()->self;
 				set_dirty(next); //next->set_dirty();
 		} else {
-				std::cout << "set right's next to null" << std::endl;
+				//std::cout << "set right's next to null" << std::endl;
 				right->header()->next = invalid_key_addr;
 		}
 		right->header()->prev = node->header()->self;
 		node->header()->next = right->header()->self;
-		std::cout << "right's addr = " << right->header()->self << std::endl;
+		//std::cout << "right's addr = " << right->header()->self << std::endl;
 	}
 
 	int parent_node_build(bptree_node *l_ch,
@@ -728,9 +728,9 @@ private:
 	        right->set_children(param.max_entries - split + 1);
 
 
-	        std::cout << "curr's first key = " << leaf->key()[0] << ", right addr = " << right->addr <<std::endl;
-	        std::cout << "curr's last key = " << leaf->key()[split-1] << ", right addr = " << right->addr <<std::endl;
-	        std::cout << "right's first key = " << leaf->key()[split] << ", right addr = " << right->addr <<std::endl;
+	        //std::cout << "curr's first key = " << leaf->key()[0] << ", right addr = " << right->addr <<std::endl;
+	        //std::cout << "curr's last key = " << leaf->key()[split-1] << ", right addr = " << right->addr <<std::endl;
+	        //std::cout << "right's first key = " << leaf->key()[split] << ", right addr = " << right->addr <<std::endl;
 
 	        /* sum = right->children = pivot + 1 + (param.max_entries - pivot - split) */
 	        /* replicate from key[split] to key[children - 1] in original leaf */
@@ -745,7 +745,7 @@ private:
 	        memmove(&right->key()[pivot + 1], &leaf->key()[insert], (param.max_entries - insert) * sizeof(bp_addr_t));
 	        //memmove(&data(right)[pivot + 1], &data(leaf)[insert], (param.max_entries - insert) * sizeof(long));
 
-	        std::cout << "right's first key = " << right->key()[0] << ", right addr = " << right->addr <<std::endl;
+	        //std::cout << "right's first key = " << right->key()[0] << ", right addr = " << right->addr <<std::endl;
 
 	        return right->key()[0];
 	}
@@ -1262,7 +1262,7 @@ private:
 
 			bptree_node *node = tree->pool.fetch_tree_node(nodeaddr);
 			if (!node) {
-				std::cout << "nodeaddr " << nodeaddr << ", not found\n";
+				//std::cout << "nodeaddr " << nodeaddr << ", not found\n";
 				end();
 				return;
 			}

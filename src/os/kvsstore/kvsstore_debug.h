@@ -12,7 +12,8 @@
 #define TRBACKTRACE { ostringstream oss; oss << BackTrace(1); _KVSLOGGER << "Backtrace: " << oss.str(); }
 
 // LOG switches
-#define TR   _KVSLOGGER
+#define TR   _KVSNULLLOGGER
+#define TRU  _KVSNULLLOGGER
 #define TR2  _KVSNULLLOGGER
 #define TRI  _KVSNULLLOGGER
 #define TRW  _KVSNULLLOGGER
@@ -24,11 +25,11 @@ struct FtraceObject {
     std::string func;
     int line;
     FtraceObject(const char *f, int line_) : func(f), line(line_) {
-       _KVSLOGGER_IMPL(func, line) << ">> Enter";
+       _KVSLOGGER_IMPL(func.c_str(), line) << ">> Enter";
     }
 
     ~FtraceObject() {
-       _KVSLOGGER_IMPL(func, line) << ">> Exit";
+       _KVSLOGGER_IMPL(func.c_str(), line) << ">> Exit";
     }
 };
 #define FTRACE FtraceObject fobj(__FUNCTION__, __LINE__);

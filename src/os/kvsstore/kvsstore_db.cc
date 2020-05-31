@@ -46,11 +46,14 @@ void aio_callback(kv_io_context &op, void *post_data)
         ioc->set_return_value(op.retcode);
     }
 
+
     if (op.opcode == nvme_cmd_kv_retrieve) {
         aio->bp.set_length(op.value.length);
         aio->pbl->append(std::move(aio->bp));
+        //TRU << "read " << op.value.length << " bytes";
     }
-    //TR << "callback2 ioc parent = " << ioc->parent;
+
+    //TRU << "opcode " << op.opcode << ", key=" << print_kvssd_key(op.key.key, op.key.length) << ", valuelength = " << op.value.length << " bytes";
 
     //TR << print_value(r, op.opcode, op.key.key, op.key.length, op.value.value,op.value.length);
 
@@ -66,13 +69,85 @@ void aio_callback(kv_io_context &op, void *post_data)
 
 KvsStoreDB::KvsStoreDB(CephContext *cct_): cct(cct_), kadi(cct), compaction_started(false) {
     FTRACE
-    keyspace_sorted     = cct->_conf->kvsstore_keyspace_sorted;
-    keyspace_notsorted  = cct->_conf->kvsstore_keyspace_notsorted;
+    if (cct) {
+        keyspace_sorted = cct->_conf->kvsstore_keyspace_sorted;
+        keyspace_notsorted = cct->_conf->kvsstore_keyspace_notsorted;
+    }
+
+    omap_readfunc = [&] (uint64_t nid, int startid, int endid, std::vector<bufferlist*>& iolist) -> bool {
+        return this->aio_read_omap_keyblock(nid, startid, endid, iolist) == 0;
+    };
+
+    omap_writefunc =[&](uint64_t nid, bufferlist* buffer, int start_id, IoContext &ctx) {
+        this->aio_write_omap_keyblock(nid, buffer, start_id, ctx);
+    };
+
+    omap_removefunc = [&] (uint64_t nid, int start_id, int end_id, IoContext &ctx) -> bool {
+        return this->aio_delete_omap_keyblock(nid, start_id, end_id, ctx) == 0;
+    };
+}
+int KvsStoreDB::aio_write_omap_keyblock(uint64_t nid, bufferlist *bl, int start_id, IoContext &ioc) {
+    TRU << "writing keyblock #" << start_id << ", length = " << bl->length();
+    kvaio_t *aio = _aio_write(keyspace_notsorted, *bl, &ioc);
+    aio->keylength = construct_omapblockkey_impl( aio->key, nid, start_id);
+    return 0;
+}
+
+int KvsStoreDB::aio_delete_omap_keyblock(uint64_t nid, uint32_t startid, uint32_t endid, IoContext &ioc) {
+    for (unsigned id = startid ; id < endid; id++) {
+        kvaio_t *aio= _aio_remove(keyspace_notsorted, &ioc);
+        aio->keylength = construct_omapblockkey_impl( aio->key, nid, id);
+    }
+}
+
+int KvsStoreDB::aio_read_omap_keyblock(uint64_t nid,uint32_t start_id, uint32_t end_id, std::vector<bufferlist*> &bls) {
+    IoContext ioc(0, __func__);
+    TRU << "omap read " << end_id - start_id << " blocks";
+    for (unsigned id = start_id; id < end_id; id++) {
+        bufferlist *bl = new bufferlist();
+        kvaio_t *aio = _aio_read(keyspace_notsorted, DEFAULT_OMAPBUF_SIZE, bl, &ioc);
+        aio->keylength = construct_omapblockkey_impl(aio->key, nid, start_id);
+
+        bls.push_back(bl);
+    }
+
+    int r = ioc.aio_submit_and_wait(&kadi, __func__);
+
+    TRU << "finished: r = " << r << ", data read = " << bls[0]->length();
+
+    if (r != 0) {
+        for (bufferlist *bl: bls) { delete bl; }
+        bls.clear();
+        return r;
+    }
+    return r;
+}
+
+void KvsStoreDB::aio_read_omap(const uint64_t index, const std::string &strkey, bufferlist &bl, IoContext *ioc)
+{
+    FTRACE
+    kvaio_t *aio = _aio_read(keyspace_notsorted, KVS_OBJECT_SPLIT_SIZE, &bl, ioc);
+    aio->keylength = construct_omapkey_impl( aio->key, index, strkey.c_str(), strkey.length());
+}
+
+void KvsStoreDB::aio_write_omap(uint64_t index, const std::string &strkey, bufferlist &bl, IoContext *ioc)
+{
+    FTRACE
+    kvaio_t *aio = _aio_write(keyspace_notsorted, bl, ioc);
+    aio->keylength = construct_omapkey_impl( aio->key, index, strkey.c_str(), strkey.length());
+}
+
+void KvsStoreDB::aio_remove_omap(uint64_t index, const std::string &strkey, IoContext *ioc)
+{
+    FTRACE
+    kvaio_t *aio= _aio_remove(keyspace_notsorted, ioc);
+    aio->keylength = construct_omapkey_impl( aio->key, index, strkey.c_str(), strkey.length());
 }
 
 kvaio_t* KvsStoreDB::_aio_write(int keyspaceid, bufferlist &bl, IoContext *ioc)
 {
     FTRACE
+    bl.c_str();
     boost::container::small_vector<iovec,4> iov;
     bl.prepare_iov(&iov);
 
@@ -157,6 +232,7 @@ void KvsStoreDB::aio_read_onode(const ghobject_t &oid, bufferlist &bl, IoContext
 void KvsStoreDB::aio_write_onode(const ghobject_t &oid, bufferlist &bl, IoContext *ioc)
 {
     FTRACE
+    //TR << "onode " << oid << ", length = " << bl.length();
     kvaio_t *aio = _aio_write(keyspace_sorted,  bl, ioc);
     aio->keylength = construct_onode_key(cct, oid, aio->key);
     // TR << "write onode: oid = " << oid << ", key = " << print_kvssd_key((const char*)aio->key, aio->keylength) ;
@@ -169,28 +245,6 @@ void KvsStoreDB::aio_remove_onode(const ghobject_t &oid, IoContext *ioc)
     aio->keylength = construct_onode_key(cct, oid, aio->key);
 }
 
-void KvsStoreDB::aio_read_omap(const uint64_t index, const std::string &strkey, bufferlist &bl, IoContext *ioc)
-{
-    FTRACE
-    kvaio_t *aio = _aio_read(keyspace_notsorted, KVS_OBJECT_SPLIT_SIZE, &bl, ioc);
-    aio->keylength = construct_omapkey_impl( aio->key, index, strkey.c_str(), strkey.length());
-}
-
-void KvsStoreDB::aio_write_omap(uint64_t index, const std::string &strkey, bufferlist &bl, IoContext *ioc)
-{
-    FTRACE
-    kvaio_t *aio = _aio_write(keyspace_notsorted, bl, ioc);
-
-    aio->keylength = construct_omapkey_impl( aio->key, index, strkey.c_str(), strkey.length());
-}
-
-void KvsStoreDB::aio_remove_omap(uint64_t index, const std::string &strkey, IoContext *ioc)
-{
-    FTRACE
-    kvaio_t *aio= _aio_remove(keyspace_notsorted, ioc);
-
-    aio->keylength = construct_omapkey_impl( aio->key, index, strkey.c_str(), strkey.length());
-}
 
 void KvsStoreDB::aio_read_journal(int index, bufferlist &bl, IoContext *ioc)
 {
@@ -297,6 +351,7 @@ int KvsStoreDB::read_sb(bufferlist &bl) {
 int KvsStoreDB::write_sb(bufferlist &bl) {
     FTRACE
     char keybuffer[256];
+    bl.c_str();
     boost::container::small_vector<iovec,4> iov;
     bl.prepare_iov(&iov);
 

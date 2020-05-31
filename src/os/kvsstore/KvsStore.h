@@ -267,7 +267,7 @@ public:
     deque<TransContext*> kv_finalize_queue;   ///< pending finalization
 
     kvsstore_sb_t kvsb;
-
+    CompressorRef cp;
 };
 
 

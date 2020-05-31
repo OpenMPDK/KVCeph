@@ -111,9 +111,6 @@ static void usage()
 
 int main(int argc, const char **argv)
 {
-
-    LOGOSD << "CEPH_OSD STARTED -------------------------------------------" << LOGEND;
-
     vector<const char*> args;
     argv_to_vec(argc, argv, args);
     if (args.empty()) {
@@ -320,8 +317,6 @@ int main(int argc, const char **argv)
         }
     }
 
-    LOGOSD << "CEPH_OSD STORE TYPE: " << store_type << LOGEND;
-
     std::string journal_path = g_conf().get_val<std::string>("osd_journal");
     uint32_t flags = g_conf().get_val<uint64_t>("osd_os_flags");
     ObjectStore *store = ObjectStore::create(g_ceph_context,
@@ -334,7 +329,6 @@ int main(int argc, const char **argv)
         forker.exit(-ENODEV);
     }
 
-    LOGOSD << "CEPH_OSD ObjectStore CREATED "<< LOGEND;
 
     if (mkkey) {
         common_init_finish(g_ceph_context);
@@ -372,7 +366,6 @@ int main(int argc, const char **argv)
             forker.exit(-EINVAL);
         }
 
-        LOGOSD << "CEPH_OSD MKFS STARTED"<< LOGEND;
         int err = OSD::mkfs(g_ceph_context, store, g_conf().get_val<uuid_d>("fsid"),
                             whoami);
         if (err < 0) {
@@ -380,8 +373,6 @@ int main(int argc, const char **argv)
                  << data_path << ": " << cpp_strerror(-err) << TEXT_NORMAL << dendl;
             forker.exit(1);
         }
-
-        LOGOSD << "CEPH_OSD MKFS FINISHED: " << data_path << " for osd." << whoami << " fsid " << g_conf().get_val<uuid_d>("fsid")<< LOGEND;
 
         dout(0) << "created object store " << data_path
                 << " for osd." << whoami
@@ -395,7 +386,6 @@ int main(int argc, const char **argv)
 
     if (mkjournal) {
         common_init_finish(g_ceph_context);
-        LOGOSD << "CEPH_MK JOURNAL "<< LOGEND;
         int err = store->mkjournal();
         if (err < 0) {
             derr << TEXT_RED << " ** ERROR: error creating fresh journal "
@@ -404,7 +394,6 @@ int main(int argc, const char **argv)
             forker.exit(1);
         }
 
-        LOGOSD << "CEPH_MK JOURNAL: " << journal_path << " for object store " << data_path << LOGEND;
         derr << "created new journal " << journal_path
              << " for object store " << data_path << dendl;
         forker.exit(0);
@@ -485,8 +474,6 @@ int main(int argc, const char **argv)
         }
         forker.exit(0);
     }
-
-    LOGOSD << "CEPH_OSD PEAK META"<< LOGEND;
 
     string magic;
     uuid_d cluster_fsid, osd_fsid;
@@ -584,8 +571,6 @@ int main(int argc, const char **argv)
     ms_hb_back_client->set_cluster_protocol(CEPH_OSD_PROTOCOL);
     ms_hb_back_server->set_cluster_protocol(CEPH_OSD_PROTOCOL);
     ms_hb_front_server->set_cluster_protocol(CEPH_OSD_PROTOCOL);
-
-    LOGOSD << "CEPH_OSD STARTING..."<< LOGEND;
 
     dout(0) << "starting osd." << whoami
             << " osd_data " << data_path
@@ -718,15 +703,13 @@ int main(int argc, const char **argv)
                   data_path,
                   journal_path);
 
-    LOGOSD << "CEPH_OSD OSD CREATED"<< LOGEND;
-
     int err = osd->pre_init();
     if (err < 0) {
         derr << TEXT_RED << " ** ERROR: osd pre_init failed: " << cpp_strerror(-err)
              << TEXT_NORMAL << dendl;
         forker.exit(1);
     }
-    LOGOSD << "CEPH_OSD PREINIT DONE"<< LOGEND;
+
     ms_public->start();
     ms_hb_front_client->start();
     ms_hb_back_client->start();
@@ -734,8 +717,6 @@ int main(int argc, const char **argv)
     ms_hb_back_server->start();
     ms_cluster->start();
     ms_objecter->start();
-
-    LOGOSD << "CEPH_OSD INIT"<< LOGEND;
 
     // start osd
     err = osd->init();
@@ -745,7 +726,6 @@ int main(int argc, const char **argv)
         forker.exit(1);
     }
 
-    LOGOSD << "CEPH_OSD INIT DONE"<< LOGEND;
 
     // -- daemonize --
 
@@ -758,13 +738,13 @@ int main(int argc, const char **argv)
     register_async_signal_handler_oneshot(SIGINT, handle_osd_signal);
     register_async_signal_handler_oneshot(SIGTERM, handle_osd_signal);
 
-    LOGOSD << "CEPH_OSD FINAL INIT"<< LOGEND;
+
     osd->final_init();
 
     if (g_conf().get_val<bool>("inject_early_sigterm"))
         kill(getpid(), SIGTERM);
 
-    LOGOSD << "CEPH_OSD READY"<< LOGEND;
+
     ms_public->wait();
     ms_hb_front_client->wait();
     ms_hb_back_client->wait();

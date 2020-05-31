@@ -21,6 +21,8 @@
 #include "common/safe_io.h"
 #include "common/Formatter.h"
 #include "common/EventTrace.h"
+#include "compressor/CompressionPlugin.h"
+#include "compressor/Compressor.h"
 
 #include "KvsStore.h"
 #include "kvsstore_types.h"
@@ -38,7 +40,7 @@
 #define dout_prefix *_dout << "[kvs] "
 
 #define SB_FLUSH_FREQUENCY 1024
-#define OBJECT_MAX_SIZE 536870912
+#define OBJECT_MAX_SIZE 4294967295
 
 /// -----------------------------------------------------------------------------------------------
 ///  Constructor / Mount / Unmount
@@ -59,9 +61,10 @@ KvsStore::KvsStore(CephContext *cct, const std::string &path) :
     // perf counter
     _init_perf_logger(cct);
 
-
     // create onode LRU cache
     set_cache_shards(1);
+
+    cp = Compressor::create(cct, "zstd");
 }
 
 // configure onode and data caches
@@ -173,6 +176,9 @@ int KvsStore::open_db(bool create) {
             db.kadi.iter_close(&ctx, 0);
         }
     }
+
+
+
 
     kv_callback_thread.create("kvscallback");
     kv_index_thread.create("kvsindex");
@@ -783,6 +789,7 @@ int KvsStore::queue_transactions(CollectionHandle &ch, vector<Transaction> &tls,
     Collection *c = static_cast<Collection*>(ch.get());
     OpSequencer *osr = c->osr.get();
 
+    //auto t = ceph_clock_now();
 
     // prepare
     TransContext *txc = _txc_create(static_cast<Collection*>(ch.get()), osr, &on_commit);
@@ -812,6 +819,7 @@ int KvsStore::queue_transactions(CollectionHandle &ch, vector<Transaction> &tls,
         }
     }
 
+    //TR << "qt: " << ceph_clock_now() - t;
     return 0;
 }
 
@@ -827,16 +835,29 @@ int KvsStore::_txc_write_nodes(TransContext *txc) {
     IoContext *ioc = new IoContext(0, __func__);
 
     for (const OnodeRef& o : txc->onodes) {
+        kvsstore_omap_list omap_list(&o->onode, cp);
+        omap_list.flush(cct, *ioc, db.omap_writefunc, bls);
 
         size_t bound = 0;
         denc(o->onode, bound);
 
         bufferlist *bl = new bufferlist();
-        bls.push_back(bl);
         {
             auto p = bl->get_contiguous_appender(bound, true);
             denc(o->onode, p);
         }
+
+        /*{
+            std::set<std::string> out;
+            kvsstore_omap_list omap_list(&o->onode);
+            omap_list.list(&out, db.omap_readfunc);
+            TR << "onode size = " << bl->length();
+            for (std::string name : out) {
+                TR << "onode " << o->oid << ", omap keys  " << name;
+            }
+        }*/
+
+        bls.push_back(bl);
 
         //_check_onode_validity(o->onode, bl);
 
@@ -1585,35 +1606,40 @@ int KvsStore::_clone(TransContext *txc, CollectionRef &c, OnodeRef &oldo, OnodeR
         _do_omap_clear(txc, newo);
     }
 
+    // clone omap
+    kvsstore_omap_list omap_list(&oldo->onode, cp);
+    omap_list.load_omap(cct, db.omap_readfunc);
+
     // clone attrs, omap , omap header
-    newo->onode.omaps = oldo->onode.omaps;
+    //newo->onode.omaps = oldo->onode.omaps;
     newo->onode.omap_header = oldo->onode.omap_header;
 
     // copy omap data
     {
-        txc->omap_data.reserve(newo->onode.omaps.size());
+        std::vector<bufferlist*> old_omap_values;
+        old_omap_values.reserve(oldo->onode.omaps.size());
+        //txc->omap_data.reserve(oldomap->size());
         {
             IoContext ioc(0, __func__);
-            int i = 0;
-            for (const std::string &name : newo->onode.omaps) {
+            kvsstore_omap_list new_omap_list(&newo->onode, cp);
+
+            for (const std::string &name : oldo->onode.omaps) {
+                new_omap_list.insert(cct, name, db.omap_readfunc);
                 bufferlist *bl = new bufferlist();
-                txc->omap_data.push_back(bl);
+                old_omap_values.push_back(bl);
                 db.aio_read_omap(oldo->onode.nid, name, *bl, &ioc);
-                i++;
             }
             int r = ioc.aio_submit_and_wait(&db.kadi, __func__);
             if (r != 0) {
                 derr << "omap_get_values failed: ret = " << r << dendl;
                 return -EIO;
             }
-        }
-        {
+
             int i = 0;
-            for (const std::string &name : newo->onode.omaps) {
-                bufferlist *bl = new bufferlist();
+            for (const std::string &name : oldo->onode.omaps) {
+                bufferlist *bl = old_omap_values[i++];
                 txc->omap_data.push_back(bl);
                 db.aio_write_omap(newo->onode.nid, name, *bl, txc->ioc);
-                i++;
             }
         }
     }
@@ -1868,11 +1894,13 @@ int KvsStore::getattrs(CollectionHandle &c_, const ghobject_t &oid,
 
 void KvsStore::_do_omap_clear(TransContext *txc, OnodeRef &o) {
     FTRACE
-    for (const std::string &user_key :o->onode.omaps) {
+    kvsstore_omap_list omap_list(&o->onode, cp);
+    omap_list.load_omap(cct, db.omap_readfunc);
+
+    for (const std::string &user_key: o->onode.omaps) {
         db.aio_remove_omap(o->onode.nid, user_key, txc->ioc);
     }
-
-    o->onode.omaps.clear();
+    omap_list.clear(*txc->ioc, db.omap_removefunc);
     o->onode.omap_header.clear();
 }
 
@@ -1900,6 +1928,12 @@ int KvsStore::_omap_setkeys(TransContext *txc, CollectionRef &c,
     decode(num, p);
     if (num <= 0) return 0;
     txc->write_onode(o);
+
+
+    kvsstore_omap_list omap_list(&o->onode, cp);
+
+    TR2 << "oid = " << o->oid << ", omap_setkeys , num = " << num << ", total pages = " << (int)o->onode.num_omap_extents;
+
     while (num > 0) {
         string key;
         bufferlist *list = new bufferlist();
@@ -1908,7 +1942,7 @@ int KvsStore::_omap_setkeys(TransContext *txc, CollectionRef &c,
         decode(key, p);
         decode(*list, p);
         // key: stored in onode
-        o->onode.omaps.insert(key);
+        omap_list.insert(cct, key, db.omap_readfunc);
 
         if (list->length() > 0)
             db.aio_write_omap(o->onode.nid, key, *list, txc->ioc);
@@ -1943,11 +1977,16 @@ int KvsStore::_omap_rmkeys(TransContext *txc, CollectionRef &c, OnodeRef &o,
 
     txc->write_onode(o);
 
+    TR2 << "oid = " << o->oid << ", omap removekeys, deleting num = " << num << ", num extents = " << (int)o->onode.num_omap_extents << ", num keys = " << o->onode.omaps.size();
+
+    kvsstore_omap_list omap_list(&o->onode, cp);
+
     while (num--) {
         string key;
         decode(key, p);
 
-        o->onode.omaps.erase(key);
+        TR2 << "oid = " << o->oid << ", omap removekeys " << key;
+        omap_list.erase(cct, key, db.omap_readfunc);
         db.aio_remove_omap(o->onode.nid, key, txc->ioc);
     }
 
@@ -1960,15 +1999,16 @@ int KvsStore::_omap_rmkey_range(TransContext *txc, CollectionRef &c,
     if (!o->onode.has_omap())
         return 0;
 
-    set<string>::iterator p = o->onode.omaps.lower_bound(first);
-    set<string>::iterator e = o->onode.omaps.lower_bound(last);
+    kvsstore_omap_list omap_list(&o->onode, cp);
 
-    for (auto it = p; it != e; it++) {
-        const string &key = *it;
+
+    int removed = 0;
+    omap_list.erase(cct, first, last, db.omap_readfunc, [&] (const std::string &key) {
         db.aio_remove_omap(o->onode.nid, key, txc->ioc);
-    }
+        removed++;
+    });
 
-    o->onode.omaps.erase(p, e);
+    TR2 << "oid = " << o->oid << ", omap remove keys = " << removed;
 
     return 0;
 }
@@ -2026,10 +2066,10 @@ int KvsStore::omap_get_keys(CollectionHandle &c_, const ghobject_t &oid,
 
     o->flush();
 
-    for (const auto &p: o->onode.omaps) {
-        keys->insert(p);
-    }
-    
+    kvsstore_omap_list omap_list(&o->onode, cp);
+
+    omap_list.list(cct, keys, db.omap_readfunc);
+
     return 0;
 }
 
@@ -2055,13 +2095,9 @@ int KvsStore::omap_check_keys(CollectionHandle &c_, const ghobject_t &oid,
         return 0;
     }
 
-    for (const std::string &p : keys) {
-        auto it = o->onode.omaps.find(p);
-        if (it != o->onode.omaps.end()) {
-            out->insert(p);
-        }
-    }
-    
+    kvsstore_omap_list omap_list(&o->onode, cp);
+    omap_list.lookup(cct, keys, out, db.omap_readfunc);
+
     return 0;
 }
 
@@ -2090,13 +2126,15 @@ int KvsStore::omap_get_values(CollectionHandle &c_, const ghobject_t &oid,
 
     IoContext ioc (0,__func__);
 
-    for (const std::string &p : keys) {
-        if (o->onode.omaps.find(p) != o->onode.omaps.end()) {
-            bufferlist &bl = (*out)[p];
-            db.aio_read_omap(o->onode.nid, p, bl, &ioc);
-        }
+    std::set<std::string> existing_keys;
+    kvsstore_omap_list omap_list(&o->onode, cp);
+    omap_list.lookup(cct, keys, &existing_keys, db.omap_readfunc);
+
+    for (const std::string &p : existing_keys) {
+        bufferlist &bl = (*out)[p];
+        db.aio_read_omap(o->onode.nid, p, bl, &ioc);
     }
-    
+
     return ioc.aio_submit_and_wait(&db.kadi, __func__);;
 }
 
@@ -2127,11 +2165,15 @@ int KvsStore::omap_get_impl(Collection *c, const ghobject_t &oid,
 
     IoContext ioc (0,__func__);
 
-    for (const std::string &p : o->onode.omaps) {
+    std::set<std::string> existing_keys;
+    kvsstore_omap_list omap_list(&o->onode, cp);
+    omap_list.list(cct, &existing_keys, db.omap_readfunc);
+
+    for (const std::string &p : existing_keys) {
         bufferlist &bl = (*out)[p];
         db.aio_read_omap(o->onode.nid, p, bl, &ioc);
     }
-    
+
     return ioc.aio_submit_and_wait(&db.kadi, __func__);;
 }
 
@@ -2142,11 +2184,14 @@ class KvsStore::OmapIteratorImpl : public ObjectMap::ObjectMapIteratorImpl {
     CollectionRef c;
     OnodeRef o;
     //map<string,bufferlist> omap;
+    set<std::string> omaps;
     set<std::string>::iterator it;
 public:
     OmapIteratorImpl(KvsStore *store_, CollectionRef c, OnodeRef o)
             : store(store_), c(c), o(o) {
 
+        kvsstore_omap_list omap_list(&o->onode, store->cp);
+        omap_list.list(store->cct, &omaps, store->db.omap_readfunc);
         seek_to_first();
     }
 
@@ -2155,7 +2200,7 @@ public:
         std::shared_lock l(c->lock);
         
         if (o->onode.has_omap()) {
-            it = o->onode.omaps.begin();
+            it = omaps.begin();
         } else {
             it = set<std::string>::iterator();
         }
@@ -2167,7 +2212,7 @@ public:
         std::shared_lock l(c->lock);
         
         if (o->onode.has_omap()) {
-            it = o->onode.omaps.upper_bound(after);
+            it = omaps.upper_bound(after);
         } else {
             it = set<std::string>::iterator();
         }
@@ -2179,7 +2224,7 @@ public:
         std::shared_lock l(c->lock);
         
         if (o->onode.has_omap()) {
-            it = o->onode.omaps.lower_bound(to);
+            it = omaps.lower_bound(to);
         } else {
             it = set<std::string>::iterator();
         }
@@ -2191,7 +2236,7 @@ public:
         std::shared_lock l(c->lock);
         
         
-        return o->onode.has_omap() && it != o->onode.omaps.end();
+        return o->onode.has_omap() && it != omaps.end();
     }
 
     int next() override {
@@ -2800,7 +2845,7 @@ void KvsStore::_kv_finalize_thread() {
         } else {
             kv_committed.swap(kv_finalize_queue);
             l.unlock();
-            TR << "processing " << kv_committed.size();
+            //TR << "processing " << kv_committed.size();
             while (!kv_committed.empty()) {
                 TransContext *txc = kv_committed.front();
 
@@ -2985,7 +3030,7 @@ void KvsStore::_kv_index_thread() {
     // load pages from the AOL
     static double index_interval_us = 1000000.0; // 1 second
     while(true) {
-        db.compact();
+        //db.compact();
 
         {
             std::unique_lock l (kv_lock );
@@ -3002,7 +3047,7 @@ void KvsStore::_kv_index_thread() {
 
 void KvsStore::_kv_callback_thread() {
     FTRACE
-    uint32_t toread = 128;
+    uint32_t toread = 10240;
     while (!kv_stop) {
         if (kv_stop) {
             derr << "kv_callback_thread: stop requested" << dendl;

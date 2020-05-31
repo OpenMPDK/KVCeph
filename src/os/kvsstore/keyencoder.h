@@ -16,6 +16,7 @@
 #define GROUP_PREFIX_DATA  	  0x2
 #define GROUP_PREFIX_JOURNAL  0x3
 #define GROUP_PREFIX_OMAP     0x4
+#define GROUP_PREFIX_OMAPBLK  0x5
 
 //# encoders & decoders
 //----------------------
@@ -102,6 +103,13 @@ struct __attribute__((__packed__)) kvs_omap_key
    //char		     name[OMAP_KEY_MAX_SIZE];// 255-10B
 };
 
+struct __attribute__((__packed__)) kvs_omapkeyblock_key
+{
+    uint32_t      group;
+    uint64_t      lid;      // unique key
+    uint32_t      blockid;  // unique key
+};
+
 
 
 
@@ -174,7 +182,7 @@ inline uint8_t calculate_omapkey_length(const int namelen)
 
 inline uint8_t construct_omapkey_impl(void *keybuffer, uint64_t lid, const char *name, const int name_len) {
     if (sizeof(kvs_omap_key) + name_len > KVKEY_MAX_SIZE) {
-        TR << "omap key name is too long:" << sizeof(kvs_omap_key) + name_len;
+        TRERR << "omap key name is too long:" << name_len << ", total key size = " << sizeof(kvs_omap_key) + name_len;
         exit(1);
     }
     struct kvs_omap_key* kvskey = (struct kvs_omap_key*)keybuffer;
@@ -185,6 +193,21 @@ inline uint8_t construct_omapkey_impl(void *keybuffer, uint64_t lid, const char 
     memcpy((char*)keybuffer + sizeof(kvs_omap_key), name, name_len);
     //TR << "OMAP KVSSD KEY " << print_kvssd_key(keybuffer, (sizeof(kvs_omap_key) + name_len));
     return (sizeof(kvs_omap_key) + name_len);
+}
+
+inline uint8_t calculate_omapblockkey_length()
+{
+    return sizeof(kvs_omapkeyblock_key);
+}
+
+
+inline uint8_t construct_omapblockkey_impl(void *keybuffer, uint64_t lid, uint32_t blockid) {
+
+    struct kvs_omapkeyblock_key* kvskey = (struct kvs_omapkeyblock_key*)keybuffer;
+    kvskey->group= GROUP_PREFIX_OMAPBLK;
+    kvskey->lid  = lid;
+    kvskey->blockid = blockid;
+    return sizeof(kvs_omapkeyblock_key);
 }
 
 // Onode and Data Keys
