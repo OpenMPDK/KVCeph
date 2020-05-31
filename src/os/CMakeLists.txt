@@ -22,7 +22,10 @@ set(libos_srcs
   kvsstore/kvsstore_cache.cc
   kvsstore/kvsstore_db.cc
   kvsstore/kvsstore_db.h
+  kvsstore/kvsstore_omap.cc
+  kvsstore/kvsstore_omap.h
   kvsstore/kvsstore_debug.h
+  kvsstore/kvsstore_debug_impl.h
   kvsstore/kvsstore_types.cc
   kvsstore/kvsstore_types.h
   kvsstore/os_adapter.cc
