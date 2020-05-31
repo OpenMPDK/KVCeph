@@ -40,6 +40,7 @@
 #define dout_prefix *_dout << "[kvs] "
 
 #define SB_FLUSH_FREQUENCY 1024
+
 #define OBJECT_MAX_SIZE 4294967295
 
 /// -----------------------------------------------------------------------------------------------
@@ -1285,6 +1286,7 @@ int KvsStore::_touch(TransContext *txc, CollectionRef &c, OnodeRef &o) {
 int KvsStore::_write(TransContext *txc, CollectionRef &c, OnodeRef &o,
                      uint64_t offset, size_t length, bufferlist &bl, uint32_t fadvise_flags) {
     FTRACE
+    //derr << " WRITE " << ", offset = " << offset << ", length = " << length << ", bl.length() = " << bl.length() << dendl;
     int r = 0;
     if (offset + length >= OBJECT_MAX_SIZE) {
         r = -E2BIG;
@@ -1383,6 +1385,7 @@ int KvsStore::_do_write(TransContext *txc, CollectionRef& c, OnodeRef &o,
         uint64_t offset, uint64_t length, bufferlist::iterator* blp)
 {
     FTRACE
+
     TRW << "begin - before: onode size " << o->onode.size << ", off " << offset << ", len " << length;
     if (length == 0) {
         return 0;

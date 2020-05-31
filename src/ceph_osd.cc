@@ -386,6 +386,7 @@ int main(int argc, const char **argv)
 
     if (mkjournal) {
         common_init_finish(g_ceph_context);
+
         int err = store->mkjournal();
         if (err < 0) {
             derr << TEXT_RED << " ** ERROR: error creating fresh journal "
@@ -709,7 +710,6 @@ int main(int argc, const char **argv)
              << TEXT_NORMAL << dendl;
         forker.exit(1);
     }
-
     ms_public->start();
     ms_hb_front_client->start();
     ms_hb_back_client->start();
@@ -738,12 +738,10 @@ int main(int argc, const char **argv)
     register_async_signal_handler_oneshot(SIGINT, handle_osd_signal);
     register_async_signal_handler_oneshot(SIGTERM, handle_osd_signal);
 
-
     osd->final_init();
 
     if (g_conf().get_val<bool>("inject_early_sigterm"))
         kill(getpid(), SIGTERM);
-
 
     ms_public->wait();
     ms_hb_front_client->wait();

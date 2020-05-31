@@ -1977,10 +1977,12 @@ int OSD::mkfs(CephContext *cct, ObjectStore *store, uuid_d fsid, int whoami)
 
     bufferlist bl;
     encode(sb, bl);
+
     ObjectStore::CollectionHandle ch = store->create_new_collection(
       coll_t::meta());
     ObjectStore::Transaction t;
     t.create_collection(coll_t::meta(), 0);
+
     t.write(coll_t::meta(), OSD_SUPERBLOCK_GOBJECT, 0, bl.length(), bl);
 
     ret = store->queue_transaction(ch, std::move(t));
@@ -2006,6 +2008,7 @@ umount_store:
   store->umount();
 free_store:
   delete store;
+
   return ret;
 }
 
@@ -3258,7 +3261,6 @@ int OSD::init()
 
   boot_finisher.start();
 
-
   {
     string val;
     store->read_meta("require_osd_release", &val);
@@ -3288,7 +3290,6 @@ int OSD::init()
   dout(2) << "boot" << dendl;
 
   service.meta_ch = store->open_collection(coll_t::meta());
-
 
   // initialize the daily loadavg with current 15min loadavg
   double loadavgs[3];
@@ -4350,6 +4351,7 @@ int OSD::read_superblock()
   int r = store->read(service.meta_ch, OSD_SUPERBLOCK_GOBJECT, 0, 0, bl);
   if (r < 0)
     return r;
+
 
   auto p = bl.cbegin();
   decode(superblock, p);
