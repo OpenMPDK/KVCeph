@@ -894,7 +894,6 @@ int KvsStore::_txc_write_nodes(TransContext *txc) {
         delete bl;
     }
 
-    std::cout << "r = " << r << std::endl;
     delete ioc;
     return r;
 }
