@@ -92,7 +92,7 @@
     "chart.js": "2.8.0",
     "detect-browser": "4.7.0",
     "fork-awesome": "1.1.7",
-    "lodash": "4.17.15",
+    "lodash": "4.17.21",
     "moment": "2.24.0",
     "ng-block-ui": "2.1.7",
     "ng-bootstrap-form-validation": "5.0.0",
